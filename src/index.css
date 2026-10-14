@@ -1,0 +1,236 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Roboto", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "Roboto Mono", monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+@layer utilities {
+  .animate-accordion-down {
+    animation: accordion-down 0.2s ease-out;
+  }
+  .animate-accordion-up {
+    animation: accordion-up 0.2s ease-out;
+  }
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+@layer base {
+  :root {
+    --background: #f8fafc;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --popover: #ffffff;
+    --popover-foreground: #0f172a;
+    --primary: #0f172a;
+    --primary-foreground: #f8fafc;
+    --secondary: #e2e8f0;
+    --secondary-foreground: #0f172a;
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    --accent: #f1f5f9;
+    --accent-foreground: #0f172a;
+    --destructive: #ef4444;
+    --destructive-foreground: #f8fafc;
+    --border: #e2e8f0;
+    --input: #e2e8f0;
+    --ring: #0f172a;
+    --radius: 0.5rem;
+  }
+  
+  .dark {
+    --background: #0f172a;
+    --foreground: #f8fafc;
+    --card: #1e293b;
+    --card-foreground: #f8fafc;
+    --popover: #1e293b;
+    --popover-foreground: #f8fafc;
+    --primary: #f8fafc;
+    --primary-foreground: #0f172a;
+    --secondary: #334155;
+    --secondary-foreground: #f8fafc;
+    --muted: #1e293b;
+    --muted-foreground: #94a3b8;
+    --accent: #1e293b;
+    --accent-foreground: #f8fafc;
+    --destructive: #7f1d1d;
+    --destructive-foreground: #f8fafc;
+    --border: #334155;
+    --input: #334155;
+    --ring: #cbd5e1;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer base {
+  .cosmic {
+    --background: #0b0914;
+    --foreground: #e0dcf5;
+    --card: #151126;
+    --card-foreground: #e0dcf5;
+    --popover: #151126;
+    --popover-foreground: #e0dcf5;
+    --primary: #9b72ff;
+    --primary-foreground: #ffffff;
+    --secondary: #271d47;
+    --secondary-foreground: #e0dcf5;
+    --muted: #1e163b;
+    --muted-foreground: #a099bf;
+    --accent: #271d47;
+    --accent-foreground: #e0dcf5;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #2e2354;
+    --input: #2e2354;
+    --ring: #9b72ff;
+  }
+
+  .forest {
+    --background: #f1f4f0;
+    --foreground: #1c2b23;
+    --card: #ffffff;
+    --card-foreground: #1c2b23;
+    --popover: #ffffff;
+    --popover-foreground: #1c2b23;
+    --primary: #2d5a3f;
+    --primary-foreground: #ffffff;
+    --secondary: #dceddf;
+    --secondary-foreground: #1c2b23;
+    --muted: #e6ebe3;
+    --muted-foreground: #5c7566;
+    --accent: #dceddf;
+    --accent-foreground: #1c2b23;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #d0dcd4;
+    --input: #d0dcd4;
+    --ring: #2d5a3f;
+  }
+
+  .ocean {
+    --background: #09121a;
+    --foreground: #d6e8f5;
+    --card: #101e2b;
+    --card-foreground: #d6e8f5;
+    --popover: #101e2b;
+    --popover-foreground: #d6e8f5;
+    --primary: #0ea5e9;
+    --primary-foreground: #ffffff;
+    --secondary: #1a3045;
+    --secondary-foreground: #d6e8f5;
+    --muted: #132536;
+    --muted-foreground: #8ab4f8;
+    --accent: #1a3045;
+    --accent-foreground: #d6e8f5;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #1f3a52;
+    --input: #1f3a52;
+    --ring: #0ea5e9;
+  }
+
+  .sunset {
+    --background: #fff8f5;
+    --foreground: #381e18;
+    --card: #ffffff;
+    --card-foreground: #381e18;
+    --popover: #ffffff;
+    --popover-foreground: #381e18;
+    --primary: #f97316;
+    --primary-foreground: #ffffff;
+    --secondary: #ffecd9;
+    --secondary-foreground: #381e18;
+    --muted: #fceddb;
+    --muted-foreground: #8c6a5d;
+    --accent: #ffecd9;
+    --accent-foreground: #381e18;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --border: #f4d9c8;
+    --input: #f4d9c8;
+    --ring: #f97316;
+  }
+}
+
+/* Compact Mode Overrides */
+body.compact-ui {
+  font-size: 0.925rem;
+}
+body.compact-ui td, 
+body.compact-ui th {
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+}
+body.compact-ui .py-4 {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+body.compact-ui .p-6 {
+  padding: 1rem !important;
+}
+body.compact-ui .gap-6 {
+  gap: 1rem !important;
+}
+
+/* Hide Financials Overrides */
+body.hide-financials .financial-value {
+  filter: blur(4px);
+  opacity: 0.6;
+  user-select: none;
+}
