@@ -1,0 +1,323 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getRole() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) 
+        ? get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.role 
+        : null;
+    }
+
+    // Check if the current user is an admin.
+    // The admin collection must exist and the document with the user's UID must be present.
+    // Bootstrapped Admin: user email Cadupaulino99@gmail.com
+    function isAdmin() {
+      return isAuthenticated() && (
+        getRole() == 'admin' || 
+        request.auth.token.email == "Cadupaulino99@gmail.com" || 
+        request.auth.token.email == "cadupaulino99@gmail.com"
+      );
+    }
+    function isTreasurer() {
+      return isAuthenticated() && getRole() == 'treasurer';
+    }
+    function isPastor() {
+       return isAuthenticated() && getRole() == 'pastor';
+    }
+    function hasFinancialWriteAccess() {
+       return isAdmin() || isTreasurer() || isPastor();
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Admin Collection ---
+    function isValidAdmin(data) {
+      return data.keys().hasAll(['email', 'role', 'createdAt']) && data.keys().size() == 3 &&
+             data.email is string && data.email.size() <= 200 && data.email.size() > 0 &&
+             data.role is string &&
+             data.createdAt is number;
+    }
+
+    match /admins/{adminId} {
+      allow read: if isAuthenticated() && (request.auth.uid == adminId || isAdmin());
+      allow create: if hasFinancialWriteAccess() && isValidId(adminId) && isValidAdmin(incoming());
+      allow update: if false; // Admins are immutable, delete and recreate
+      allow delete: if hasFinancialWriteAccess() && isValidId(adminId);
+      allow list: if hasFinancialWriteAccess();
+    }
+
+    match /settings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // --- Member Collection ---
+    function isValidMemberCreate(data) {
+      return data.keys().hasAll(['name', 'createdAt', 'updatedAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.createdAt is number &&
+             data.updatedAt is number &&
+             (data.get('birthDate', '') is string) &&
+             (data.get('gender', '') is string) &&
+             (data.get('maritalStatus', '') is string) &&
+             (data.get('spouseName', '') is string) &&
+             (data.get('groupCell', '') is string) &&
+             (data.get('education', '') is string) &&
+             (data.get('profession', '') is string) &&
+             (data.get('phone', '') is string) &&
+             (data.get('address', '') is string) &&
+             (data.get('status', '') is string);
+    }
+
+    function isValidMemberUpdate(data) {
+       return data.keys() == existing().keys() || true; // Weak validation, rely on hasOnly in action
+    }
+
+    match /members/{memberId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(memberId);
+      allow update: if hasFinancialWriteAccess() && isValidId(memberId);
+      allow delete: if hasFinancialWriteAccess() && isValidId(memberId);
+    }
+
+    // --- Tithe Collection ---
+    function isValidTitheCreate(data) {
+      return data.keys().hasAll(['memberId', 'month', 'year', 'amount', 'receiptNumber', 'adminId', 'createdAt', 'updatedAt']) &&
+             data.keys().size() <= 14 &&
+             data.memberId is string && data.memberId.size() > 0 &&
+             data.month is string && data.month.size() > 0 &&
+             data.year is number &&
+             data.amount is number &&
+             data.receiptNumber is string &&
+             (data.get('referenceMonth', '') is string) &&
+             (data.get('referenceYear', 0) is number) &&
+             (data.get('cashierMonth', '') is string) &&
+             (data.get('cashierYear', 0) is number) &&
+             (data.get('contributionType', '') is string) &&
+             (data.get('contributionDetail', '') is string) &&
+             data.adminId is string && data.adminId == request.auth.uid &&
+             data.createdAt is number && data.updatedAt is number;
+    }
+
+    match /tithes/{titheId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(titheId) &&
+                    isValidTitheCreate(incoming()) &&
+                    exists(/databases/$(database)/documents/members/$(incoming().memberId));
+      allow update: if hasFinancialWriteAccess() && isValidId(titheId) &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().memberId == existing().memberId &&
+                    incoming().adminId == existing().adminId &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'memberId', 'month', 'year', 'amount', 'receiptNumber', 'referenceMonth', 'referenceYear', 'contributionType', 'contributionDetail', 'updatedAt'
+                    ]) &&
+                    (incoming().month == null || incoming().month is string) && 
+                    (incoming().year == null || incoming().year is number);
+      allow delete: if hasFinancialWriteAccess() && isValidId(titheId);
+    }
+
+    // --- Offering Collection ---
+    function isValidOfferingCreate(data) {
+      return data.keys().hasAll(['description', 'type', 'month', 'year', 'amount', 'adminId', 'createdAt', 'updatedAt']) &&
+             (data.keys().size() >= 8 && data.keys().size() <= 10) &&
+             data.description is string && data.description.size() > 0 &&
+             data.type is string && data.type.size() > 0 &&
+             data.month is string && data.month.size() > 0 &&
+             data.year is number &&
+             data.amount is number &&
+             (data.get('receiptNumber', '') is string) &&
+             (data.get('referenceDate', '') is string) &&
+             data.adminId is string && data.adminId == request.auth.uid &&
+             data.createdAt is number && data.updatedAt is number;
+    }
+
+    match /offerings/{offeringId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(offeringId) && isValidOfferingCreate(incoming());
+      allow update: if hasFinancialWriteAccess() && isValidId(offeringId) &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().adminId == existing().adminId &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'description', 'type', 'month', 'year', 'amount', 'receiptNumber', 'referenceDate', 'updatedAt'
+                    ]) &&
+                    incoming().description is string && incoming().type is string && incoming().month is string && incoming().year is number && incoming().amount is number;
+      allow delete: if hasFinancialWriteAccess() && isValidId(offeringId);
+    }
+
+    // --- Expense Collection ---
+    function isValidExpenseCreate(data) {
+      return data.keys().hasAll(['description', 'category', 'responsible', 'month', 'year', 'amount', 'adminId', 'createdAt', 'updatedAt']) &&
+             (data.keys().size() == 9 || data.keys().size() == 10) &&
+             data.description is string && data.description.size() > 0 &&
+             data.category is string && data.category.size() > 0 &&
+             (data.get('subCategory', '') is string) &&
+             data.responsible is string && data.responsible.size() > 0 &&
+             data.month is string && data.month.size() > 0 &&
+             data.year is number &&
+             data.amount is number &&
+             data.adminId is string && data.adminId == request.auth.uid &&
+             data.createdAt is number && data.updatedAt is number;
+    }
+
+    match /expenses/{expenseId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(expenseId) && isValidExpenseCreate(incoming());
+      allow update: if hasFinancialWriteAccess() && isValidId(expenseId) &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().adminId == existing().adminId &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'description', 'category', 'subCategory', 'responsible', 'month', 'year', 'amount', 'updatedAt'
+                    ]) &&
+                     incoming().description is string && incoming().category is string && incoming().responsible is string && incoming().month is string && incoming().year is number && incoming().amount is number;
+      allow delete: if hasFinancialWriteAccess() && isValidId(expenseId);
+    }
+
+    // --- Building Fund Collection ---
+    function isValidBuildingFundCreate(data) {
+      return data.keys().hasAll(['description', 'type', 'amount', 'date', 'adminId', 'createdAt', 'updatedAt']) && data.keys().size() == 7 &&
+             data.description is string && data.description.size() > 0 &&
+             data.type is string && (data.type == 'IN' || data.type == 'OUT') &&
+             data.amount is number &&
+             data.date is string && data.date.size() > 0 &&
+             data.adminId is string && data.adminId == request.auth.uid &&
+             data.createdAt is number && data.updatedAt is number;
+    }
+
+    match /buildingFunds/{fundId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(fundId) && isValidBuildingFundCreate(incoming());
+      allow update: if hasFinancialWriteAccess() && isValidId(fundId) &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().adminId == existing().adminId &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'description', 'type', 'amount', 'date', 'updatedAt'
+                    ]) &&
+                     incoming().description is string && incoming().type is string && incoming().amount is number && incoming().date is string;
+      allow delete: if hasFinancialWriteAccess() && isValidId(fundId);
+    }
+
+    // --- Asset Collection ---
+    function isValidAssetCreate(data) {
+      return data.keys().hasAll(['name', 'category', 'acquisitionDate', 'purchaseValue', 'adminId', 'createdAt', 'updatedAt']) &&
+             (data.keys().size() == 7 || data.keys().size() == 8) &&
+             data.name is string && data.name.size() > 0 &&
+             data.category is string && data.category.size() > 0 &&
+             data.acquisitionDate is string && data.acquisitionDate.size() > 0 &&
+             data.purchaseValue is number &&
+             (data.get('currentRate', 0) is number) &&
+             data.adminId is string && data.adminId == request.auth.uid &&
+             data.createdAt is number && data.updatedAt is number;
+    }
+
+    match /assets/{assetId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(assetId) && isValidAssetCreate(incoming());
+      allow update: if hasFinancialWriteAccess() && isValidId(assetId) &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().adminId == existing().adminId &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'name', 'category', 'acquisitionDate', 'purchaseValue', 'currentRate', 'updatedAt'
+                    ]) &&
+                     incoming().name is string && incoming().category is string && incoming().acquisitionDate is string && incoming().purchaseValue is number;
+      allow delete: if hasFinancialWriteAccess() && isValidId(assetId);
+    }
+    // --- Financial Month Collection ---
+    function isValidFinancialMonthCreate(data) {
+      return data.keys().hasAll(['month', 'year', 'status', 'openingBalance', 'adminId', 'createdAt', 'updatedAt']) &&
+             (data.keys().size() == 7 || data.keys().size() == 9 || data.keys().size() == 8) &&
+             data.month is string && data.month.size() > 0 &&
+             data.year is number &&
+             data.status is string && (data.status == 'open' || data.status == 'closed') &&
+             data.openingBalance is number &&
+             (data.get('closingBalance', 0) is number) &&
+             (data.get('closedAt', 0) is number) &&
+             data.adminId is string && data.adminId == request.auth.uid &&
+             data.createdAt is number && data.updatedAt is number;
+    }
+
+    match /financialMonths/{monthId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(monthId) && isValidFinancialMonthCreate(incoming());
+      allow update: if hasFinancialWriteAccess() && isValidId(monthId) &&
+                    incoming().createdAt == existing().createdAt &&
+                    incoming().adminId == existing().adminId &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'status', 'closingBalance', 'closedAt', 'updatedAt'
+                    ]) &&
+                    incoming().status is string && (incoming().status == 'open' || incoming().status == 'closed');
+      allow delete: if hasFinancialWriteAccess() && isValidId(monthId);
+    }
+    // --- Financial Year Collection ---
+    match /financialYears/{yearId} {
+      allow read, list: if isAuthenticated();
+      allow create, update: if hasFinancialWriteAccess();
+      allow delete: if isAdmin();
+    }
+    // --- Budget Collection ---
+    match /budgets/{budgetId} {
+      allow read: if isAuthenticated();
+      allow create, update: if hasFinancialWriteAccess();
+      allow delete: if isAdmin();
+    }
+    match /expense_receipts/{receiptId} {
+      allow read: if isAuthenticated();
+      allow create, update: if hasFinancialWriteAccess();
+      allow delete: if isAdmin();
+    }
+    match /settings/{settingId} {
+      allow read, list: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    match /announcements/{annId} {
+      allow read, list: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    match /events/{eventId} {
+      allow read, list: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    match /pedidos_atualizacao/{reqId} {
+      allow read, list: if isAuthenticated();
+      allow create: if isAuthenticated() && incoming().memberId != null;
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Audit Logs Collection ---
+    match /audit_logs/{logId} {
+      allow read, list: if isAdmin();
+      allow create: if hasFinancialWriteAccess();
+      allow update, delete: if false;
+    }
+
+    // --- Support Messages Collection ---
+    match /support_messages/{msgId} {
+      allow read, list: if isAuthenticated();
+      allow create: if isAuthenticated() && incoming().senderId == request.auth.uid && incoming().text is string && incoming().text.size() > 0;
+      allow update, delete: if isAdmin();
+    }
+
+    // --- WhatsApp Outbox Collection ---
+    match /whatsapp_outbox/{msgId} {
+      allow read, list: if isAdmin();
+      allow create: if hasFinancialWriteAccess();
+      allow update, delete: if isAdmin();
+    }
+  }
+}

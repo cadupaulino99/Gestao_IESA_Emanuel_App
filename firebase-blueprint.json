@@ -1,0 +1,203 @@
+{
+  "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "Administrator of the system",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "treasurer", "pastor"] },
+        "createdAt": { "type": "integer" }
+      },
+      "required": ["email", "role", "createdAt"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "A church member",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "gender": { "type": "string" },
+        "maritalStatus": { "type": "string" },
+        "spouseName": { "type": "string" },
+        "childrenCount": { "type": "integer" },
+        "groupCell": { "type": "string" },
+        "education": { "type": "string" },
+        "profession": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["name", "createdAt", "updatedAt"]
+    },
+    "Tithe": {
+      "title": "Tithe",
+      "description": "A tithe entry from a member",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "month": { "type": "string" },
+        "year": { "type": "integer" },
+        "amount": { "type": "number" },
+        "receiptNumber": { "type": "string" },
+        "contributionType": { "type": "string" },
+        "contributionDetail": { "type": "string" },
+        "referenceMonth": { "type": "string" },
+        "referenceYear": { "type": "integer" },
+        "cashierMonth": { "type": "string" },
+        "cashierYear": { "type": "integer" },
+        "adminId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["memberId", "month", "year", "amount", "receiptNumber", "adminId", "createdAt", "updatedAt"]
+    },
+    "Offering": {
+      "title": "Offering",
+      "description": "An offering entry",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "type": { "type": "string" },
+        "month": { "type": "string" },
+        "year": { "type": "integer" },
+        "amount": { "type": "number" },
+        "receiptNumber": { "type": "string" },
+        "adminId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["description", "type", "month", "year", "amount", "adminId", "createdAt", "updatedAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "An expense or exiting value",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "subCategory": { "type": "string" },
+        "responsible": { "type": "string" },
+        "month": { "type": "string" },
+        "year": { "type": "integer" },
+        "amount": { "type": "number" },
+        "adminId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["description", "category", "responsible", "month", "year", "amount", "adminId", "createdAt", "updatedAt"]
+    },
+    "BuildingFund": {
+      "title": "BuildingFund",
+      "description": "Building fund entry",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["IN", "OUT"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "adminId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["description", "type", "amount", "date", "adminId", "createdAt", "updatedAt"]
+    },
+    "Asset": {
+      "title": "Asset",
+      "description": "Church asset inventory",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "acquisitionDate": { "type": "string" },
+        "purchaseValue": { "type": "number" },
+        "currentRate": { "type": "number" },
+        "adminId": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      },
+      "required": ["name", "category", "acquisitionDate", "purchaseValue", "adminId", "createdAt", "updatedAt"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Notice board message",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "adminId": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["title", "content", "createdAt", "adminId", "active"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Church calendar event",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "adminId": { "type": "string" }
+      },
+      "required": ["title", "date", "createdAt", "adminId"]
+    },
+    "UpdateRequest": {
+      "title": "Update Request",
+      "description": "Member data update request",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "currentData": { "type": "object" },
+        "newData": { "type": "object" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["memberId", "memberName", "currentData", "newData", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "System administrators"
+    },
+    "members/{memberId}": {
+      "schema": { "$ref": "#/entities/Member" },
+      "description": "Church members directory"
+    },
+    "tithes/{titheId}": {
+      "schema": { "$ref": "#/entities/Tithe" },
+      "description": "Registered tithes"
+    },
+    "offerings/{offeringId}": {
+      "schema": { "$ref": "#/entities/Offering" },
+      "description": "Registered offerings"
+    },
+    "expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Registered expenses"
+    },
+    "buildingFunds/{fundId}": {
+      "schema": { "$ref": "#/entities/BuildingFund" },
+      "description": "Building fund cache"
+    },
+    "assets/{assetId}": {
+      "schema": { "$ref": "#/entities/Asset" },
+      "description": "Asset registry"
+    },
+    "announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Church notice board"
+    },
+    "events/{eventId}": {
+      "schema": { "$ref": "#/entities/Event" },
+      "description": "Church calendar"
+    }
+  }
+}

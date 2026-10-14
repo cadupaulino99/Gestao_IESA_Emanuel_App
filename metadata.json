@@ -1,0 +1,8 @@
+{
+  "name": "Gestão IESA - Emanuel",
+  "description": "Sistema de gestão financeira e de membros para a Igreja Evangélica Sinodal de Angola - Igreja Local de Emanuel em Xangongo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
