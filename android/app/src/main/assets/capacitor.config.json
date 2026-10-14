@@ -1,0 +1,6 @@
+{
+	"appId": "com.igreja.app",
+	"appName": "Gestão de Igreja",
+	"webDir": "dist",
+	"bundledWebRuntime": false
+}
