@@ -1,0 +1,36 @@
+name: Deploy Firebase (regras, índices e funções)
+
+# Dispara manualmente (GitHub > Actions > "Deploy Firebase" > Run workflow)
+# depois de configures os secrets (ver docs/GUIA-FIREBASE.md, passo 9):
+#   FIREBASE_SERVICE_ACCOUNT  (JSON da conta de serviço)
+#   FIREBASE_PROJECT_ID       (id do projeto)
+on:
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    name: firebase deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Instalar dependências das funções
+        working-directory: functions
+        run: npm install --no-audit --no-fund
+
+      - name: Autenticar com a conta de serviço
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json" >> $GITHUB_ENV
+
+      - name: Deploy (regras + índices + funções)
+        env:
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes,functions --project "$PROJECT_ID"
