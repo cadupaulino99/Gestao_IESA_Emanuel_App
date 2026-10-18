@@ -13,6 +13,12 @@ jobs:
     name: Compilar APK e AAB
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,23 +40,28 @@ jobs:
         run: npm ci
 
       - name: google-services.json (se existir nos secrets)
-        if: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            echo "google-services.json aplicado."
+          else
+            echo "Sem secret GOOGLE_SERVICES_JSON — o APK compila, mas o login Google nativo ficara inativo."
+          fi
 
       - name: Keystore de release (se existir nos secrets)
-        if: ${{ secrets.KEYSTORE_B64 != '' }}
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
         run: |
-          base64 -d <<< "$KEYSTORE_B64" > android/app/release.keystore
-          cat > android/app/keystore.properties <<EOF
-          storeFile=release.keystore
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          EOF
+          if [ -n "$KEYSTORE_B64" ]; then
+            base64 -d <<< "$KEYSTORE_B64" > android/app/release.keystore
+            {
+              echo "storeFile=release.keystore"
+              echo "storePassword=$KEYSTORE_PASSWORD"
+              echo "keyAlias=$KEY_ALIAS"
+              echo "keyPassword=$KEY_PASSWORD"
+            } > android/app/keystore.properties
+            echo "Keystore aplicado — release sera assinado."
+          else
+            echo "Sem keystore — release assinado com chave de debug (so para testes)."
+          fi
 
       - name: Build web + sincronizar Capacitor
         run: |
