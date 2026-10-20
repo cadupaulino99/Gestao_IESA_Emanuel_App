@@ -31,7 +31,7 @@ export default function Layout() {
   const { openPalette } = useCommandPalette();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [churchName, setChurchName] = useState('Emanuel - Xangongo');
-  const [logoUrl, setLogoUrl] = useState('logo-iesa.png');
+  const [logoUrl, setLogoUrl] = useState('/logo-iesa.png');
 
   useEffect(() => {
     const updateHeaderName = () => {

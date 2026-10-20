@@ -24,7 +24,7 @@ export const generateMembershipCard = async (member: Member) => {
   
   // Try to get church name from localStorage else default
   let churchName = "IGREJA LOCAL";
-  let logoUrl = "logo-iesa.png"; // logotipo embutido no APK
+  let logoUrl = "/logo-iesa.png"; // logotipo embutido no APK
   const saved = prefGet('church-settings');
   if (saved) {
     try {

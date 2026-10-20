@@ -149,8 +149,11 @@ const Login = () => {
     <div className="h-screen w-screen flex items-center justify-center bg-slate-50 dark:bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl overflow-hidden mb-4 bg-primary/10">
-            <img src="logo-iesa.png" alt="Logo IESA Emanuel" className="w-full h-full object-cover" />
+          <div className="rounded-xl overflow-hidden mb-4 border border-slate-200 dark:border-slate-700">
+            <img src="/banner-emanuel.jpg" alt="Capelão da Emanuel — Programa de Gestão da Igreja Emanuel, Xangongo" className="w-full h-36 object-cover" />
+          </div>
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl overflow-hidden mb-2 bg-primary/10">
+            <img src="/logo-iesa.png" alt="Logo IESA Emanuel" className="w-full h-full object-cover" />
           </div>
           <CardTitle className="text-2xl">Gestão IESA</CardTitle>
           <CardDescription className="line-clamp-2" title={churchName}>{churchName}</CardDescription>
