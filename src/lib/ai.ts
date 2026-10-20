@@ -5,7 +5,7 @@ import { auth } from './firebase';
  * O URL é colado aqui depois de criares o Worker (docs/GUIA-CLOUDFLARE-WORKER.md).
  * Enquanto estiver vazio, as funções de IA devolvem um erro amigável.
  */
-export const WORKER_URL = ''; // ex.: https://ai-worker.iesemanuel.workers.dev
+export const WORKER_URL = 'https://iesa-ai.cadupaulino99.workers.dev';
 
 async function callWorker<T>(path: string, body: unknown): Promise<T> {
   if (!WORKER_URL) {
