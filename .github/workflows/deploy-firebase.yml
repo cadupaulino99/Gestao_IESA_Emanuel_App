@@ -33,4 +33,7 @@ jobs:
       - name: Deploy (regras + índices + funções)
         env:
           PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-        run: npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes,functions --project "$PROJECT_ID"
+        # Plano Spark (gratuito) nao permite Cloud Functions (exige Blaze).
+        # Regras + indices implantam-se normalmente. Quando ativares o Blaze,
+        # acrescenta ",functions" ao --only para levar tambem a IA.
+        run: npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ID"
