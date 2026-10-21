@@ -1,5 +1,23 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.5.2 (2026-10-21) — Correções de visualização móvel
+
+- **Nada fica debaixo do rodapé**: a barra de navegação inferior passa a estar **em fluxo**
+  (faz parte da coluna flex do ecrã), em vez de `fixed` sobre o conteúdo.
+- **Altura real do ecrã**: `h-dvh`/`min-h-dvh` (viewport dinâmico) em vez de `100vh`,
+  que em WebViews Android cortava conteúdo atrás das barras do sistema.
+- **Menu «Mais» como bottom-sheet nativo** (grelha 2 colunas + alça + fechar),
+  em vez de gaveta lateral que "partia" o ecrã ao meio.
+- **Fim da inflação de texto da WebView**: `-webkit-text-size-adjust: 100%`
+  (era a causa dos textos gigantes e desajustados).
+- Escala tipográfica contida em ≤640 px (h1/h2/h3, células de tabela),
+  inputs a 16 px (sem zoom ao focar), diálogos/paleta limitados à largura do ecrã,
+  toasts a largura inteira, `viewport-fit=cover` para safe-areas.
+- **Gravações da rádio** com scroll próprio (máx. 340 px) — a lista nunca empurra
+  conteúdo para debaixo do rodapé, mesmo com muitas gravações.
+- Mini-player assenta exatamente acima da barra de navegação (CSS com safe-area).
+
+---
 ## v1.5.0 (2026-10-21) — Visual de app nativa + Rádio Maranata
 
 ### Casca com sensação nativa (Android)

@@ -328,7 +328,7 @@ export default function Radio() {
                 <p className="text-xs text-slate-400 dark:text-slate-500">Toque em «Gravar» durante a emissão.</p>
               </div>
             ) : (
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[340px] overflow-y-auto scrollbar-hide">
                 {recordings.map((r) => (
                   <li key={r.file} className="flex items-center gap-3 py-2.5">
                     <Button

@@ -23,16 +23,17 @@ import {
   MoreHorizontal,
   Pause,
   Maximize2,
+  X,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from './ui/sheet';
 import { useState, useEffect } from 'react';
 import { Toaster } from './ui/sonner';
 import { useCommandPalette } from '../context/CommandPaletteContext';
-import { Command as CommandIcon, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { livePlayer } from '../lib/radio';
 
 export default function Layout() {
@@ -110,6 +111,8 @@ export default function Layout() {
     { name: 'Finanças', path: '/finances', icon: Wallet },
     { name: 'Rádio', path: '/radio', icon: RadioIcon },
   ];
+  const bottomPaths = bottomTabs.map((t) => t.path);
+  const moreItems = navItems.filter((i) => !bottomPaths.includes(i.path));
 
   const NavLinks = () => (
     <>
@@ -137,7 +140,7 @@ export default function Layout() {
   const showMiniPlayer = (livePlayer.playing || livePlayer.loading) && location.pathname !== '/radio';
 
   return (
-    <div className="flex min-h-screen bg-slate-50/50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans selection:bg-blue-200">
+    <div className="flex min-h-dvh bg-slate-50/50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans selection:bg-blue-200">
       {/* Sidebar for desktop */}
       <aside className="hidden md:flex flex-col w-72 border-r border-slate-200/60 dark:border-slate-800 bg-white/50 dark:bg-slate-950/50 backdrop-blur-xl px-4 py-6 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
         <div className="flex items-center gap-3 mb-8 px-2">
@@ -187,22 +190,23 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+      {/* Main content — coluna flex: cabeçalho + scroll + rodapé EM FLUXO
+          (nada fica escondido debaixo da barra de navegação) */}
+      <main className="flex-1 flex flex-col h-dvh overflow-hidden relative">
         {/* Subtle background decorative elements */}
         <div className="absolute top-0 right-0 -z-10 w-full h-full overflow-hidden pointer-events-none opacity-40 dark:opacity-20">
           <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] rounded-full bg-blue-100/50 blur-3xl mix-blend-multiply" />
           <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] rounded-full bg-purple-100/50 blur-3xl mix-blend-multiply" />
         </div>
 
-        <header className="flex md:hidden items-center justify-between px-4 pt-safe py-3 border-b border-slate-200/60 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md z-30">
-          <div className="flex items-center gap-3">
+        <header className="flex md:hidden items-center justify-between px-4 pt-safe py-2.5 border-b border-slate-200/60 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md z-30">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg overflow-hidden border border-slate-200/50 shadow-sm">
               <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
             </div>
-            <div>
-              <h1 className="font-semibold tracking-tight leading-none">Gestão IESA</h1>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-none mt-0.5">{churchName}</p>
+            <div className="min-w-0">
+              <h1 className="font-semibold tracking-tight leading-none truncate">Gestão IESA</h1>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-none mt-0.5 truncate">{churchName}</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -215,22 +219,53 @@ export default function Layout() {
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[280px] flex flex-col pt-10 border-r-slate-200/60">
-                <nav className="flex-1 space-y-1.5 mt-4 overflow-y-auto">
-                  <NavLinks />
-                </nav>
-                <div className="mt-auto pt-6 border-t border-slate-200/60 pb-4">
-                  <Button variant="outline" className="w-full justify-start gap-2 h-11" onClick={signOut}>
-                    <DoorClosed className="h-4 w-4 text-slate-500" />
-                    <span>Terminar Sessão</span>
+              {/* Menu como bottom-sheet nativo (nunca "meio ecrã" lateral) */}
+              <SheetContent side="bottom" className="rounded-t-3xl pb-safe max-h-[85dvh] overflow-y-auto border-t-0 px-4 pt-3">
+                <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-300 dark:bg-slate-700" aria-hidden />
+                <SheetTitle className="flex items-center justify-between text-base font-semibold pb-2">
+                  Menu
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setMobileMenuOpen(false)} title="Fechar">
+                    <X className="h-4 w-4" />
                   </Button>
+                </SheetTitle>
+                <div className="grid grid-cols-2 gap-2 pb-2">
+                  {moreItems.map((item) => (
+                    <button
+                      key={item.path}
+                      onClick={() => { setMobileMenuOpen(false); navigate(item.path); }}
+                      className={`flex items-center gap-2.5 rounded-xl border px-3 py-3 text-left text-sm font-medium transition-colors ${
+                        location.pathname === item.path
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      <item.icon className="h-4.5 w-4.5 shrink-0 text-slate-500 dark:text-slate-400" />
+                      <span className="truncate">{item.name}</span>
+                    </button>
+                  ))}
                 </div>
+                <div className="flex items-center gap-3 rounded-xl bg-slate-100/60 dark:bg-slate-900/60 p-3 my-2 border border-slate-200/60 dark:border-slate-800/60">
+                  <Avatar className="h-10 w-10 border border-slate-200 dark:border-slate-700">
+                    <AvatarImage src={user?.photoURL || ''} />
+                    <AvatarFallback className="bg-slate-900 text-white font-medium">{user?.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate">{user?.displayName}</p>
+                    <p className="text-xs text-slate-500 truncate capitalize">
+                      {userRole === 'admin' ? 'Administrador Geral' : userRole === 'pastor' ? 'Pastor' : userRole === 'treasurer' ? 'Tesoureiro' : 'Acesso Restrito'}
+                    </p>
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full justify-start gap-2 h-11 mb-2" onClick={() => { setMobileMenuOpen(false); signOut(); }}>
+                  <DoorClosed className="h-4 w-4 text-slate-500" />
+                  <span>Terminar Sessão</span>
+                </Button>
               </SheetContent>
             </Sheet>
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-4 pb-28 md:p-8 md:pb-8">
+        <div className="flex-1 overflow-auto p-4 md:p-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
@@ -238,14 +273,14 @@ export default function Layout() {
               animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
               exit={{ opacity: 0, filter: 'blur(4px)', y: -15 }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="h-full max-w-7xl mx-auto"
+              className="max-w-7xl mx-auto"
             >
               <Outlet />
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* Mini-player da rádio (flutua acima da barra inferior) */}
+        {/* Mini-player da rádio (flutua acima da barra de navegação) */}
         <AnimatePresence>
           {showMiniPlayer && (
             <motion.div
@@ -253,7 +288,7 @@ export default function Layout() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 60, opacity: 0 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="md:hidden fixed inset-x-3 bottom-20 z-40"
+              className="md:hidden absolute inset-x-3 z-40 miniplayer-above-nav"
             >
               <div className="flex items-center gap-3 rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-3 py-2 shadow-xl shadow-slate-900/10">
                 <button onClick={() => navigate('/radio')} className="flex items-center gap-2.5 min-w-0 flex-1 text-left">
@@ -290,8 +325,8 @@ export default function Layout() {
           )}
         </AnimatePresence>
 
-        {/* Barra de navegação inferior (nativa Android) */}
-        <nav className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/60 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 backdrop-blur pb-safe">
+        {/* Barra de navegação inferior EM FLUXO (parte da coluna, nunca cobre conteúdo) */}
+        <nav className="md:hidden border-t border-slate-200/60 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 backdrop-blur pb-safe z-30">
           <div className="grid grid-cols-5">
             {bottomTabs.map((t) => {
               const active = location.pathname === t.path;
@@ -299,7 +334,7 @@ export default function Layout() {
                 <button
                   key={t.path}
                   onClick={() => navigate(t.path)}
-                  className={`relative flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
+                  className={`relative flex flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors ${
                     active ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
@@ -315,7 +350,7 @@ export default function Layout() {
             })}
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-slate-500 dark:text-slate-400"
+              className="flex flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium text-slate-500 dark:text-slate-400"
             >
               <span className="flex h-7 w-12 items-center justify-center rounded-full">
                 <MoreHorizontal className="h-5 w-5" />
