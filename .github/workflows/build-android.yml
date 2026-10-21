@@ -1,5 +1,9 @@
 name: Build Android (APK + AAB)
 
+# Necessario para o passo "Release no GitHub" conseguir criar tags/anexar ficheiros
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
@@ -109,3 +113,28 @@ jobs:
             android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Release no GitHub (link publico de download)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          D=android/app/build/outputs/apk/debug/app-debug.apk
+          R=android/app/build/outputs/apk/release/app-release.apk
+          TAG="v$ANDROID_VERSION_NAME"
+          LD="Gestao-IESA-Emanuel-$TAG-debug.apk"
+          LR="Gestao-IESA-Emanuel-$TAG-release.apk"
+          [ -f "$D" ] || { echo "::error::APK debug nao encontrado"; exit 1; }
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG ja existe — substituo os ficheiros."
+            gh release upload "$TAG" "$D#$LD" "$R#$LR" -R "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" \
+              --title "Gestao IESA Emanuel $TAG" \
+              --notes "APK para instalacao direta no telemovel (debug e release). Build $GITHUB_RUN_NUMBER." \
+              "$D#$LD" "$R#$LR"
+          fi
+          echo ""
+          echo "LINK PUBLICO DE DOWNLOAD (sem login):"
+          echo "  https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          echo "  direto: https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$LD"
