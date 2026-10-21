@@ -80,13 +80,18 @@ jobs:
 
       - name: Keystore de release (se existir nos secrets)
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            base64 -d <<< "$KEYSTORE_B64" > android/app/release.keystore
+          # Sanitiza os secrets: remove espacos/tabs/CR/LF que venham colados
+          KB="$(printf '%s' "$KEYSTORE_B64"   | tr -d '[:space:]')"
+          SP="$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '[:space:]')"
+          KA="$(printf '%s' "$KEY_ALIAS"      | tr -d '[:space:]')"
+          KP="$(printf '%s' "$KEY_PASSWORD"   | tr -d '[:space:]')"
+          if [ -n "$KB" ]; then
+            base64 -d <<< "$KB" > android/app/release.keystore
             {
               echo "storeFile=release.keystore"
-              echo "storePassword=$KEYSTORE_PASSWORD"
-              echo "keyAlias=$KEY_ALIAS"
-              echo "keyPassword=$KEY_PASSWORD"
+              echo "storePassword=$SP"
+              echo "keyAlias=$KA"
+              echo "keyPassword=$KP"
             } > android/app/keystore.properties
             echo "Keystore aplicado — release sera assinado."
           else
