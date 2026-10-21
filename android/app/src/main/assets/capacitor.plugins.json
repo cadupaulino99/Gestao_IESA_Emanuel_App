@@ -4,6 +4,10 @@
 		"classpath": "io.capawesome.capacitorjs.plugins.firebase.authentication.FirebaseAuthenticationPlugin"
 	},
 	{
+		"pkg": "@capacitor/browser",
+		"classpath": "com.capacitorjs.plugins.browser.BrowserPlugin"
+	},
+	{
 		"pkg": "@capacitor/filesystem",
 		"classpath": "com.capacitorjs.plugins.filesystem.FilesystemPlugin"
 	},

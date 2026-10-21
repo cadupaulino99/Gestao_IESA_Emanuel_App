@@ -1,5 +1,16 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.5.4 (2026-10-22) — Aviso de atualização dentro da app
+
+- Ao abrir, a app consulta `releases/latest` no GitHub (1x/hora, falha em silêncio)
+  e compara com a versão embutida no build (`__APP_VERSION__` via vite `define`).
+- Banner no topo: «Nova versão disponível» + **Instalar** (abre o APK assinado numa
+  Custom Tab do Chrome via `@capacitor/browser`; na web abre separador) + «Agora não»
+  (guarda a decisão por versão).
+- Inclui também as correções visuais da v1.5.3 (stats 2 colunas, tabs legíveis,
+  IA empilhada, timeout da rádio, zona 640-767 px).
+
+---
 ## v1.5.3 (2026-10-22) — Afinação fina com capturas reais do telemóvel
 
 - Correções móveis passam a cobrir **toda a zona < 768 px** (antes só ≤640 px,

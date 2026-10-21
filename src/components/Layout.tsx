@@ -35,6 +35,7 @@ import { Toaster } from './ui/sonner';
 import { useCommandPalette } from '../context/CommandPaletteContext';
 import { Search } from 'lucide-react';
 import { livePlayer } from '../lib/radio';
+import UpdateBanner from './UpdateBanner';
 
 export default function Layout() {
   const { user, signOut, isAdmin, userRole } = useAuth();
@@ -266,6 +267,7 @@ export default function Layout() {
         </header>
 
         <div className="flex-1 overflow-auto p-4 md:p-8">
+          <UpdateBanner />
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

@@ -12,6 +12,10 @@ export default defineConfig(() => {
       react(),
       tailwindcss(),
     ],
+    // Versao da app injetada no bundle (lida pelo aviso de atualizacao)
+    define: {
+      __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '0.0.0'),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
