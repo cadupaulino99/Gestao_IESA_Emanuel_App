@@ -1,4 +1,5 @@
 name: Build Android (APK + AAB)
+# Versao atual: 1.5.0 (5). A cada release, sobe VERSION_NAME/VERSION_CODE nas variables do repo.
 
 # Necessario para o passo "Release no GitHub" conseguir criar tags/anexar ficheiros
 permissions:
