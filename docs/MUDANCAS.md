@@ -1,5 +1,36 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.5.0 (2026-10-21) — Visual de app nativa + Rádio Maranata
+
+### Casca com sensação nativa (Android)
+- **Barra de navegação inferior** com 5 separadores (Início, Membros, Finanças, Rádio, Mais) —
+  padrão Material/Android; a sidebar passa a ser só para desktop/tablet.
+- **Mini-player da rádio** flutuante: a emissão continua a tocar ao navegar e volta a aparecer
+  numa barra por cima dos separadores (pausar / abrir).
+- **Barra de estado nativa** acompanha o tema (`@capacitor/status-bar`: ícones + cor de fundo).
+- **Safe-areas** (notch e gestos), sem *tap highlight*, sem *overscroll* de browser,
+  scroll sem scrollbar visível (utility `scrollbar-hide` que faltava), alvos de toque ≥ 44 dp.
+- **Textos revistos (pt-PT)**: Início, Finanças, Obrigações, Fundo de Construção, Património,
+  Orçamento, Relatórios, Rádio Maranata, Administração, Suporte & IA.
+
+### Rádio Maranata 91.9 FM (Lubango) — nova aba
+- Stream oficial: `https://azura4.cmaudioevideo.com:8450/radio.aac` (Icecast/AzuraCast, AAC 48 kbps).
+- Player ao vivo com estado (A ligar / Em direto / erro), equalizador animado e volume.
+- «A tocar agora» + nº de ouvintes via API pública do AzuraCast (falha em silêncio se offline).
+- **Gravação da transmissão em tempo real**: `fetch` + ReadableStream (o servidor reflete CORS),
+  bytes AAC guardados em `Documentos/Radio/Maranata_AAAA-MM-DD_HHhMM.aac` (`@capacitor/filesystem`).
+- **Biblioteca de gravações no telemóvel**: reproduzir, partilhar/exportar e apagar.
+- Na web (desktop), a gravação é transferida como ficheiro `.aac`.
+
+### Técnico
+- Dependências novas: `@capacitor/filesystem`, `@capacitor/status-bar` → `cap sync` → 5 plugins.
+- `src/lib/radio.ts` (player singleton + gravador + biblioteca), `src/pages/Radio.tsx`,
+  rota `/radio`, entrada na paleta de comandos.
+- **Antes do build**: subir as variables do Actions para `VERSION_NAME=1.5.0` e `VERSION_CODE=5`
+  (senão o passo da Release substitui os ficheiros da tag v1.4.0).
+
+---
+
 Original: `github.com/cadupaulino99/Gest-o_Emanuel_Xangongo` (cópia intacta em `01_prototipo/`).
 Projeto corrigido: esta pasta (`03_android/`). Validação: `tsc --noEmit` ✅ (web e functions).
 

@@ -39,6 +39,7 @@ import {
   DoorClosed,
   Search,
   Sparkles,
+  Radio,
 } from 'lucide-react';
 
 export default function CommandPalette() {
@@ -116,6 +117,10 @@ export default function CommandPalette() {
               <CommandItem onSelect={() => handleSelect(() => navigate('/support'))}>
                 <MessageSquare className="mr-2 h-4 w-4 text-cyan-500" />
                 <span>Suporte & Assistência Inteligente</span>
+              </CommandItem>
+              <CommandItem onSelect={() => handleSelect(() => navigate('/radio'))}>
+                <Radio className="mr-2 h-4 w-4 text-rose-500" />
+                <span>Rádio Maranata — ouvir em direto</span>
               </CommandItem>
               <CommandItem onSelect={() => handleSelect(() => navigate('/settings'))}>
                 <Settings className="mr-2 h-4 w-4 text-slate-500" />

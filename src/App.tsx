@@ -33,6 +33,7 @@ import Admin from './pages/Admin';
 import MemberPortal from './pages/MemberPortal';
 import Obligations from './pages/Obligations';
 import Support from './pages/Support';
+import Radio from './pages/Radio';
 import { useNotifications } from './hooks/useNotifications';
 
 const queryClient = new QueryClient();
@@ -243,6 +244,7 @@ export default function App() {
                       <Route path="reports" element={<Reports />} />
                       <Route path="admin" element={<Admin />} />
                       <Route path="support" element={<Support />} />
+                      <Route path="radio" element={<Radio />} />
                       <Route path="settings" element={<Settings />} />
                     </Route>
                   </Routes>

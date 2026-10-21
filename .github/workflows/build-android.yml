@@ -126,8 +126,10 @@ jobs:
           LR="Gestao-IESA-Emanuel-$TAG-release.apk"
           [ -f "$D" ] || { echo "::error::APK debug nao encontrado"; exit 1; }
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG ja existe — substituo os ficheiros."
-            gh release upload "$TAG" "$D#$LD" "$R#$LR" -R "$GITHUB_REPOSITORY" --clobber
+            echo "::warning::A release $TAG ja existe — nao sobrescrevo a versao anterior."
+            echo "::warning::Sobe as variables VERSION_NAME / VERSION_CODE e volta a fazer push."
+            echo "Os APK deste build ficam disponiveis no artefacto desta run."
+            exit 0
           else
             gh release create "$TAG" -R "$GITHUB_REPOSITORY" \
               --title "Gestao IESA Emanuel $TAG" \

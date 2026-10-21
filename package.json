@@ -1,7 +1,7 @@
 {
   "name": "gestao-iesa-emanuel-xangongo",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -16,11 +16,14 @@
     "cap:sync": "cap sync"
   },
   "dependencies": {
+    "@capacitor-firebase/authentication": "^8.5.2",
     "@capacitor/android": "^8.3.4",
     "@capacitor/core": "^8.3.4",
+    "@capacitor/filesystem": "^8.1.5",
     "@capacitor/ios": "^8.3.4",
     "@capacitor/local-notifications": "^8.1.0",
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.4",
     "@google/genai": "^1.29.0",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -61,8 +64,7 @@
     "tailwind-merge": "^3.5.0",
     "vite": "^6.2.3",
     "xlsx": "^0.18.5",
-    "zod": "^4.4.3",
-    "@capacitor-firebase/authentication": "^8.5.2"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.3.4",

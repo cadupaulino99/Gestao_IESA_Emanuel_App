@@ -234,3 +234,46 @@ body.hide-financials .financial-value {
   opacity: 0.6;
   user-select: none;
 }
+
+/* ------------------------------------------------------------------ */
+/* Sensação de app nativa (Android / WebView)                          */
+/* ------------------------------------------------------------------ */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  overscroll-behavior-y: none; /* sem "bounce" de browser */
+  text-rendering: optimizeLegibility;
+}
+button, a, [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation; /* elimina atraso de toque duplo */
+}
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Áreas seguras (notch / gestos do Android) */
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* Equalizador do player da rádio */
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq-bounce 1s ease-in-out infinite;
+}
+
+/* Esconder scrollbars mantendo o scroll (sidebar, listas) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
