@@ -1,6 +1,22 @@
 {
-	"appId": "com.igreja.app",
-	"appName": "Gestão de Igreja",
+	"appId": "ao.co.iesa.emanuelxangongo.gestao",
+	"appName": "Gestão IESA Emanuel",
 	"webDir": "dist",
-	"bundledWebRuntime": false
+	"server": {
+		"androidScheme": "https"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 1200,
+			"backgroundColor": "#F8FAFC",
+			"showSpinner": false,
+			"androidScaleType": "CENTER_INSIDE",
+			"splashFullScreen": true,
+			"splashImmersive": true
+		},
+		"LocalNotifications": {
+			"smallIcon": "ic_launcher",
+			"iconColor": "#0F172A"
+		}
+	}
 }
