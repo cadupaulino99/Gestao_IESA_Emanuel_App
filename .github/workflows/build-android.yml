@@ -46,17 +46,19 @@ jobs:
 
       - name: Resolver versao (ANDROID_VERSION_NAME / ANDROID_VERSION_CODE)
         run: |
-          NAME="$VERSION_NAME_VAR"
-          CODE="$VERSION_CODE_VAR"
+          # Sanitiza: remove espacos/CR/LF que venham colados nas variables do repo
+          NAME="$(printf '%s' "$VERSION_NAME_VAR" | tr -d '[:space:]')"
+          CODE="$(printf '%s' "$VERSION_CODE_VAR" | tr -d '[:space:]')"
+          case "$CODE" in ''|*[!0-9]*) CODE="" ;; esac
           if [ -z "$NAME" ]; then
-            NAME=$(node -p "require('./package.json').version")
+            NAME="$(node -p "require('./package.json').version")"
           fi
           if [ -z "$CODE" ]; then
             CODE="$RUN_NUMBER"
           fi
-          echo "ANDROID_VERSION_NAME=$NAME" >> "$GITHUB_ENV"
-          echo "ANDROID_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
-          echo "Versao deste build: $NAME ($CODE)"
+          printf 'ANDROID_VERSION_NAME=%s\n' "$NAME" >> "$GITHUB_ENV"
+          printf 'ANDROID_VERSION_CODE=%s\n' "$CODE" >> "$GITHUB_ENV"
+          printf 'Versao deste build: %s (%s)\n' "$NAME" "$CODE"
 
       - name: Instalar dependências web
         run: npm ci
