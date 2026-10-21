@@ -20,6 +20,13 @@ jobs:
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      # Versao da app (ver docs/GUIA-BUILD-APK.md):
+      #   Settings > Secrets and variables > Actions > Variables (do REPOSITORIO)
+      #   VERSION_NAME = 1.4.0     VERSION_CODE = 4
+      # Se nao estiverem definidas, caem no version do package.json e no run_number.
+      VERSION_NAME_VAR: ${{ vars.VERSION_NAME }}
+      VERSION_CODE_VAR: ${{ vars.VERSION_CODE }}
+      RUN_NUMBER: ${{ github.run_number }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +43,20 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
+
+      - name: Resolver versao (ANDROID_VERSION_NAME / ANDROID_VERSION_CODE)
+        run: |
+          NAME="$VERSION_NAME_VAR"
+          CODE="$VERSION_CODE_VAR"
+          if [ -z "$NAME" ]; then
+            NAME=$(node -p "require('./package.json').version")
+          fi
+          if [ -z "$CODE" ]; then
+            CODE="$RUN_NUMBER"
+          fi
+          echo "ANDROID_VERSION_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "ANDROID_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
+          echo "Versao deste build: $NAME ($CODE)"
 
       - name: Instalar dependências web
         run: npm ci
@@ -79,9 +100,10 @@ jobs:
       - name: Publicar artefactos
         uses: actions/upload-artifact@v4
         with:
-          name: gestao-iesa-android-${{ github.run_number }}
+          name: gestao-iesa-android-v${{ env.ANDROID_VERSION_NAME }}-${{ github.run_number }}
           path: |
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/outputs/apk/release/*.apk
             android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: warn
           retention-days: 30
