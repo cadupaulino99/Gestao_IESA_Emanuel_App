@@ -1,5 +1,6 @@
 name: Build Android (APK + AAB)
-# Versao atual: 1.5.0 (5). A cada release, sobe VERSION_NAME/VERSION_CODE nas variables do repo.
+# Versao atual: 1.5.1 (6). A cada release, sobe VERSION_NAME/VERSION_CODE nas variables do repo.
+# Desde a v1.5.1 o release e assinado com a keystore propria do repo (secrets KEYSTORE_*).
 
 # Necessario para o passo "Release no GitHub" conseguir criar tags/anexar ficheiros
 permissions:
