@@ -36,7 +36,7 @@ export function AIExecutiveAnalysis({ financialStats }: AIExecutiveAnalysisProps
 
   return (
     <Card className="border-purple-200/60 dark:border-purple-900/50 bg-gradient-to-br from-purple-50/40 via-background to-indigo-50/30 dark:from-purple-950/20 dark:via-background dark:to-indigo-950/10 shadow-sm overflow-hidden">
-      <CardHeader className="pb-3 flex flex-row items-center justify-between">
+      <CardHeader className="pb-3 flex flex-col items-stretch gap-3 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">
           <CardTitle className="text-base flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -50,7 +50,7 @@ export function AIExecutiveAnalysis({ financialStats }: AIExecutiveAnalysisProps
           onClick={handleGenerateAnalysis}
           disabled={loading}
           size="sm"
-          className="gap-2 bg-purple-600 hover:bg-purple-700 text-white shadow-xs"
+          className="gap-2 bg-purple-600 hover:bg-purple-700 text-white shadow-xs w-full md:w-auto shrink-0"
         >
           {loading ? (
             <>

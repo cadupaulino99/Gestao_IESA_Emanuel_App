@@ -1,5 +1,17 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.5.3 (2026-10-22) — Afinação fina com capturas reais do telemóvel
+
+- Correções móveis passam a cobrir **toda a zona < 768 px** (antes só ≤640 px,
+  e o telemóvel de teste vive na zona intermédia).
+- Dashboard: cartões de estatística em **2 colunas** no telemóvel, valores compactos
+  (`text-lg`), título «Painel de Controlo» contido.
+- **Separador ativo legível no tema escuro** (texto escuro sobre a pill branca).
+- Cartão «Parecer Executivo & IA»: empilha no telemóvel (título → descrição → botão a largura inteira).
+- Gráficos (Recharts) com `min-w-0`/`max-width:100%` — nunca mais empurram cards para fora do ecrã.
+- Rádio: **timeout de 12 s** ao ligar — se a emissão não responder, mostra mensagem e libera o botão.
+
+---
 ## v1.5.2 (2026-10-21) — Correções de visualização móvel
 
 - **Nada fica debaixo do rodapé**: a barra de navegação inferior passa a estar **em fluxo**
