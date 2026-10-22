@@ -132,7 +132,7 @@ export default function Support() {
 
       setAiChatHistory((prev) => [...prev, assistantMsg]);
     } catch (err: any) {
-      toast.error('Erro ao consultar o assistente de IA.');
+      toast.error('Assistente IA: ' + (err?.message || 'falha desconhecida.'));
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
         sender: 'assistant',

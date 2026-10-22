@@ -28,7 +28,7 @@ export function AIExecutiveAnalysis({ financialStats }: AIExecutiveAnalysisProps
       setAnalysis(text);
       toast.success('Parecer executivo gerado com sucesso!');
     } catch (err: any) {
-      toast.error('Erro ao gerar parecer com IA.');
+      toast.error('Erro ao gerar parecer: ' + (err?.message || 'falha desconhecida.'));
     } finally {
       setLoading(false);
     }

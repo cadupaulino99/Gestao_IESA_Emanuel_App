@@ -34,7 +34,7 @@ export function PastoralMessageGeneratorModal({
       const text = await aiDraftMessage(member.name, occasion, tone);
       setGeneratedMessage(text);
     } catch (err: any) {
-      toast.error('Erro ao gerar mensagem pastoral.');
+      toast.error('Mensagem pastoral: ' + (err?.message || 'falha desconhecida.'));
     } finally {
       setLoading(false);
     }
