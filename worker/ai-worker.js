@@ -1,4 +1,3 @@
-// v1.7.0: visao (BI, cartao manuscrito, comprovativos) + rate limit + cache. COLAR no painel Cloudflare (Workers > iesa-ai > Edit code).
 /**
  * AI Worker — Gestão IESA Emanuel (Xangongo)
  * ------------------------------------------------------------------
@@ -37,44 +36,112 @@ const b64url = (buf) =>
 const str2buf = (s) => Uint8Array.from(s, (c) => c.charCodeAt(0));
 
 /* ------------------------------------------------------------------ */
-/* 1. Verificar o ID token do Firebase (JWT RS256, certs do Google)    */
+/* 1. Verificar o ID token do Firebase (RS256)                          */
+/*    Os tokens do Firebase SAO assinados pelo chaveiro securetoken    */
+/*    (PEM em robot/v1/metadata/x509/...), NAO pelo JWKS do oauth2.     */
+/*    Aceitamos os dois e refrescamos quando aparece um kid novo.      */
 /* ------------------------------------------------------------------ */
-let certCache = { ts: 0, keys: {} };
+const JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
+const FB_PEM_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+const CACHE_TTL = 6 * 3600 * 1000;
+let jwksCache = { ts: 0, keys: {} };   // kid -> CryptoKey
+let pemCache = { ts: 0, keys: {} };    // kid -> CryptoKey
+
+const b64urlDecode = (s2) => atob(s2.replace(/-/g, '+').replace(/_/g, '/'));
+
+function pemToDer(pem) {
+  const b64 = pem.replace(/-----BEGIN CERTIFICATE-----/, '').replace(/-----END CERTIFICATE-----/, '').replace(/\s+/g, '');
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
+/* Extrai o SubjectPublicKeyInfo (SPKI) de um certificado X.509 (DER) */
+function extractSpki(der) {
+  let i = 0;
+  const rd = () => {
+    const start = i;
+    const tag = der[i++];
+    let len = der[i++];
+    if (len & 0x80) { const n = len & 0x7f; len = 0; for (let k = 0; k < n; k++) len = (len << 8) | der[i++]; }
+    const at = i; i += len;
+    return { tag, at, end: i, start };
+  };
+  const cert = rd();    // Certificate
+  i = cert.at;          // entra no conteudo do certificado
+  const tbs = rd();     // TBSCertificate
+  i = tbs.at;           // entra no conteudo do TBS
+  let t = rd();               // version [0] presente?
+  if (t.tag === 0xa0) t = rd(); // serialNumber
+  rd(); rd(); rd();           // signature, issuer, validity
+  rd();                       // subject
+  const spki = rd();          // subjectPublicKeyInfo
+  return der.subarray(spki.start, spki.end);
+}
+
+async function importSpki(spki) {
+  return crypto.subtle.importKey('spki', spki, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+}
+
+async function loadJwks(force) {
+  if (!force && Date.now() - jwksCache.ts < CACHE_TTL && Object.keys(jwksCache.keys).length) return;
+  const r = await fetch(JWKS_URL);
+  const j = await r.json();
+  const keys = {};
+  for (const k of j.keys || []) {
+    try {
+      if (k.x5c && k.x5c[0]) {
+        const der = Uint8Array.from(atob(k.x5c[0]), (c) => c.charCodeAt(0));
+        keys[k.kid] = await importSpki(extractSpki(der));
+      } else {
+        keys[k.kid] = await crypto.subtle.importKey('jwk', k, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+      }
+    } catch { /* ignora chave que nao importa */ }
+  }
+  jwksCache = { ts: Date.now(), keys };
+}
+
+async function loadFbPem(force) {
+  if (!force && Date.now() - pemCache.ts < CACHE_TTL && Object.keys(pemCache.keys).length) return;
+  const r = await fetch(FB_PEM_URL);
+  const j = await r.json();
+  const keys = {};
+  for (const [kid, pem] of Object.entries(j)) {
+    try { keys[kid] = await importSpki(extractSpki(pemToDer(pem))); } catch { /* ignora */ }
+  }
+  pemCache = { ts: Date.now(), keys };
+}
+
+async function keyForKid(kid) {
+  if (jwksCache.keys[kid]) return jwksCache.keys[kid];
+  if (pemCache.keys[kid]) return pemCache.keys[kid];
+  // kid desconhecido -> refresca os dois chaveiros (rotacao de chaves)
+  await loadJwks(true);
+  await loadFbPem(true);
+  return jwksCache.keys[kid] || pemCache.keys[kid] || null;
+}
 
 async function verifyFirebaseIdToken(token, projectId) {
   const parts = token.split('.');
   if (parts.length !== 3) throw new Error('token malformado');
-  const header = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
-  const claims = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+  const header = JSON.parse(b64urlDecode(parts[0]));
+  const claims = JSON.parse(b64urlDecode(parts[1]));
 
   const now = Math.floor(Date.now() / 1000);
   if (claims.exp && claims.exp < now) throw new Error('token expirado');
-  if (claims.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('emissor inválido');
-  if (claims.aud !== projectId) throw new Error('audiência inválida');
+  if (claims.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('emissor invalido');
+  if (claims.aud !== projectId) throw new Error('audiencia invalida');
 
-  // certificados públicos do Google (cache 6h)
-  if (Date.now() - certCache.ts > 6 * 3600 * 1000) {
-    const r = await fetch('https://www.googleapis.com/oauth2/v3/certs');
-    const j = await r.json();
-    certCache = { ts: Date.now(), keys: Object.fromEntries(j.keys.map((k) => [k.kid, k])) };
-  }
-  const cert = certCache.keys[header.kid];
-  if (!cert) throw new Error('certificado desconhecido');
+  if (!jwksCache.keys || !Object.keys(jwksCache.keys).length) await loadJwks(false);
+  if (!pemCache.keys || !Object.keys(pemCache.keys).length) await loadFbPem(false);
 
-  const pem = cert.x5c ? cert.x5c[0] : null;
-  let key;
-  if (pem) {
-    const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
-    key = await crypto.subtle.importKey('spki', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-  } else {
-    key = await crypto.subtle.importKey('jwk', cert, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-  }
+  const key = await keyForKid(header.kid);
+  if (!key) throw new Error('certificado desconhecido');
+
   const ok = await crypto.subtle.verify(
     'RSASSA-PKCS1-v1_5', key,
-    str2buf(atob(parts[2].replace(/-/g, '+').replace(/_/g, '/'))),
+    str2buf(b64urlDecode(parts[2])),
     str2buf(`${parts[0]}.${parts[1]}`)
   );
-  if (!ok) throw new Error('assinatura inválida');
+  if (!ok) throw new Error('assinatura invalida');
   return claims; // { sub, email, ... }
 }
 
