@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Cloudflare Worker "iesa-ai" — backend de IA do Gestão IESA Emanuel
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy manual (uma vez, na sua máquina):
+#     npm install -g wrangler
+#     wrangler login
+#     npx wrangler deploy --config worker/wrangler.toml
+#
+# Deploy automático: ver .github/workflows/deploy-ai-worker.yml
+#   (precisa do secret CLOUDFLARE_API_TOKEN no repositório)
+#
+# Segredos — NUNCA escrever aqui. Definir com:
+#     npx wrangler secret put GEMINI_API_KEY   --config worker/wrangler.toml
+#     npx wrangler secret put FIREBASE_SA_JSON --config worker/wrangler.toml
+#
+# Verificar o que está no ar:
+#     https://iesa-ai.cadupaulino99.workers.dev/__health
+# ─────────────────────────────────────────────────────────────────────────────
+
+name = "iesa-ai"
+main = "ai-worker.js"
+compatibility_date = "2026-01-01"
+
+# Variáveis não-secretas (podem ficar aqui)
+vars = { PROJECT_ID = "iesa-emanuel-xangongo" }
+
+# Segredos (definidos à parte com `wrangler secret put`):
+#   GEMINI_API_KEY
+#   FIREBASE_SA_JSON
+
+[observability]
+enabled = true
+head_sampling_rate = 1

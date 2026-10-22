@@ -1,0 +1,59 @@
+name: deploy-ai-worker
+
+# Publica o Cloudflare Worker "iesa-ai" automaticamente sempre que o código do
+# Worker muda. ISTO É O QUE FALTAVA: antes o Worker só era atualizado colando o
+# código à mão no editor da Cloudflare, por isso as rotas novas
+# (/assistant/extract-member e /assistant/extract-receipt — leitura do BI)
+# nunca chegavam ao servidor e a app recebia 404 "Rota nao encontrada".
+#
+# Configuração obrigatória (uma vez):
+#   1. Cloudflare → My Profile → API Tokens → Create Token
+#      → template "Edit Cloudflare Workers" → conta + zona
+#      → copiar o token
+#   2. GitHub → repositório → Settings → Secrets and variables → Actions
+#      → New repository secret:
+#         CLOUDFLARE_API_TOKEN = <token>
+#         CLOUDFLARE_ACCOUNT_ID = <id da conta>   (dashboard Cloudflare, URL)
+#   3. Definir os segredos do Worker uma vez (wrangler não os cria sozinho):
+#         npx wrangler secret put GEMINI_API_KEY   --config worker/wrangler.toml
+#         npx wrangler secret put FIREBASE_SA_JSON --config worker/wrangler.toml
+#
+# Verificação após o deploy:
+#   https://iesa-ai.cadupaulino99.workers.dev/__health
+#   → tem de mostrar "version": "2.0.0" (ou superior) e "vision": true
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-ai-worker.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Publicar Worker iesa-ai
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar sintaxe do Worker
+        run: node --check worker/ai-worker.js
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Publicar na Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config worker/wrangler.toml
+
+      - name: Confirmar versão no ar
+        run: |
+          sleep 8
+          curl -fsS https://iesa-ai.cadupaulino99.workers.dev/__health || true
+          echo

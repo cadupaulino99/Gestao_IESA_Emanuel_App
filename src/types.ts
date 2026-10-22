@@ -3,6 +3,10 @@ export interface Member {
   name: string;
   role?: string;
   status: string;
+  /** Nº do Bilhete de Identidade (lido automaticamente pela IA a partir da foto do BI). */
+  documentNumber?: string;
+  /** Data de emissão do BI (AAAA-MM-DD). */
+  issueDate?: string;
   phone?: string;
   email?: string;
   address?: string;

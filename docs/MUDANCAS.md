@@ -1,5 +1,59 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.7.2 (2026-10-23) — **Correção: a leitura do BI por fotografia não funcionava**
+
+> Guia completo em [`docs/FIX-LEITURA-BI.md`](./FIX-LEITURA-BI.md).
+
+**Três causas, todas corrigidas:**
+
+1. **O Worker na Cloudflare estava desatualizado** (causa principal, confirmada:
+   `GET /__health` devolve 401). As rotas `/assistant/extract-member` e
+   `/assistant/extract-receipt` só existem a partir da v1.7.0, mas o Worker era
+   publicado **à mão** (colar no editor da Cloudflare) — o APK novo não o atualiza.
+   Sem as rotas, a app recebia `404 "Rota nao encontrada"`.
+   → **Novo:** `worker/wrangler.toml` + `.github/workflows/deploy-ai-worker.yml`
+   (deploy automático em cada push que mude `worker/**`), `npm run deploy:worker`,
+   `npm run worker:health`, rotas `/__health` e `/assistant/selftest` de diagnóstico,
+   e `WORKER_VERSION` no código. O 404 passa a explicar o que fazer.
+2. **O pedido ao Gemini não tinha resolução para OCR.** Sem `mediaResolution`, o
+   Gemini 3 dedica poucos tokens à imagem e não lê o texto pequeno do BI (nº,
+   emissão, morada). Além disso o texto ia **antes** da imagem (a Google recomenda o
+   inverso), `temperature: 0.1` pode provocar `400` nos modelos 3.x, e não havia
+   `responseSchema`.
+   → **Corrigido:** `MEDIA_RESOLUTION_HIGH` (global e por parte), imagem antes do
+   prompt, `responseSchema` por tipo de documento, remoção do `temperature`,
+   **fallback de modelos** (`3.8-flash → 3.6-flash → 2.5-flash`) e 4 configurações
+   tentadas por ordem. Aceita data URL, valida o MIME e o limite de 20 MB.
+3. **A app lia mas deitava os dados fora.** `Members.tsx → onApply` ignorava
+   `documentNumber`, `gender` e `issueDate`; `birthDate` vinha `07/03/1990` mas o
+   `<input type="date">` exige `1990-03-07`; `gender` vinha `M` mas o `<Select>`
+   exige `Masculino` — ambos rejeitados **em silêncio**. E o tipo `Member` nem tinha
+   campo para o nº do BI.
+   → **Corrigido:** `Member.documentNumber`/`issueDate` + campo "Nº do Bilhete de
+   Identidade" no formulário e no perfil; normalizadores `normalizeDate`,
+   `normalizeGender`, `normalizePhone`, `normalizeDocumentNumber`,
+   `normalizeMemberFields`; toast a dizer exatamente o que a IA preencheu.
+
+**Ferramentas novas:** `npm run test:bi` corre a mesma foto em 3 modos (v1.7.x vs.
+corrigido vs. corrigido+schema) usando `scripts/testdata/exemplo-bi-angola.jpg`
+(BI fictício) — isola em segundos se o problema é o Gemini, o Worker ou a app.
+O `DocumentReaderModal` ganha botão **"Testar ligação"**, painel de **Diagnóstico**
+(versão do Worker, segredos presentes, papel do utilizador, Gemini alcançável),
+**"Tentar novamente"** e mostra a dimensão/peso da imagem optimizada.
+`compressImageFile` passa a ter fundo branco (PNG transparente não fica preto) e
+*fallback* para os bytes originais quando o `<canvas>` não descodifica (HEIC/HEIF).
+
+**Novo separador «Diagnóstico IA» em *Suporte***: corre automaticamente ao abrir e
+mostra, em linguagem simples, a versão do Worker, se a leitura de documentos está
+publicada, se os segredos `GEMINI_API_KEY`/`FIREBASE_SA_JSON`/`PROJECT_ID` existem,
+o papel do utilizador e se o Gemini responde — com a indicação do que fazer em cada
+falha. A lógica é partilhada com o modal de documentos através de
+`runAiDiagnostics()` em `src/lib/ai.ts` (um só sítio para manter).
+
+Validação: `npx tsc --noEmit` ✅ · `node --check worker/ai-worker.js` ✅
+
+---
+
 ## v1.7.0 (2026-10-22) — Visão com IA: ler documentos por fotografia
 
 - **Novo no Worker** (colar no painel Cloudflare!): `/assistant/extract-member` (BI e cartão de
