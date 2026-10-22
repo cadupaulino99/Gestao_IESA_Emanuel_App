@@ -1,5 +1,21 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.6.0 (2026-10-22) — Sistema de design: duas paletas à escolha nas Definições
+
+- **Modo e Paleta separados**: o modo (claro/escuro/sistema) controla os cinzas; a paleta
+  controla a cor de ação/destaques. Definições → Aparência tem agora dois seletores.
+- **Paleta «IESA Clássico»** (predefinida): vermelho da cruz `#B4232A` para ações +
+  dourado do selo `#C99A2E` para rádio/destaques; versões dark ajustadas para contraste AA.
+- **Paleta «Executivo»**: grafite `#101828` para ações + dourado como único acento
+  (no escuro: botões claros com tinta escura).
+- Tokens expostos ao Tailwind (`bg-brand`, `text-brand`, `bg-brand/10`, `--gold`) e
+  utilitários `.acc-*` para as barras de acento dos cartões de estatística.
+- Barra de navegação inferior e botões primários passam a seguir a paleta escolhida.
+- Separadores com pill ativa de contraste garantido nos dois modos.
+- Os 4 temas completos legados (cósmico/floresta/oceano/pôr-do-sol) mantêm-se como paletas
+  «tema completo» e continuam a funcionar como dantes.
+
+---
 ## v1.5.5 (2026-10-22) — Administração 100% na base de dados + Worker endurecido
 
 - **Removido o admin hardcoded** (`cadupaulino99@gmail.com`) dos 3 sítios

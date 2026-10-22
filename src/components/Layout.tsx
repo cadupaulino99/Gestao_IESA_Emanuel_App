@@ -40,7 +40,7 @@ import UpdateBanner from './UpdateBanner';
 export default function Layout() {
   const { user, signOut, isAdmin, userRole } = useAuth();
   const { openPalette } = useCommandPalette();
-  const { theme } = useTheme();
+  const { isDark } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -54,17 +54,9 @@ export default function Layout() {
   /* Barra de estado nativa acompanha o tema (sensação de app nativa) */
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
-    const apply = () => {
-      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const dark = theme === 'system' ? systemDark : ['dark', 'cosmic', 'ocean'].includes(theme);
-      StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }).catch(() => {});
-      StatusBar.setBackgroundColor({ color: dark ? '#0f172a' : '#ffffff' }).catch(() => {});
-    };
-    apply();
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  }, [theme]);
+    StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light }).catch(() => {});
+    StatusBar.setBackgroundColor({ color: isDark ? '#0b0e14' : '#f6f7f9' }).catch(() => {});
+  }, [isDark]);
 
   useEffect(() => {
     const updateHeaderName = () => {
@@ -337,10 +329,10 @@ export default function Layout() {
                   key={t.path}
                   onClick={() => navigate(t.path)}
                   className={`relative flex flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors ${
-                    active ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'
+                    active ? 'text-brand' : 'text-slate-500 dark:text-slate-400'
                   }`}
                 >
-                  <span className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${active ? 'bg-slate-900/10 dark:bg-white/10' : ''}`}>
+                  <span className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${active ? 'bg-brand/10' : ''}`}>
                     <t.icon className="h-5 w-5" />
                   </span>
                   {t.name}

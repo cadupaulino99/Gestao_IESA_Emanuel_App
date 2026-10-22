@@ -1,14 +1,14 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { useTheme, Theme } from '../context/ThemeContext';
+import { useTheme, type Mode, type Palette as PaletteId } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
 import { Settings as SettingsIcon, Monitor, Moon, Sun, Smartphone, Globe, Bell, AppWindow, Palette, EyeOff, LayoutTemplate, Languages, ShieldCheck } from 'lucide-react';
 import { useDevice } from '../hooks/useDevice';
 import { Switch } from '../components/ui/switch';
 
 export default function Settings() {
-  const { theme, setTheme } = useTheme();
+  const { mode, setMode, palette, setPalette } = useTheme();
   const { 
     animationsEnabled, soundEnabled, compactMode, hideFinancials, language,
     setAnimationsEnabled, setSoundEnabled, setCompactMode, setHideFinancials, setLanguage 
@@ -37,21 +37,55 @@ export default function Settings() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-3">
-              <Label htmlFor="theme-select">Tema Principal</Label>
-              <Select value={theme} onValueChange={(t: Theme) => setTheme(t)}>
-                <SelectTrigger id="theme-select" className="w-full">
-                  <SelectValue placeholder="Seleccione o tema" />
+              <Label htmlFor="mode-select">Modo (claro / escuro)</Label>
+              <Select value={mode} onValueChange={(m) => setMode(m as Mode)}>
+                <SelectTrigger id="mode-select" className="w-full">
+                  <SelectValue placeholder="Seleccione o modo" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="system"><div className="flex items-center gap-2"><Monitor className="h-4 w-4" /> Padrão do Sistema</div></SelectItem>
-                  <SelectItem value="light"><div className="flex items-center gap-2"><Sun className="h-4 w-4" /> Claro Padrão</div></SelectItem>
-                  <SelectItem value="dark"><div className="flex items-center gap-2"><Moon className="h-4 w-4" /> Escuro Padrão</div></SelectItem>
-                  <SelectItem value="cosmic"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-purple-500"></div> Cósmico (Dark)</div></SelectItem>
-                  <SelectItem value="forest"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-700"></div> Floresta (Light)</div></SelectItem>
-                  <SelectItem value="ocean"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500"></div> Oceano (Dark)</div></SelectItem>
-                  <SelectItem value="sunset"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500"></div> Pôr do Sol (Light)</div></SelectItem>
+                  <SelectItem value="light"><div className="flex items-center gap-2"><Sun className="h-4 w-4" /> Claro</div></SelectItem>
+                  <SelectItem value="dark"><div className="flex items-center gap-2"><Moon className="h-4 w-4" /> Escuro</div></SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="palette-select">Paleta de cores (identidade visual)</Label>
+              <Select value={palette} onValueChange={(p) => setPalette(p as PaletteId)}>
+                <SelectTrigger id="palette-select" className="w-full">
+                  <SelectValue placeholder="Seleccione a paleta" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="iesa">
+                    <span className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full" style={{ background: '#B4232A' }} />
+                      <span className="w-3 h-3 rounded-full -ml-1" style={{ background: '#C99A2E' }} />
+                      IESA Clássico (vermelho + dourado)
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="executivo">
+                    <span className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full" style={{ background: '#101828' }} />
+                      <span className="w-3 h-3 rounded-full -ml-1" style={{ background: '#C99A2E' }} />
+                      Executivo (grafite + dourado)
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="cosmic">
+                    <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-purple-500" /> Cósmico (tema completo)</span>
+                  </SelectItem>
+                  <SelectItem value="forest">
+                    <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-700" /> Floresta (tema completo)</span>
+                  </SelectItem>
+                  <SelectItem value="ocean">
+                    <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500" /> Oceano (tema completo)</span>
+                  </SelectItem>
+                  <SelectItem value="sunset">
+                    <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-orange-500" /> Pôr do Sol (tema completo)</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[12px] text-muted-foreground">O modo controla os cinzas (claro/escuro); a paleta controla a cor de ação e dos destaques. As paletes «tema completo» trazem o próprio fundo.</p>
             </div>
 
             <div className="flex items-center justify-between border-t pt-4 border-slate-100 dark:border-slate-800">

@@ -357,10 +357,10 @@ export default function Dashboard() {
 
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="mb-6 flex-wrap bg-white/50 backdrop-blur-md border border-slate-200/50 p-1 shadow-sm rounded-xl">
-          <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"><Activity className="h-4 w-4 mr-2" /> Visão Geral</TabsTrigger>
-          <TabsTrigger value="members" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"><Users className="h-4 w-4 mr-2" /> Perfil de Membros</TabsTrigger>
-          <TabsTrigger value="calendar" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm">Calendário</TabsTrigger>
-          <TabsTrigger value="birthdays" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"><Cake className="h-4 w-4 mr-2" /> Aniversariantes ({stats?.birthdays?.length || 0})</TabsTrigger>
+          <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white data-[state=active]:shadow-sm"><Activity className="h-4 w-4 mr-2" /> Visão Geral</TabsTrigger>
+          <TabsTrigger value="members" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white data-[state=active]:shadow-sm"><Users className="h-4 w-4 mr-2" /> Perfil de Membros</TabsTrigger>
+          <TabsTrigger value="calendar" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white data-[state=active]:shadow-sm">Calendário</TabsTrigger>
+          <TabsTrigger value="birthdays" className="rounded-lg data-[state=active]:bg-white data-[state=active]:text-slate-900 dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white data-[state=active]:shadow-sm"><Cake className="h-4 w-4 mr-2" /> Aniversariantes ({stats?.birthdays?.length || 0})</TabsTrigger>
           {isFinancialStaff && stats?.inactiveTithers && stats.inactiveTithers.length > 0 && (
             <TabsTrigger value="inactive" className="rounded-lg data-[state=active]:bg-red-50 data-[state=active]:text-red-600"><AlertTriangle className="h-4 w-4 mr-2 text-red-500" /> Pendências ({stats.inactiveTithers.length})</TabsTrigger>
           )}
@@ -383,7 +383,7 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">
             {isFinancialStaff ? (
-              <Card className="bg-gradient-to-br from-card to-card/50 shadow-sm border-l-4 border-l-blue-500">
+              <Card className="bg-gradient-to-br from-card to-card/50 shadow-sm border-l-4 acc-info">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 text-muted-foreground pb-2">
                   <CardTitle className="text-sm font-medium">Saldo Actual (AOA)</CardTitle>
                   <Wallet className="w-4 h-4 text-blue-500" />
@@ -404,7 +404,7 @@ export default function Dashboard() {
               </Card>
             )}
 
-            <Card className="bg-gradient-to-br from-card to-card/50 shadow-sm border-l-4 border-l-green-500">
+            <Card className="bg-gradient-to-br from-card to-card/50 shadow-sm border-l-4 acc-ok">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 text-muted-foreground pb-2">
                 <CardTitle className="text-sm font-medium">Membros Registados</CardTitle>
                 <Users className="w-4 h-4 text-green-500" />
@@ -437,7 +437,7 @@ export default function Dashboard() {
             )}
 
             {isFinancialStaff ? (
-              <Card className="bg-gradient-to-br from-card to-card/50 shadow-sm border-l-4 border-l-yellow-500">
+              <Card className="bg-gradient-to-br from-card to-card/50 shadow-sm border-l-4 acc-gold">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 text-muted-foreground pb-2">
                   <CardTitle className="text-sm font-medium">Ofertas (Ano)</CardTitle>
                   <HandHeart className="w-4 h-4 text-yellow-500" />

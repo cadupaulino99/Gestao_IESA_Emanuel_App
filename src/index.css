@@ -31,6 +31,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-gold: var(--gold);
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -84,6 +86,8 @@
     --input: #e2e8f0;
     --ring: #0f172a;
     --radius: 0.5rem;
+    --brand: #B4232A;
+    --gold: #C99A2E;
   }
   
   .dark {
@@ -106,7 +110,33 @@
     --border: #334155;
     --input: #334155;
     --ring: #cbd5e1;
+    --brand: #FF8A8A;
+    --gold: #E3B455;
   }
+
+  /* ---- Paletas de marca (v1.6): a cor de acao/celebracao, independente do modo ---- */
+  .iesa {
+    --primary: #B4232A; --primary-foreground: #ffffff; --ring: #B4232A;
+    --brand: #B4232A; --gold: #C99A2E;
+  }
+  .dark.iesa {
+    --primary: #DC3E42; --primary-foreground: #ffffff; --ring: #DC3E42;
+    --brand: #FF8A8A; --gold: #E3B455;
+  }
+  .executivo {
+    --primary: #101828; --primary-foreground: #ffffff; --ring: #101828;
+    --brand: #101828; --gold: #C99A2E;
+  }
+  .dark.executivo {
+    --primary: #EDEFF2; --primary-foreground: #101828; --ring: #EDEFF2;
+    --brand: #EDEFF2; --gold: #E3B455;
+  }
+
+  /* Barras de acento dos cartoes de estatistica */
+  .acc-brand { border-left-color: var(--brand); }
+  .acc-gold  { border-left-color: var(--gold); }
+  .acc-info  { border-left-color: #2E90FA; }
+  .acc-ok    { border-left-color: #12B76A; }
 }
 
 @layer base {
