@@ -52,7 +52,7 @@ export async function createAuthAccount(input: { email: string; displayName?: st
 /* v1.7.0 — Visão: ler documentos com IA                               */
 /* ------------------------------------------------------------------ */
 
-/** Comprime uma imagem no browser (canvas) antes de enviar: máx. 1280 px, JPEG 0.82. */
+/** Comprime uma imagem no browser (canvas) antes de enviar: máx. 2048 px, JPEG 0.85 (OCR-friendly). */
 export async function compressImageFile(file: File): Promise<{ base64: string; mimeType: string }> {
   const url = URL.createObjectURL(file);
   try {
@@ -62,7 +62,7 @@ export async function compressImageFile(file: File): Promise<{ base64: string; m
       i.onerror = () => reject(new Error('Não foi possível ler a imagem.'));
       i.src = url;
     });
-    const MAX = 1280;
+    const MAX = 2048;
     const scale = Math.min(1, MAX / Math.max(img.width, img.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(img.width * scale);
@@ -70,7 +70,7 @@ export async function compressImageFile(file: File): Promise<{ base64: string; m
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas indisponível.');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
     return { base64: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType: 'image/jpeg' };
   } finally {
     URL.revokeObjectURL(url);

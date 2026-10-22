@@ -264,7 +264,10 @@ async function geminiVision(env, prompt, systemInstruction, imageBase64, mimeTyp
   const txt = (j?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
   try { return JSON.parse(txt); } catch {
     const m = txt.match(/\{[\s\S]*\}/);
-    return m ? JSON.parse(m[0]) : {};
+    if (m) { try { return JSON.parse(m[0]); } catch { /* cai para erro */ } }
+    const e = new Error('Resposta da IA nao era JSON valido.');
+    e.raw = txt.slice(0, 300);
+    throw e;
   }
 }
 
@@ -365,9 +368,13 @@ export default {
         if (!imageBase64) return json({ error: 'Imagem obrigatoria.' }, 400);
         const mime = mimeType || 'image/jpeg';
         const prompt = kind === 'cartao'
-          ? 'Leia este CARTAO DE MEMBRO BATIZADO da igreja (texto manuscrito ou impresso). Extraia e devolva JSON com as chaves: {"name": nome completo, "memberNumber": numero do membro/codigo, "baptismDate": data do batismo, "groupCell": celula ou grupo, "phone": telefone, "notes": outra informacao util}. Manuscrito: faca o melhor esforco; se ilegivel, null.'
-          : 'Leia este BILHETE DE IDENTIDADE angolano. Extraia e devolva JSON com as chaves: {"name": nome completo, "documentNumber": numero do BI, "birthDate": data de nascimento, "address": residencia, "gender": "M" ou "F", "issueDate": data de emissao}.';
-        return json({ fields: await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mime) });
+          ? 'Nota: a fotografia pode estar rodada 90 graus; leia-a na orientacao correta. Leia este CARTAO DE MEMBRO BATIZADO da igreja (texto manuscrito ou impresso). Extraia e devolva JSON com as chaves: {"name": nome completo, "memberNumber": numero do membro/codigo, "baptismDate": data do batismo, "groupCell": celula ou grupo, "phone": telefone, "notes": outra informacao util}. Manuscrito: faca o melhor esforco; se ilegivel, null.'
+          : 'Nota: a fotografia pode estar rodada 90 graus; leia-a na orientacao correta. Leia este BILHETE DE IDENTIDADE angolano (frente ou verso). Extraia e devolva JSON com as chaves: {"name": nome completo, "documentNumber": numero do BI, "birthDate": data de nascimento, "address": residencia, "gender": "M" ou "F", "issueDate": data de emissao}.';
+        try {
+          return json({ fields: await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mime) });
+        } catch (e) {
+          return json({ error: e?.message || 'Falha na leitura.', detalhe: e?.raw || undefined }, 502);
+        }
       }
 
       /* --- VISAO: ler comprovativo bancario --- */
@@ -375,7 +382,11 @@ export default {
         const { imageBase64, mimeType } = await request.json();
         if (!imageBase64) return json({ error: 'Imagem obrigatoria.' }, 400);
         const prompt = 'Leia este COMPROVATIVO BANCARIO (transferencia ou deposito, banco angolano: BAI, BFA, BIC, BPC, Standard Bank, Millennium, etc.). Extraia e devolva JSON com as chaves: {"amount": valor numerico em AOA sem simbolos, "currency": "AOA", "date": data da operacao, "method": "transferencia" ou "deposito" ou "multicaixa" ou "outro", "bank": nome do banco, "payerName": nome de quem pagou, "reference": numero de operacao/referencia, "notes": observacoes}.';
-        return json({ fields: await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mimeType || 'image/jpeg') });
+        try {
+          return json({ fields: await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mimeType || 'image/jpeg') });
+        } catch (e) {
+          return json({ error: e?.message || 'Falha na leitura.', detalhe: e?.raw || undefined }, 502);
+        }
       }
 
       return json({ error: 'Rota nao encontrada.' }, 404);
