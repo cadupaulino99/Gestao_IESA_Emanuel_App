@@ -1,3 +1,4 @@
+// v1.5.5: rate limit + cache de papeis + expiry real. COLAR TAMBEM no painel Cloudflare (Workers > iesa-ai > Edit code).
 /**
  * AI Worker — Gestão IESA Emanuel (Xangongo)
  * ------------------------------------------------------------------
