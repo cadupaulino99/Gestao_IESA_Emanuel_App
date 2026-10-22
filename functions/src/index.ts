@@ -44,7 +44,7 @@ async function requireLeader(context: functions.https.CallableContext): Promise<
   }
   const snap = await db.collection('admins').doc(email).get();
   const role = snap.exists ? snap.data()?.role : null;
-  if (!role && email !== 'cadupaulino99@gmail.com') {
+  if (!role) {
     throw new functions.https.HttpsError('permission-denied', 'Apenas a liderança (admin, pastor, tesoureiro) pode usar esta função.');
   }
   return role || 'admin';
@@ -125,7 +125,7 @@ export const createAuthAccount = functions.https.onCall(
     const callerEmail = (context.auth.token.email || '').toLowerCase();
     const callerSnap = await db.collection('admins').doc(callerEmail).get();
     const callerRole = callerSnap.exists ? callerSnap.data()?.role : null;
-    if (callerRole !== 'admin' && callerEmail !== 'cadupaulino99@gmail.com') {
+    if (callerRole !== 'admin') {
       throw new functions.https.HttpsError('permission-denied', 'Apenas administradores podem criar contas.');
     }
     const email = (data.email || '').trim().toLowerCase();

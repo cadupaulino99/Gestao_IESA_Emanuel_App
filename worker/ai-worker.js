@@ -80,10 +80,10 @@ async function verifyFirebaseIdToken(token, projectId) {
 /* ------------------------------------------------------------------ */
 /* 2. Token OAuth da service account (para ler o Firestore)            */
 /* ------------------------------------------------------------------ */
-let saCache = { ts: 0, token: '' };
+let saCache = { ts: 0, token: '', exp: 0 };
 
 async function saAccessToken(saJson) {
-  if (saCache.token && Date.now() - saCache.ts < 3000 * 1000) return saCache.token;
+  if (saCache.token && Date.now() - saCache.ts < saCache.exp - 60 * 1000) return saCache.token;
   const sa = JSON.parse(saJson);
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(str2buf(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
@@ -107,21 +107,43 @@ async function saAccessToken(saJson) {
   });
   const j = await r.json();
   if (!j.access_token) throw new Error('falha ao obter token OAuth: ' + (j.error_description || j.error));
-  saCache = { ts: Date.now(), token: j.access_token };
+  saCache = { ts: Date.now(), token: j.access_token, exp: (j.expires_in || 3600) * 1000 };
   return saCache.token;
+}
+
+let roleCache = { ts: 0, map: {} };
+const ROLE_TTL = 5 * 60 * 1000;
+
+/* Rate limit simples por utilizador (por isolate): 60 pedidos de IA / 10 min.
+   Nao e a prova de bala (isolates sao independentes), mas trava utilizacao descontrolada. */
+const rateBuckets = new Map();
+const RATE_LIMIT = 60;
+const RATE_WINDOW = 10 * 60 * 1000;
+function rateOk(email) {
+  const now = Date.now();
+  const b = rateBuckets.get(email);
+  if (!b || now - b.start > RATE_WINDOW) {
+    rateBuckets.set(email, { start: now, count: 1 });
+    return true;
+  }
+  b.count += 1;
+  return b.count <= RATE_LIMIT;
 }
 
 async function getRole(email, env) {
   if (!email) return null;
   const lower = email.toLowerCase();
-  if (lower === 'cadupaulino99@gmail.com') return 'admin'; // bootstrap
+  if (Date.now() - roleCache.ts > ROLE_TTL) roleCache = { ts: Date.now(), map: {} };
+  if (roleCache.map[lower] !== undefined) return roleCache.map[lower];
   const tok = await saAccessToken(env.FIREBASE_SA_JSON);
   const url = `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/admins/${lower}`;
   const r = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
-  if (!r.ok) return null;
+  if (!r.ok) { roleCache.map[lower] = null; return null; }
   const doc = await r.json();
   const roleField = (doc.fields || {}).role;
-  return roleField ? roleField.stringValue : 'admin';
+  const role = roleField ? roleField.stringValue : 'admin';
+  roleCache.map[lower] = role;
+  return role;
 }
 
 /* ------------------------------------------------------------------ */
@@ -209,6 +231,9 @@ export default {
       /* --- liderança (admin/pastor/tesoureiro) --- */
       if (!role || !['admin', 'pastor', 'treasurer'].includes(role)) {
         return json({ error: 'Apenas a liderança pode usar a IA.' }, 403);
+      }
+      if (!rateOk(claims.email || claims.sub)) {
+        return json({ error: 'Muitos pedidos em pouco tempo. Aguarde alguns minutos e tente novamente.' }, 429);
       }
 
       if (path === '/assistant/chat') {

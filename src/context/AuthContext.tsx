@@ -56,10 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           let hasAdminAccess = false;
           let role = null;
 
-          if (currentUser.email?.toLowerCase() === 'cadupaulino99@gmail.com') {
-            hasAdminAccess = true;
-            role = 'admin';
-          } else if (currentUser.email) {
+          if (currentUser.email) {
             const docRef = doc(db, 'admins', currentUser.email.toLowerCase());
             const docSnap = await getDoc(docRef);
             hasAdminAccess = docSnap.exists();

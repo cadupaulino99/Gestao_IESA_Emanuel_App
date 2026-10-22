@@ -1,5 +1,16 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.5.5 (2026-10-22) — Administração 100% na base de dados + Worker endurecido
+
+- **Removido o admin hardcoded** (`cadupaulino99@gmail.com`) dos 3 sítios
+  (AuthContext, Worker, Cloud Functions). Todo o poder de admin vem agora do documento
+  `admins/{email}` no Firestore (criado manualmente no console antes deste release).
+  Dar/tirar admins passa a ser só editar a coleção `admins` — sem tocar no código.
+- **Worker endurecido** (colar também no painel Cloudflare!): cache de papéis 5 min,
+  rate limit 60 pedidos de IA / 10 min por utilizador (HTTP 429 amigável),
+  token OAuth com `expires_in` real.
+
+---
 ## v1.5.4 (2026-10-22) — Aviso de atualização dentro da app
 
 - Ao abrir, a app consulta `releases/latest` no GitHub (1x/hora, falha em silêncio)
