@@ -1,4 +1,3 @@
-// v1.5.5: rate limit + cache de papeis + expiry real. COLAR TAMBEM no painel Cloudflare (Workers > iesa-ai > Edit code).
 /**
  * AI Worker — Gestão IESA Emanuel (Xangongo)
  * ------------------------------------------------------------------
@@ -168,6 +167,33 @@ async function gemini(env, prompt, systemInstruction) {
   return parts.map((p) => p.text || '').join('');
 }
 
+/* ------------------------------------------------------------------ */
+/* 3b. Gemini com VISAO (documentos: BI, cartao de membro, comprovativos) */
+/* ------------------------------------------------------------------ */
+async function geminiVision(env, prompt, systemInstruction, imageBase64, mimeType) {
+  const r = await fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType, data: imageBase64 } }] }],
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+      }),
+    }
+  );
+  const j = await r.json();
+  if (!r.ok) throw new Error(j?.error?.message || 'erro Gemini ' + r.status);
+  const txt = (j?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+  try { return JSON.parse(txt); } catch {
+    const m = txt.match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : {};
+  }
+}
+
+const SYS_EXTRACTOR = 'Voce e um extrator de dados de documentos angolanos (IESA - Igreja Evangelica Sinodal de Angola). Devolva APENAS JSON valido, sem texto extra, exatamente com as chaves pedidas. Use null quando um dado nao estiver visivel ou legivel. Datas sempre em AAAA-MM-DD. Telefones no formato +244XXXXXXXXX quando possivel. Nao invente dados: se duvidar, use null.';
+
 const SYSTEM_ASSISTANT = `
 Você é o Assistente Inteligente Especialista da Igreja Evangélica Sinodal de Angola (IESA) - Igreja Local de Emanuel em Xangongo.
 Apoie a liderança (Pastores, Tesoureiros, Secretários, Administradores) com sabedoria, precisão e cordialidade cristã.
@@ -257,7 +283,26 @@ export default {
         return json({ text: await gemini(env, prompt, 'Você é o pastor da Igreja Evangélica Sinodal de Angola (Emanuel em Xangongo). Escreva com elegância, calor e brevidade para WhatsApp.') });
       }
 
-      return json({ error: 'Rota não encontrada.' }, 404);
+      /* --- VISAO: ler BI / cartao de membro --- */
+      if (path === '/assistant/extract-member') {
+        const { imageBase64, mimeType, kind } = await request.json();
+        if (!imageBase64) return json({ error: 'Imagem obrigatoria.' }, 400);
+        const mime = mimeType || 'image/jpeg';
+        const prompt = kind === 'cartao'
+          ? 'Leia este CARTAO DE MEMBRO BATIZADO da igreja (texto manuscrito ou impresso). Extraia e devolva JSON com as chaves: {"name": nome completo, "memberNumber": numero do membro/codigo, "baptismDate": data do batismo, "groupCell": celula ou grupo, "phone": telefone, "notes": outra informacao util}. Manuscrito: faca o melhor esforco; se ilegivel, null.'
+          : 'Leia este BILHETE DE IDENTIDADE angolano. Extraia e devolva JSON com as chaves: {"name": nome completo, "documentNumber": numero do BI, "birthDate": data de nascimento, "address": residencia, "gender": "M" ou "F", "issueDate": data de emissao}.';
+        return json({ fields: await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mime) });
+      }
+
+      /* --- VISAO: ler comprovativo bancario --- */
+      if (path === '/assistant/extract-receipt') {
+        const { imageBase64, mimeType } = await request.json();
+        if (!imageBase64) return json({ error: 'Imagem obrigatoria.' }, 400);
+        const prompt = 'Leia este COMPROVATIVO BANCARIO (transferencia ou deposito, banco angolano: BAI, BFA, BIC, BPC, Standard Bank, Millennium, etc.). Extraia e devolva JSON com as chaves: {"amount": valor numerico em AOA sem simbolos, "currency": "AOA", "date": data da operacao, "method": "transferencia" ou "deposito" ou "multicaixa" ou "outro", "bank": nome do banco, "payerName": nome de quem pagou, "reference": numero de operacao/referencia, "notes": observacoes}.';
+        return json({ fields: await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mimeType || 'image/jpeg') });
+      }
+
+      return json({ error: 'Rota nao encontrada.' }, 404);
     } catch (e) {
       return json({ error: e?.message || 'Erro interno.' }, 500);
     }

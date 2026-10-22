@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import DocumentReaderModal, { type DocKind } from '../components/documents/DocumentReaderModal';
 import { prefGet } from '../lib/prefs';
 import { db, handleFirestoreError, OperationType, auth } from '../lib/firebase';
 import { collection, query, getDocs, addDoc, doc, deleteDoc, updateDoc, where, setDoc, getDoc, orderBy, limit, startAfter, startAt, endAt } from 'firebase/firestore';
@@ -83,6 +84,7 @@ export default function Finances() {
   const [isOOpen, setIsOOpen] = useState(false);
   const [isEOpen, setIsEOpen] = useState(false);
   const [memberSearchOpen, setMemberSearchOpen] = useState(false);
+  const [receiptDocOpen, setReceiptDocOpen] = useState(false);
   const [financialMonth, setFinancialMonth] = useState<any>(null);
   const [financialYear, setFinancialYear] = useState<any>(null);
   const [churchConfig, setChurchConfig] = useState<any>({});
@@ -1385,6 +1387,27 @@ export default function Finances() {
                       <DialogDescription className="sr-only">Preencha os dados</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleAddTithe} className="space-y-4">
+                      <div className="rounded-xl border border-dashed border-gold/60 bg-gold/5 px-3 py-2.5 flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-slate-600 dark:text-slate-300 mr-auto">Recebeu por transferência ou depósito?</span>
+                        <Button type="button" variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setReceiptDocOpen(true)}>
+                          🧾 Ler comprovativo com IA
+                        </Button>
+                        <DocumentReaderModal
+                          open={receiptDocOpen}
+                          onOpenChange={setReceiptDocOpen}
+                          kind="comprovativo"
+                          onApply={(f) => {
+                            setTD(prev => ({
+                              ...prev,
+                              amount: f.amount !== undefined && f.amount !== null ? String(f.amount) : prev.amount,
+                              contributionDetail: [
+                                prev.contributionDetail,
+                                [f.date ? 'Data: ' + f.date : null, f.bank ? 'Banco: ' + f.bank : null, f.payerName ? 'Pagador: ' + f.payerName : null, f.reference ? 'Ref: ' + f.reference : null].filter(Boolean).join(' · ')
+                              ].filter(Boolean).join(' | ')
+                            }));
+                          }}
+                        />
+                      </div>
                       <div className="space-y-2 flex flex-col">
                         <Label>Membro</Label>
                         <Popover open={memberSearchOpen} onOpenChange={setMemberSearchOpen}>

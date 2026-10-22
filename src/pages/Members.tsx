@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import DocumentReaderModal, { type DocKind } from '../components/documents/DocumentReaderModal';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, limit, startAfter, orderBy, where, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -161,6 +162,7 @@ export default function Members() {
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [aiMessageMember, setAiMessageMember] = useState<Member | null>(null);
+  const [docKind, setDocKind] = useState<DocKind | null>(null);
   const [memberTithes, setMemberTithes] = useState<any[]>([]);
   const [loadingTithes, setLoadingTithes] = useState(false);
   const confirmDialog = useConfirm();
@@ -445,6 +447,29 @@ export default function Members() {
                 </DialogHeader>
                 <ScrollArea className="flex-1 px-4 py-2">
                   <form id="member-form" onSubmit={handleSubmit(handleSave)} className="space-y-4 px-1">
+                    <div className="rounded-xl border border-dashed border-gold/60 bg-gold/5 px-3 py-2.5 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-medium text-slate-600 dark:text-slate-300 mr-auto">Preencher com IA a partir de fotografia:</span>
+                      <Button type="button" variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setDocKind('bi')}>
+                        🪪 Bilhete de Identidade
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setDocKind('cartao')}>
+                        ✝️ Cartão de Membro
+                      </Button>
+                      <DocumentReaderModal
+                        open={docKind !== null}
+                        onOpenChange={(o) => { if (!o) setDocKind(null); }}
+                        kind={(docKind || 'bi') as DocKind}
+                        onApply={(f) => {
+                          const s = (v: unknown) => (v === null || v === undefined ? undefined : String(v));
+                          if (s(f.name) !== undefined) setValue('name', s(f.name));
+                          if (s(f.phone) !== undefined) setValue('phone', s(f.phone));
+                          if (s(f.birthDate) !== undefined) setValue('birthDate', s(f.birthDate));
+                          if (s(f.baptismDate) !== undefined) setValue('baptismDate', s(f.baptismDate));
+                          if (s(f.address) !== undefined) setValue('address', s(f.address));
+                          if (s(f.groupCell) !== undefined) setValue('groupCell', s(f.groupCell));
+                        }}
+                      />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Nome Completo *</Label>

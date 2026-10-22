@@ -1,5 +1,20 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.7.0 (2026-10-22) — Visão com IA: ler documentos por fotografia
+
+- **Novo no Worker** (colar no painel Cloudflare!): `/assistant/extract-member` (BI e cartão de
+  membro batizado, impresso ou **manuscrito**) e `/assistant/extract-receipt` (comprovativos
+  bancários angolanos). Gemini com `inlineData` + `responseMimeType: application/json`
+  → campos estruturados, `temperature 0.1`, nunca inventa (null se ilegível).
+- **Novo na app**: `DocumentReaderModal` (fotografar/escolher → compressão no dispositivo
+  máx. 1280 px JPEG → leitura → tabela de campos → **Aplicar**).
+  - Membros: botões «🪪 Bilhete de Identidade» e «✝️ Cartão de Membro» no formulário —
+    preenchem nome, telefone, nascimento, batismo, morada e célula automaticamente.
+  - Finanças: «🧾 Ler comprovativo com IA» no registo de entrada — preenche o valor e
+    acrescenta data/banco/pagador/referência aos detalhes.
+- Segurança: as rotas exigem sessão Firebase + papel de liderança, com rate limit.
+
+---
 ## v1.6.0 (2026-10-22) — Sistema de design: duas paletas à escolha nas Definições
 
 - **Modo e Paleta separados**: o modo (claro/escuro/sistema) controla os cinzas; a paleta
