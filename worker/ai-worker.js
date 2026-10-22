@@ -1,3 +1,4 @@
+// v1.7.0: visao (BI, cartao manuscrito, comprovativos) + rate limit + cache. COLAR no painel Cloudflare (Workers > iesa-ai > Edit code).
 /**
  * AI Worker — Gestão IESA Emanuel (Xangongo)
  * ------------------------------------------------------------------
