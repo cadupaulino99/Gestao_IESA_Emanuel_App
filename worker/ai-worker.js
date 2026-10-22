@@ -150,6 +150,14 @@ async function verifyFirebaseIdToken(token, projectId) {
 /* ------------------------------------------------------------------ */
 let saCache = { ts: 0, token: '', exp: 0 };
 
+function pemToDerKey(pem) {
+  const b64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/, '')
+    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/\s+/g, '');
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
 async function saAccessToken(saJson) {
   if (saCache.token && Date.now() - saCache.ts < saCache.exp - 60 * 1000) return saCache.token;
   const sa = JSON.parse(saJson);
@@ -162,7 +170,7 @@ async function saAccessToken(saJson) {
     iat: now, exp: now + 3600,
   })));
   const key = await crypto.subtle.importKey(
-    'pkcs8', str2buf(sa.private_key),
+    'pkcs8', pemToDerKey(sa.private_key),
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']
   );
   const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, str2buf(`${header}.${claim}`));
