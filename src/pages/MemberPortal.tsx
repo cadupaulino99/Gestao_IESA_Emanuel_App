@@ -24,8 +24,9 @@ import {
   Download,
   FileText,
   Settings2,
+  Pencil,
 } from "lucide-react";
-import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, updateDoc, doc } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { Tithe } from "../types";
 import { generateMembershipCard } from "../lib/pdfUtils";
@@ -92,6 +93,12 @@ export default function MemberPortal() {
     renewals: Renewal[];
   }>({ communions: [], donations: [], renewals: [] });
   const [cardBusy, setCardBusy] = useState(false);
+  // edição dos próprios dados (sugestão da liderança, 2026-10-23)
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    phone: "", address: "", maritalStatus: "", education: "", profession: "", spouseName: "",
+  });
 
   useEffect(() => {
     if (!memberData) return;
@@ -158,6 +165,41 @@ export default function MemberPortal() {
   }, [memberData]);
 
   if (!memberData) return null;
+
+  const openEdit = () => {
+    setEditForm({
+      phone: memberData.phone || "",
+      address: memberData.address || "",
+      maritalStatus: memberData.maritalStatus || "",
+      education: memberData.education || "",
+      profession: memberData.profession || "",
+      spouseName: memberData.spouseName || "",
+    });
+    setEditOpen(true);
+  };
+
+  const saveMyData = async () => {
+    setEditSaving(true);
+    try {
+      // exactamente os campos permitidos pelas regras (isSelfEdit) + updatedAt
+      await updateDoc(doc(db, "members", memberData.id), {
+        phone: editForm.phone,
+        address: editForm.address,
+        maritalStatus: editForm.maritalStatus,
+        education: editForm.education,
+        profession: editForm.profession,
+        spouseName: editForm.spouseName,
+        updatedAt: Date.now(),
+      });
+      toast.success("Dados atualizados.");
+      setEditOpen(false);
+      setTimeout(() => window.location.reload(), 900);
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao atualizar os seus dados.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const handleUpdateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,8 +312,11 @@ export default function MemberPortal() {
           <TabsContent value="dados" className="space-y-6 pt-4">
             <div className="grid md:grid-cols-3 gap-6">
               <Card className="md:col-span-1 border shadow-sm">
-                <CardHeader>
+                <CardHeader className="flex-row items-center justify-between space-y-0">
                   <CardTitle>Meus Dados</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={openEdit} className="gap-1.5">
+                    <Pencil className="h-3.5 w-3.5" /> Editar
+                  </Button>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
@@ -580,6 +625,57 @@ export default function MemberPortal() {
             />
           </TabsContent>
         </Tabs>
+
+        <Dialog open={editOpen} onOpenChange={(o) => !o && setEditOpen(false)}>
+          <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Editar os meus dados</DialogTitle>
+              <DialogDescription>
+                Pode corrigir contacto, morada e estado civil. Nome, BI e estado de membro
+                são alterados apenas pela liderança (use «Pedir atualização» para esses).
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Telefone</Label>
+                <Input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} placeholder="+244 9XX XXX XXX" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Morada</Label>
+                <Input value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Estado Civil</Label>
+                <Select value={editForm.maritalStatus || undefined} onValueChange={(v) => setEditForm({ ...editForm, maritalStatus: v })}>
+                  <SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Solteiro(a)">Solteiro(a)</SelectItem>
+                    <SelectItem value="Casado(a)">Casado(a)</SelectItem>
+                    <SelectItem value="Viúvo(a)">Viúvo(a)</SelectItem>
+                    <SelectItem value="Divorciado(a)">Divorciado(a)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {editForm.maritalStatus === "Casado(a)" && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Nome do Cônjuge</Label>
+                  <Input value={editForm.spouseName} onChange={(e) => setEditForm({ ...editForm, spouseName: e.target.value })} />
+                </div>
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Formação / Escolaridade</Label>
+                <Input value={editForm.education} onChange={(e) => setEditForm({ ...editForm, education: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Profissão</Label>
+                <Input value={editForm.profession} onChange={(e) => setEditForm({ ...editForm, profession: e.target.value })} />
+              </div>
+              <Button onClick={saveMyData} disabled={editSaving} className="w-full">
+                {editSaving ? "A guardar…" : "Guardar alterações"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

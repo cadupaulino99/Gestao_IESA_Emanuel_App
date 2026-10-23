@@ -1,5 +1,32 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.8.2 (2026-10-23) — Comunhão ✓/✗ por clique, credenciais por membro, membro edita os seus dados
+
+- **Comunhão como a liderança decidiu:** as casas do papel levavam a *assinatura do
+  pastor*; no digital, **✓ participou / ✗ não participou / vazio = ainda não
+  registado**, com grelha de 12 meses (1 clique = ✓, 2 = ✗, 3 = limpa) e
+  `recordedBy` como «assinatura» digital. No PDF, ✓/✗ desenhados a vetor.
+  Grelha partilhada (`CommunionGrid`) entre o cartão e a **nova aba «Comunhão» em
+  Membros** (`CommunionTracker`: pesquisar membro → marcar meses) — sugestão nº 2.
+- **Credenciais a partir de membro cadastrado** (sugestão nº 3): em *Admin → Novo
+  Utilizador* pesquisa-se o membro pelo nome; se não tiver email, escreve-se um e o
+  sistema grava-o no registo do membro. Já não há «email solto» sem membro por trás.
+- **Membro edita os próprios dados** (sugestão nº 1): *Portal → Meus Dados → Editar*
+  (telefone, morada, estado civil, cônjuge, formação, profissão). Regra nova
+  `isSelfEdit()`: só esses campos, só com sessão do próprio email.
+- **Worker v2.2.0 — corrige o «não me deixa atribuir credenciais»:** (a) `getRole`
+  volta a ter o admin de arranque (`cadupaulino99@gmail.com`), espelhando as
+  `firestore.rules` — sem documento em `admins` o Worker dava 403 ao criar contas;
+  (b) o token OAuth da service account passa a pedir também o scope
+  `identitytoolkit` — só com `datastore`, o `signupNewUser` falhava e a conta de
+  email nunca era criada.
+- **Versão do APK lê-se do `package.json`** — acaba o ritual de subir a variable
+  `ANDROID_VERSION_NAME` a cada release.
+- ⚠️ Publicar: **Worker v2.2.0** (colar `worker/ai-worker.js` no editor da
+  Cloudflare — Via A do `docs/INICIO-RAPIDO.md`) e **regras do Firestore**
+  (workflow *Deploy Firebase*).
+
+
 ## v1.8.0 (2026-10-23) — Cartão de membro digital, fiel ao cartão de papel
 
 O cartão de papel da IESA (fotografado pela liderança) passou a existir dentro da

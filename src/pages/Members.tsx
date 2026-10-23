@@ -27,6 +27,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recha
 import { generateMembershipCard } from '../lib/pdfUtils';
 import { MemberTithesTracker } from '../components/members/MemberTithesTracker';
 import MemberCardModal from '../components/members/MemberCardModal';
+import CommunionTracker from '../components/members/CommunionTracker';
 import { compressImageFile } from '../lib/ai';
 import { PastoralMessageGeneratorModal } from '../components/members/PastoralMessageGeneratorModal';
 import jsPDF from 'jspdf';
@@ -423,6 +424,7 @@ export default function Members() {
         <TabsList>
           <TabsTrigger value="lista">Lista de Membros</TabsTrigger>
           <TabsTrigger value="dizimos">Dízimos por Membro</TabsTrigger>
+          <TabsTrigger value="comunhao">Comunhão</TabsTrigger>
         </TabsList>
 
         <TabsContent value="lista" className="space-y-4 mt-0">
@@ -755,6 +757,10 @@ export default function Members() {
 
         <TabsContent value="dizimos" className="mt-0">
           <MemberTithesTracker />
+        </TabsContent>
+
+        <TabsContent value="comunhao" className="mt-0">
+          <CommunionTracker />
         </TabsContent>
       </Tabs>
 

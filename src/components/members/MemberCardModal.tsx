@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { db } from '../../lib/firebase';
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { toast } from 'sonner';
-import { Loader2, Download, Plus, Trash2, Church, HandCoins, HeartHandshake, RefreshCw, Check, X } from 'lucide-react';
+import { Loader2, Download, Plus, Trash2, Church, HandCoins, HeartHandshake, RefreshCw } from 'lucide-react';
 import MemberCardView, { MemberCardData } from './MemberCardView';
+import CommunionGrid from './CommunionGrid';
+import { fetchCommunion, cycleCommunionMark } from '../../lib/communion';
 import { generateMemberCardPdf } from '../../lib/pdfUtils';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -90,26 +92,15 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
 
   if (!member) return null;
 
-  /** Grelha de comunhão: cada clique roda  vazio → ✓ → ✗ → vazio.
-   *  No papel a casa levava a assinatura do pastor; aqui guarda-se quem marcou
-   *  (recordedBy) — a «assinatura» digital. */
+  /** Grelha de comunhão: cada clique roda  vazio → ✓ → ✗ → vazio (lib partilhada). */
   const cycleCommunion = async (mi: string) => {
     setBusy(true);
     try {
-      const existing = data.communions.find((c) => c.year === comYear && c.month === mi);
-      if (!existing) {
-        await addDoc(collection(db, 'communions'), {
-          memberId: member.id, year: comYear, month: mi, mark: 'present',
-          recordedBy: user?.email || 'unknown', createdAt: Date.now(),
-        });
-      } else if (existing.mark === 'present') {
-        await updateDoc(doc(db, 'communions', existing.id), { mark: 'absent', recordedBy: user?.email || 'unknown' });
-      } else if (existing.mark === 'absent') {
-        await deleteDoc(doc(db, 'communions', existing.id));
-      } else {
-        // marca antiga em texto livre: primeiro clique normaliza para ✓
-        await updateDoc(doc(db, 'communions', existing.id), { mark: 'present', recordedBy: user?.email || 'unknown' });
-      }
+      await cycleCommunionMark(
+        member.id, comYear, mi,
+        data.communions.find((c) => c.year === comYear && c.month === mi),
+        user?.email || ''
+      );
       await load(member.id);
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao registar comunhão.');
@@ -227,34 +218,8 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-6 gap-1">
-                  {MONTHS_IDX.map((mi, i) => {
-                    const mark = data.communions.find((c) => c.year === comYear && c.month === mi)?.mark || '';
-                    return (
-                      <button
-                        key={mi}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => cycleCommunion(mi)}
-                        title={`${MONTHS_SHORT[i]}: clique para rodar  vazio → ✓ → ✗ → vazio`}
-                        className={`h-8 rounded border text-[10px] font-medium flex items-center justify-center gap-1 transition-colors ${
-                          mark === 'present'
-                            ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
-                            : mark === 'absent'
-                              ? 'border-red-300 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300'
-                              : 'border-slate-300 dark:border-slate-700 text-slate-400 hover:border-slate-400'
-                        }`}
-                      >
-                        {MONTHS_SHORT[i]}
-                        {mark === 'present' ? <Check className="h-3 w-3" /> : mark === 'absent' ? <X className="h-3 w-3" /> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-[10px] text-slate-500">
-                  ✓ participou · ✗ não participou · vazio = ainda não registado.
-                  Cada marca guarda quem a registou (a «assinatura» digital do pastor).
-                </p>
+                <CommunionGrid year={comYear} marks={data.communions} onCycle={cycleCommunion} disabled={busy} />
+
               </div>
 
               <div className="space-y-2 rounded-lg border p-3">

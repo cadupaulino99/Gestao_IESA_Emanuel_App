@@ -39,6 +39,24 @@ service cloud.firestore {
       return id is string && id.size() > 0;
     }
 
+    // Edição dos próprios dados pelo membro: só um subconjunto de campos de
+    // contacto/estado, todos strings, + updatedAt. Nome, BI, estado de membro,
+    // dízimos etc. continuam reservados à liderança.
+    function isSelf() {
+      return isAuthenticated() && resource.data.email == request.auth.token.email;
+    }
+    function isSelfEdit() {
+      return isSelf() &&
+        incoming().keys().hasOnly(['phone', 'address', 'maritalStatus', 'education', 'profession', 'spouseName', 'updatedAt']) &&
+        incoming().phone is string &&
+        incoming().address is string &&
+        incoming().maritalStatus is string &&
+        incoming().education is string &&
+        incoming().profession is string &&
+        incoming().spouseName is string &&
+        incoming().updatedAt is number;
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -118,7 +136,9 @@ service cloud.firestore {
     match /members/{memberId} {
       allow read, list: if isAuthenticated();
       allow create: if hasFinancialWriteAccess() && isValidId(memberId);
-      allow update: if hasFinancialWriteAccess() && isValidId(memberId);
+      // O próprio membro (conta com o mesmo email) pode editar um subconjunto
+      // seguro dos seus dados — sugestão da liderança (2026-10-23).
+      allow update: if (hasFinancialWriteAccess() && isValidId(memberId)) || isSelfEdit();
       allow delete: if hasFinancialWriteAccess() && isValidId(memberId);
     }
 

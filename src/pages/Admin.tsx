@@ -30,6 +30,10 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRequestsOpen, setIsRequestsOpen] = useState(false);
+  // atribuir credenciais a partir de um membro já cadastrado (sugestão da liderança)
+  const [members, setMembers] = useState<any[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [picked, setPicked] = useState<any | null>(null);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('admin');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -395,25 +399,39 @@ export default function Admin() {
     }
   };
 
+  useEffect(() => {
+    if (!isDialogOpen || members.length) return;
+    getDocs(query(collection(db, 'members'), where('status', '==', 'Activo')))
+      .then((snap) => setMembers(snap.docs.map((d) => ({ id: d.id, ...d.data() }))))
+      .catch(() => setMembers([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDialogOpen]);
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
 
-    if (!email || !email.includes('@')) {
-      toast.error("Introduza um e-mail válido.");
+    const targetEmail = (picked?.email || email).trim().toLowerCase();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      toast.error("Escolha um membro cadastrado (com email) ou escreva um e-mail válido.");
       return;
     }
 
     setIsSubmitting(true);
-    const confirmed = await confirmDialog(`Deseja adicionar o utilizador ${email} como ${role}?`);
+    const confirmed = await confirmDialog(`Deseja adicionar o utilizador ${targetEmail} como ${role}?`);
     if (!confirmed) {
       setIsSubmitting(false);
       return;
     }
 
     try {
-      await setDoc(doc(db, 'admins', email.toLowerCase()), {
-        email: email.toLowerCase(),
+      // sugestão da liderança: só membros cadastrados recebem credenciais.
+      // Se o membro escolhido ainda não tiver email, grava-o no registo dele.
+      if (picked && !picked.email) {
+        await updateDoc(doc(db, 'members', picked.id), { email: targetEmail, updatedAt: Date.now() });
+      }
+      await setDoc(doc(db, 'admins', targetEmail), {
+        email: targetEmail,
         role: role,
         createdAt: Date.now()
       });
@@ -422,7 +440,7 @@ export default function Admin() {
       // Cria a conta de autenticação (email + palavra-passe) via Cloud Function,
       // para que o utilizador consiga entrar também sem Google.
       try {
-        const r = await createAuthAccount({ email: email.toLowerCase() });
+        const r = await createAuthAccount({ email: targetEmail });
         if (r.data?.tempPassword) {
           toast.success(
             `Conta de email criada. Palavra-passe temporária: ${r.data.tempPassword} — partilhe-a com o utilizador (ele poderá repô-la por email).`,
@@ -432,12 +450,14 @@ export default function Admin() {
       } catch (authErr) {
         console.warn('createAuthAccount falhou (Cloud Functions implantadas?):', authErr);
         toast.warning(
-          'Permissão guardada, mas a conta de email não foi criada automaticamente. Implante as Cloud Functions (docs/GUIA-FIREBASE.md) ou crie-a na consola Firebase.'
+          'Permissão guardada, mas a conta de email não foi criada automaticamente. O Worker "iesa-ai" precisa de estar publicado com a versão 2.2.0 ou superior (ver docs/FIX-LEITURA-BI.md) — ou crie a conta na consola Firebase.'
         );
       }
 
       setIsDialogOpen(false);
       setEmail('');
+      setMemberSearch('');
+      setPicked(null);
       setRole('admin');
       
       // Reload
@@ -672,8 +692,46 @@ export default function Admin() {
                     </DialogHeader>
                     <form onSubmit={handleAddUser} className="space-y-4">
                         <div className="space-y-2">
-                          <Label>E-mail do utilizador (Google)</Label>
-                          <Input required placeholder="Exemplo: joao@gmail.com" type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                          <Label>Membro cadastrado (pesquise pelo nome)</Label>
+                          <Input
+                            placeholder="Escreva para buscar… ex.: Isaías"
+                            value={picked ? picked.name : memberSearch}
+                            onChange={(e) => { setPicked(null); setMemberSearch(e.target.value); }}
+                          />
+                          {!picked && memberSearch.trim().length >= 2 && (
+                            <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                              {members
+                                .filter((m) => m.name.toLowerCase().includes(memberSearch.trim().toLowerCase()))
+                                .slice(0, 8)
+                                .map((m) => (
+                                  <Button key={m.id} type="button" variant="outline" size="sm"
+                                    onClick={() => { setPicked(m); setMemberSearch(''); }}>
+                                    {m.name}{m.email ? ` · ${m.email}` : ' · sem email'}
+                                  </Button>
+                                ))}
+                              {members.filter((m) => m.name.toLowerCase().includes(memberSearch.trim().toLowerCase())).length === 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  Nenhum membro encontrado. O utilizador precisa de estar cadastrado em Membros antes de receber credenciais.
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {picked && (
+                            <div className="text-xs rounded-lg border border-emerald-300/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 px-2 py-1.5">
+                              Selecionado: <b>{picked.name}</b>
+                              {picked.email ? ` (${picked.email})` : ' — sem email: escreva um abaixo para criar a conta'}
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{picked?.email ? 'E-mail (do membro)' : 'E-mail do utilizador (Google)'}</Label>
+                          <Input
+                            placeholder="Exemplo: joao@gmail.com"
+                            type="email"
+                            value={picked?.email || email}
+                            disabled={!!picked?.email}
+                            onChange={(e) => setEmail(e.target.value)}
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label>Papel</Label>
