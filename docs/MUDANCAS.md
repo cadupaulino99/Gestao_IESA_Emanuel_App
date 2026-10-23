@@ -1,5 +1,44 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.8.0 (2026-10-23) — Cartão de membro digital, fiel ao cartão de papel
+
+O cartão de papel da IESA (fotografado pela liderança) passou a existir dentro da
+app, com as duas faces e as quatro tabelas:
+
+- **Frente:** selo IESA, cabeçalho institucional (Sínodo / Igreja Local / Província),
+  «Cartão de Membro Nº», dados pessoais completos (filiação, naturalidade, BI +
+  emissão, estado civil, batismo, receção como membro) e as tabelas
+  **Participou da Comunhão** e **Entrega de Donativos Voluntários** (meses × anos).
+- **Verso:** aviso de renovação, tabela **Renovações** com rubrica do pastor,
+  fotografia do titular, linha de assinatura, tabela **Entrega de Dízimos**
+  (totais mensais + nº de entregas) e o versículo Mal. 3:10.
+
+Onde vive:
+- **Liderança:** *Membros → perfil → «Cartão de Membro»* (`MemberCardModal`) —
+  vê o cartão, regista **comunhão** (marca livre por mês/ano, com sugestão «FM»),
+  **donativos voluntários**, **renovações**, remove registos errados e gera o
+  **PDF frente+verso** (`generateMemberCardPdf`, A4 paisagem, 2 páginas).
+- **Membro:** *Portal do Membro → separador «O meu cartão»* (`MemberCardView`
+  compacto, só leitura) + botão **Descarregar PDF**.
+
+Dados novos:
+- `Member`: `memberNumber`, `fatherName`, `motherName`, `placeOfBirth`,
+  `photoBase64` (foto comprimida a 400 px no formulário de membro).
+- Coleções novas: `communions` {memberId, year, month, mark}, `donations`
+  {memberId, amount, date, referenceMonth/Year, recordedBy}, `renewals`
+  {memberId, date, pastorSign} — com regras no `firestore.rules`
+  (leitura autenticada, escrita só liderança).
+- Dízimos no cartão: **totais mensais** a partir da coleção `tithes` já existente
+  (decisão da liderança: sem colunas de semana 1ª-4ª; quando há várias entregas no
+  mês o cartão mostra «(n×)»).
+- Donativos: coleção própria — `offerings` continua a ser as ofertas da igreja
+  (sem memberId), para não misturar.
+
+⚠️ Depois de publicar este release é preciso **publicar também as regras**:
+`npx firebase deploy --only firestore:rules` (ou o workflow deploy-firebase).
+Sem isso, as coleções novas ficam bloqueadas e o cartão aparece vazio.
+
+
 ## v1.7.2 (2026-10-22) — **Correção: a leitura do BI por fotografia não funcionava**
 
 > **CAUSA REAL, medida em 2026-10-22:** o Worker chamava `gemini-3.8-flash`, que

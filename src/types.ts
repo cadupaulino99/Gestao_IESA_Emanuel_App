@@ -7,11 +7,22 @@ export interface Member {
   documentNumber?: string;
   /** Data de emissão do BI (AAAA-MM-DD). */
   issueDate?: string;
+  /** Nº do cartão de membro (o que está impresso no cartão de papel). */
+  memberNumber?: string;
+  /** Nome do pai («Filho de …»). */
+  fatherName?: string;
+  /** Nome da mãe («… e de …»). */
+  motherName?: string;
+  /** Naturalidade («Natural de …»). */
+  placeOfBirth?: string;
+  /** Fotografia do titular (JPEG comprimido em base64, ~400 px). */
+  photoBase64?: string;
   phone?: string;
   email?: string;
   address?: string;
   birthDate?: string;
   baptismDate?: string;
+  /** «Recebido como membro da Igreja aos …». */
   joinDate?: string;
   gender?: string;
   maritalStatus?: string;
@@ -108,3 +119,62 @@ export interface Announcement {
   adminId: string;
   active: boolean;
 }
+
+/* ------------------------------------------------------------------ */
+/* Cartão de membro digital (espelho do cartão de papel da IESA)       */
+/* ------------------------------------------------------------------ */
+
+/** Marca de «Participou da Comunhão»: uma por (membro, ano, mês).
+ *  `mark` é texto livre — a sigla manuscrita do cartão de papel (ex.: "FM"). */
+export interface CommunionMark {
+  id: string;
+  memberId: string;
+  year: number;
+  /** '01'..'12' */
+  month: string;
+  mark: string;
+  recordedBy?: string;
+  createdAt?: number;
+}
+
+/** «Entrega de Donativos Voluntários»: donativo POR MEMBRO (não confundir com
+ *  `offerings`, que são ofertas da igreja sem memberId). */
+export interface Donation {
+  id: string;
+  memberId: string;
+  memberName?: string;
+  amount: number;
+  /** ISO AAAA-MM-DD */
+  date: string;
+  /** '01'..'12' */
+  referenceMonth?: string;
+  referenceYear?: number;
+  recordedBy?: string;
+  createdAt?: number;
+}
+
+/** «Renovações» anuais do cartão, com rubrica do pastor. */
+export interface Renewal {
+  id: string;
+  memberId: string;
+  /** ISO AAAA-MM-DD */
+  date: string;
+  pastorSign?: string;
+  createdAt?: number;
+}
+
+/** Cabeçalho institucional impresso no cartão. */
+export interface CardHeader {
+  sinodo: string;
+  igreja: string;
+  provincia: string;
+}
+
+export const CARD_HEADER_DEFAULT: CardHeader = {
+  sinodo: 'Cunene',
+  igreja: 'Emanuel – Xangongo',
+  provincia: 'Cunene',
+};
+
+export const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'] as const;
+export const MONTHS_IDX = ['01','02','03','04','05','06','07','08','09','10','11','12'] as const;

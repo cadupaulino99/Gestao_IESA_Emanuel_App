@@ -63,6 +63,14 @@ import {
   TabsTrigger,
 } from "../components/ui/tabs";
 import { toast } from "sonner";
+import MemberCardView from "../components/members/MemberCardView";
+import { generateMemberCardPdf } from "../lib/pdfUtils";
+import {
+  CommunionMark,
+  Donation,
+  Renewal,
+  CARD_HEADER_DEFAULT,
+} from "../types";
 
 export default function MemberPortal() {
   const { memberData, signOut } = useAuth();
@@ -78,6 +86,12 @@ export default function MemberPortal() {
   });
   const [submittingUpdate, setSubmittingUpdate] = useState(false);
   const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [cardData, setCardData] = useState<{
+    communions: CommunionMark[];
+    donations: Donation[];
+    renewals: Renewal[];
+  }>({ communions: [], donations: [], renewals: [] });
+  const [cardBusy, setCardBusy] = useState(false);
 
   useEffect(() => {
     if (!memberData) return;
@@ -120,8 +134,27 @@ export default function MemberPortal() {
       }
     };
 
+    const fetchCard = async () => {
+      try {
+        const [c, d, r] = await Promise.all([
+          getDocs(query(collection(db, "communions"), where("memberId", "==", memberData.id))),
+          getDocs(query(collection(db, "donations"), where("memberId", "==", memberData.id))),
+          getDocs(query(collection(db, "renewals"), where("memberId", "==", memberData.id))),
+        ]);
+        setCardData({
+          communions: c.docs.map((x) => ({ id: x.id, ...x.data() }) as CommunionMark),
+          donations: d.docs.map((x) => ({ id: x.id, ...x.data() }) as Donation),
+          renewals: r.docs.map((x) => ({ id: x.id, ...x.data() }) as Renewal),
+        });
+      } catch (error) {
+        // coleções novas: se as regras ainda não forem publicadas, não trava o portal
+        console.log("cartão:", error);
+      }
+    };
+
     fetchTithes();
     fetchAnnouncements();
+    fetchCard();
   }, [memberData]);
 
   if (!memberData) return null;
@@ -229,6 +262,9 @@ export default function MemberPortal() {
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-3">
             <TabsTrigger value="dados">Geral & Finanças</TabsTrigger>
             <TabsTrigger value="mural">Mural de Avisos</TabsTrigger>
+            <TabsTrigger value="cartao" className="gap-1.5">
+              <CreditCard className="h-4 w-4" /> O meu cartão
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="dados" className="space-y-6 pt-4">
@@ -507,6 +543,41 @@ export default function MemberPortal() {
                 </Card>
               ))}
             </div>
+          </TabsContent>
+
+          <TabsContent value="cartao" className="space-y-4 pt-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm text-muted-foreground">
+                Réplica digital do seu cartão de papel: dados pessoais, comunhão,
+                donativos voluntários, dízimos e renovações. Se faltar algum dado,
+                use «Pedir atualização» no separador anterior.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cardBusy}
+                className="gap-2"
+                onClick={async () => {
+                  setCardBusy(true);
+                  try {
+                    await generateMemberCardPdf(memberData as any, { ...cardData, tithes }, CARD_HEADER_DEFAULT);
+                    toast.success("Cartão em PDF gerado (frente + verso).");
+                  } catch (e: any) {
+                    toast.error(e?.message || "Erro ao gerar o PDF.");
+                  } finally {
+                    setCardBusy(false);
+                  }
+                }}
+              >
+                <Download className="h-4 w-4" /> Descarregar PDF
+              </Button>
+            </div>
+            <MemberCardView
+              member={memberData as any}
+              data={{ ...cardData, tithes }}
+              header={CARD_HEADER_DEFAULT}
+              compact
+            />
           </TabsContent>
         </Tabs>
       </div>
