@@ -28,6 +28,12 @@ Dados novos:
   {memberId, amount, date, referenceMonth/Year, recordedBy}, `renewals`
   {memberId, date, pastorSign} — com regras no `firestore.rules`
   (leitura autenticada, escrita só liderança).
+- **Comunhão (decisão da liderança, 2026-10-23):** no papel as casas levavam a
+  *assinatura do pastor*; no digital usa-se **✓ participou / ✗ não participou /
+  vazio = ainda não registado**, com registo por clique numa grelha de 12 meses
+  (ciclo vazio → ✓ → ✗ → vazio). Cada marca guarda `recordedBy` — a «assinatura»
+  digital. No ecrã, ícones; no PDF, ✓/✗ desenhados a vetor (a fonte do PDF não
+  tem esses glifos). Marcas antigas em texto livre continuam a ser mostradas.
 - Dízimos no cartão: **totais mensais** a partir da coleção `tithes` já existente
   (decisão da liderança: sem colunas de semana 1ª-4ª; quando há várias entregas no
   mês o cartão mostra «(n×)»).
