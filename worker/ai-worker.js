@@ -24,8 +24,8 @@
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.0.0';
-const WORKER_BUILD = '2026-10-23';
+const WORKER_VERSION = '2.1.0';
+const WORKER_BUILD = '2026-10-23 (modelos rapidos + timeout)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -236,25 +236,62 @@ async function getRole(email, env) {
 /* 3. Gemini                                                           */
 /* ------------------------------------------------------------------ */
 
-/* Modelos por ordem de preferencia. Se o primeiro falhar com 400/404
-   (modelo inexistente, descontinuado ou sem acesso na chave), tenta o seguinte.
-   Assim uma mudanca de nome do lado da Google NAO volta a partir a app. */
+/* ─────────────────────────────────────────────────────────────────────────────
+   ORDEM DOS MODELOS — ISTO ERA A CAUSA DA FALHA NA LEITURA DO BI
+   ─────────────────────────────────────────────────────────────────────────────
+   Medicoes reais em 2026-10-22 com a chave do projeto (BI de exemplo, 6 campos):
+
+     gemini-3.8-flash      170.0 s  e  390.6 s   ← 6/6 campos, mas LENTISSIMO
+     gemini-3.6-flash        3.0 s               ← 6/6 campos
+     gemini-3.5-flash-lite   1.9 s               ← 6/6 campos
+     gemini-3.1-flash-lite   2.2 s               ← 6/6 campos
+     gemini-2.5-flash        HTTP 404 "no longer available to new users"
+
+   O Worker usava gemini-3.8-flash. Um subrequest de um Worker da Cloudflare e
+   cortado aos ~100 s (CPU/wall), portanto a chamada AO GEMINI NUNCA CHEGAVA AO
+   FIM: a app recebia 5xx/502 e o utilizador via "falha na leitura". E como o
+   fallback so existia para 400/404 de modelo, nao havia rede de seguranca.
+
+   Regra: para OCR de documentos usa-se um modelo RAPIDO. Ha um relato publico
+   de latencia extrema no Gemini 3 Flash ("API requests that would take seconds
+   now take over 5 minutes"), o que bate certo com a medicao acima.
+
+   NAO voltar a meter gemini-3.8-flash aqui sem medir primeiro (`npm run test:bi`).
+   gemini-2.5-flash esta removido: devolve 404 em chaves novas e so queimava tempo.
+   ───────────────────────────────────────────────────────────────────────────── */
 const GEMINI_MODELS = [
-  'gemini-3.8-flash',
   'gemini-3.6-flash',
-  'gemini-2.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
 ];
 
-/* Le a chave do header `x-goog-api-key` (v1beta). */
-async function geminiPost(env, model, body) {
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify(body),
-    }
-  );
+/* Timeout por tentativa. Tem de ficar ABAIXO do limite de subrequest da
+   Cloudflare (~100 s), senao e a Cloudflare que desliga e o fallback nao corre.
+   Com 45 s ha margem para 2 tentativas dentro do orcamento. */
+const GEMINI_TIMEOUT_MS = 45_000;
+
+/* Le a chave do header `x-goog-api-key` (v1beta), com timeout explicito. */
+async function geminiPost(env, model, body, timeoutMs = GEMINI_TIMEOUT_MS) {
+  let r;
+  try {
+    r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      }
+    );
+  } catch (e) {
+    /* AbortError / TimeoutError: o modelo demorou demais. Marca como repetivel
+       para que geminiWithFallback passe ao modelo seguinte em vez de rebentar. */
+    const err = new Error(`Tempo esgotado ao falar com ${model} (>${Math.round(timeoutMs / 1000)}s).`);
+    err.status = 408;
+    err.model = model;
+    err.retryable = true;
+    throw err;
+  }
   const txt = await r.text();
   let j = null;
   try { j = txt ? JSON.parse(txt) : null; } catch { /* HTML/pagina de erro */ }
@@ -268,8 +305,16 @@ async function geminiPost(env, model, body) {
   return j;
 }
 
-/* Tenta os modelos por ordem; so faz fallback para erros de modelo/config (4xx),
-   nunca para 429/5xx (ai o problema e quota/servidor, nao adianta repetir). */
+/* Tenta os modelos por ordem. Faz fallback para: modelo inexistente/config
+   invalida (400/404), timeout (408), quota (429) e erro do servidor (5xx) —
+   que e exatamente o que acontecia com gemini-3.8-flash: a Cloudflare cortava a
+   chamada aos ~100 s e a app ficava sem resposta nenhuma. */
+function isRetryable(e) {
+  if (e?.retryable) return true;
+  const st = e?.status;
+  return st === 400 || st === 404 || st === 408 || st === 429 || (st >= 500 && st <= 599);
+}
+
 async function geminiWithFallback(env, body) {
   let last = null;
   for (const model of GEMINI_MODELS) {
@@ -278,8 +323,7 @@ async function geminiWithFallback(env, body) {
       return { json: j, model };
     } catch (e) {
       last = e;
-      const retryable = e.status === 400 || e.status === 404;
-      if (!retryable) break;
+      if (!isRetryable(e)) break;
     }
   }
   throw last || new Error('Sem modelo Gemini disponivel.');
@@ -344,7 +388,11 @@ async function geminiVision(env, prompt, systemInstruction, imageBase64, mimeTyp
     systemInstruction: { parts: [{ text: systemInstruction }] },
   };
 
+  /* thinkingLevel 'low' — OCR de documentos nao precisa de raciocinio profundo e
+     o nivel baixo corta a latencia. Medido: 6/6 campos em ~2-3 s nos flash-lite. */
+  const THINK = { thinkingLevel: 'low' };
   const configs = [
+    { responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH', thinkingConfig: THINK, ...(responseSchema ? { responseSchema } : {}) },
     { responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH', ...(responseSchema ? { responseSchema } : {}) },
     { responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH' },
     { responseMimeType: 'application/json' },
@@ -368,8 +416,9 @@ async function geminiVision(env, prompt, systemInstruction, imageBase64, mimeTyp
       }
     } catch (e) {
       lastErr = e;
-      /* 400 por causa do generationConfig -> tenta a configuracao seguinte */
-      if (e.status === 400 || e.status === 404) continue;
+      /* generationConfig invalido, modelo indisponivel, timeout ou 5xx:
+         tenta a configuracao seguinte em vez de desistir. */
+      if (isRetryable(e)) continue;
       throw e;
     }
   }

@@ -31,8 +31,11 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-/* Alinhado com GEMINI_MODELS em worker/ai-worker.js */
-const MODELS = (process.env.GEMINI_MODELS || 'gemini-3.8-flash,gemini-3.6-flash,gemini-2.5-flash')
+/* Alinhado com GEMINI_MODELS em worker/ai-worker.js.
+   NOTA: gemini-3.8-flash foi retirado — mediu 170-390 s no mesmo pedido em que
+   gemini-3.6-flash mediu 3.0 s (ver comentario em worker/ai-worker.js).
+   Use GEMINI_MODELS=gemini-3.8-flash para o voltar a testar. */
+const MODELS = (process.env.GEMINI_MODELS || 'gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -95,18 +98,45 @@ async function post(model, body) {
   return j;
 }
 
+/* Erros que justificam tentar outro modelo / repetir:
+   400/404 (modelo ou config invalida), 408 (timeout), 429 (quota) e 5xx
+   ("This model is currently experiencing high demand" — muito frequente no
+   escalao gratuito, e transitório). */
+const retryable = (e) => {
+  const st = e?.status;
+  return st === 400 || st === 404 || st === 408 || st === 429 || (st >= 500 && st <= 599);
+};
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function postWithRetry(model, body, tries = 2) {
+  let last = null;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await post(model, body);
+    } catch (e) {
+      last = e;
+      if (!retryable(e) || i === tries - 1) throw e;
+      await sleep(2500 * (i + 1));
+    }
+  }
+  throw last;
+}
+
 async function run(model, body) {
-  return post(model, body).catch(async (first) => {
-    if (first.status !== 400 && first.status !== 404) throw first;
+  try {
+    return { json: await postWithRetry(model, body), model };
+  } catch (first) {
+    if (!retryable(first)) throw first;
     let last = first;
     for (const m of MODELS) {
       if (m === model) continue;
       try {
-        return { json: await post(m, body), model: m };
+        return { json: await postWithRetry(m, body), model: m };
       } catch (e) { last = e; }
     }
     throw last;
-  }).then((r) => (r.json ? r : { json: r, model }));
+  }
 }
 
 const textOf = (j) => (j?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();

@@ -8,19 +8,19 @@ name: deploy-ai-worker
 #
 # Configuração obrigatória (uma vez):
 #   1. Cloudflare → My Profile → API Tokens → Create Token
-#      → template "Edit Cloudflare Workers" → conta + zona
-#      → copiar o token
+#      → Account / Workers Scripts / Edit → copiar o token
 #   2. GitHub → repositório → Settings → Secrets and variables → Actions
 #      → New repository secret:
-#         CLOUDFLARE_API_TOKEN = <token>
-#         CLOUDFLARE_ACCOUNT_ID = <id da conta>   (dashboard Cloudflare, URL)
-#   3. Definir os segredos do Worker uma vez (wrangler não os cria sozinho):
-#         npx wrangler secret put GEMINI_API_KEY   --config worker/wrangler.toml
-#         npx wrangler secret put FIREBASE_SA_JSON --config worker/wrangler.toml
+#         CLOUDFLARE_API_TOKEN  = <token>
+#         CLOUDFLARE_ACCOUNT_ID = <id da conta>
+#
+# ⚠️ O `wrangler deploy` APAGA os segredos do Worker que não estiverem no
+#    wrangler.toml. Este job fotografa os segredos antes e depois e FALHA se
+#    algum desaparecer, em vez de deixar o Worker sem chaves em silêncio.
 #
 # Verificação após o deploy:
 #   https://iesa-ai.cadupaulino99.workers.dev/__health
-#   → tem de mostrar "version": "2.0.0" (ou superior) e "vision": true
+#   → "version": "2.0.0" (ou superior), "vision": true
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
   deploy:
     name: Publicar Worker iesa-ai
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +45,16 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Fotografar segredos ANTES do deploy
+        run: |
+          npx --yes wrangler@latest secret list \
+            --config worker/wrangler.toml \
+            --api-token "${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            --account-id "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" \
+            > /tmp/secrets-before.txt 2>/dev/null || true
+          echo '--- segredos antes ---'
+          cat /tmp/secrets-before.txt
+
       - name: Publicar na Cloudflare
         uses: cloudflare/wrangler-action@v3
         with:
@@ -54,6 +64,30 @@ jobs:
 
       - name: Confirmar versão no ar
         run: |
-          sleep 8
-          curl -fsS https://iesa-ai.cadupaulino99.workers.dev/__health || true
-          echo
+          sleep 10
+          echo '--- /__health ---'
+          curl -fsS https://iesa-ai.cadupaulino99.workers.dev/__health > /tmp/health.json || true
+          cat /tmp/health.json; echo
+          if ! grep -q '"version"' /tmp/health.json; then
+            echo '::error::O Worker no ar nao devolve /__health — o deploy falhou?'
+            exit 1
+          fi
+
+      - name: Confirmar que os segredos sobreviveram
+        run: |
+          npx --yes wrangler@latest secret list \
+            --config worker/wrangler.toml \
+            --api-token "${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            --account-id "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" \
+            > /tmp/secrets-after.txt 2>/dev/null || true
+          echo '--- segredos depois ---'
+          cat /tmp/secrets-after.txt
+          for S in GEMINI_API_KEY FIREBASE_SA_JSON; do
+            if grep -q "$S" /tmp/secrets-before.txt && ! grep -q "$S" /tmp/secrets-after.txt; then
+              echo "::error::O segredo $S foi APAGADO pelo deploy. Reponha-o imediatamente:"
+              echo "    npx wrangler secret put $S --config worker/wrangler.toml"
+              echo "  (ou no painel: Workers → iesa-ai → Settings → Variables and Secrets)"
+              exit 1
+            fi
+          done
+          echo 'Worker publicado e segredos intactos.'

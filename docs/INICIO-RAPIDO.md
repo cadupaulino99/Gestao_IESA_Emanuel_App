@@ -94,10 +94,35 @@ Worker mudar, ele publica-se sozinho.
 **Passo 3 — Diga-me que tem os dois.** Eu trato do resto (push do código,
 configuração dos secrets, deploy e verificação) e depois **revoga os dois tokens**.
 
-> Também precisa de, **uma única vez**, definir os segredos do Worker
-> (`GEMINI_API_KEY` e `FIREBASE_SA_JSON`) — isso faz-se no painel da Cloudflare
-> (Via A, passo 5) ou por linha de comandos. Sem eles o Worker não fala com o
-> Gemini. Se já lá estão da instalação anterior, não precisa de fazer nada.
+### ⚠️ O deploy NÃO é feito com o Wrangler
+
+O `wrangler deploy` **apaga os segredos** do Worker que não estiverem no
+`wrangler.toml` — ou seja, destruiria `GEMINI_API_KEY` e `FIREBASE_SA_JSON`, e
+como ninguém sabe os valores de cor, a IA ficava morta. Por isso usa-se
+`scripts/deploy-worker-api.mjs`, que:
+
+1. **lê primeiro** os bindings atuais (a Cloudflare diz *quais* segredos existem,
+   sem revelar os valores);
+2. **pára** se faltar algum segredo obrigatório, em vez de publicar às cegas;
+3. publica o código novo **reenviando os bindings existentes** → os segredos
+   sobrevivem;
+4. confirma o `/__health` no ar e volta a listar os bindings.
+
+```bash
+export CLOUDFLARE_API_TOKEN=...
+export CLOUDFLARE_ACCOUNT_ID=...
+node scripts/deploy-worker-api.mjs --check   # só inspecionar, não publica
+node scripts/deploy-worker-api.mjs           # publicar
+```
+
+O workflow do GitHub Actions ficou com a mesma proteção: fotografa os segredos
+antes e depois e **falha** se algum desaparecer.
+
+> Os segredos do Worker (`GEMINI_API_KEY` e `FIREBASE_SA_JSON`) definem-se **só**
+> pelo painel da Cloudflare (Via A, passo 5) ou pelo `wrangler secret put`.
+> Nenhuma API permite escrevê-los com um token — é de propósito. Se já lá estão
+> da instalação anterior, não precisa de fazer nada; o script diz-lhe quais
+> existem antes de tocar em seja o que for.
 
 ---
 

@@ -1,6 +1,20 @@
 # 🔧 MUDANÇAS face ao repositório original
 
-## v1.7.2 (2026-10-23) — **Correção: a leitura do BI por fotografia não funcionava**
+## v1.7.2 (2026-10-22) — **Correção: a leitura do BI por fotografia não funcionava**
+
+> **CAUSA REAL, medida em 2026-10-22:** o Worker chamava `gemini-3.8-flash`, que
+> demorou **170 s** e **390 s** no mesmo pedido em que `gemini-3.6-flash` demorou
+> **3,0 s** (6/6 campos em ambos). Um subrequest de um Worker da Cloudflare é
+> cortado aos **~100 s**, portanto a chamada nunca chegava ao fim e a app recebia
+> 5xx. `gemini-2.5-flash` devolve `404 no longer available to new users`.
+> **Worker v2.1.0:** modelos rápidos (`3.6-flash → 3.5-flash-lite → 3.1-flash-lite`),
+> timeout de 45 s por tentativa, fallback alargado a `408/429/5xx`,
+> `thinkingLevel: low`. Depois da correção: **4,8–10,3 s, 6/6 campos**.
+>
+> Nota de honestidade: a primeira versão de `docs/FIX-LEITURA-BI.md` apontava como
+> causa principal o Worker estar desatualizado. **Estava errado** — a inspeção pela
+> API mostrou que o código publicado já era a v1.7.1, com as rotas de visão. O
+> documento foi corrigido com as medições.
 
 > Guia completo em [`docs/FIX-LEITURA-BI.md`](./FIX-LEITURA-BI.md).
 
@@ -33,6 +47,15 @@
    Identidade" no formulário e no perfil; normalizadores `normalizeDate`,
    `normalizeGender`, `normalizePhone`, `normalizeDocumentNumber`,
    `normalizeMemberFields`; toast a dizer exatamente o que a IA preencheu.
+
+**Armadilha do Wrangler (documentada e contornada):** `wrangler deploy` apaga os
+segredos do Worker que não estiverem no `wrangler.toml` — destruiria
+`GEMINI_API_KEY` e `FIREBASE_SA_JSON`. Acrescentado `scripts/deploy-worker-api.mjs`,
+que publica pela API da Cloudflare **reenviando os bindings existentes** (preserva os
+segredos), pára se faltar algum, e confirma o `/__health` no fim. O
+`wrangler.toml`, o `deploy-ai-worker.yml` e os guias ficaram com o aviso; o
+workflow fotografa os segredos antes/depois e falha se algum desaparecer.
+Guia curto para não-técnicos: `docs/INICIO-RAPIDO.md`.
 
 **Ferramentas novas:** `npm run test:bi` corre a mesma foto em 3 modos (v1.7.x vs.
 corrigido vs. corrigido+schema) usando `scripts/testdata/exemplo-bi-angola.jpg`

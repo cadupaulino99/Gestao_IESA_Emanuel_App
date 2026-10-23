@@ -1,6 +1,30 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Cloudflare Worker "iesa-ai" — backend de IA do Gestão IESA Emanuel
 # ─────────────────────────────────────────────────────────────────────────────
+# ⚠️  AVISO — LEIA ANTES DE FAZER DEPLOY
+#
+#   O `wrangler deploy` APAGA os segredos do Worker que não estiverem
+#   declarados neste ficheiro (comportamento conhecido do Wrangler).
+#   Como GEMINI_API_KEY e FIREBASE_SA_JSON são segredos e NÃO podem vir para
+#   aqui, um `deploy` destrói-os e o Worker deixa de falar com o Gemini e com
+#   o Firestore.
+#
+#   ANTES de qualquer deploy:
+#       npx wrangler secret list --config worker/wrangler.toml
+#   e confirme que GEMINI_API_KEY e FIREBASE_SA_JSON aparecem na lista.
+#
+#   DEPOIS de qualquer deploy, volte a verificar e, se tiverem desaparecido,
+#   reponha-os:
+#       npx wrangler secret put GEMINI_API_KEY   --config worker/wrangler.toml
+#       npx wrangler secret put FIREBASE_SA_JSON --config worker/wrangler.toml
+#
+#   Alternativa mais segura (é a que o assistente usa): publicar pela API da
+#   Cloudflare reenviando os `bindings` existentes, o que preserva os segredos.
+#
+#   Verificação final, SEMPRE:  https://iesa-ai.cadupaulino99.workers.dev/__health
+#   → "version": "2.0.0", "vision": true, GEMINI_API_KEY: true,
+#     FIREBASE_SA_JSON: true
+# ─────────────────────────────────────────────────────────────────────────────
 # Deploy manual (uma vez, na sua máquina):
 #     npm install -g wrangler
 #     wrangler login
