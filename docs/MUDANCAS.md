@@ -1,5 +1,82 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.7.2 (2026-10-22) — **Correção: a leitura do BI por fotografia não funcionava**
+
+> **CAUSA REAL, medida em 2026-10-22:** o Worker chamava `gemini-3.8-flash`, que
+> demorou **170 s** e **390 s** no mesmo pedido em que `gemini-3.6-flash` demorou
+> **3,0 s** (6/6 campos em ambos). Um subrequest de um Worker da Cloudflare é
+> cortado aos **~100 s**, portanto a chamada nunca chegava ao fim e a app recebia
+> 5xx. `gemini-2.5-flash` devolve `404 no longer available to new users`.
+> **Worker v2.1.0:** modelos rápidos (`3.6-flash → 3.5-flash-lite → 3.1-flash-lite`),
+> timeout de 45 s por tentativa, fallback alargado a `408/429/5xx`,
+> `thinkingLevel: low`. Depois da correção: **4,8–10,3 s, 6/6 campos**.
+>
+> Nota de honestidade: a primeira versão de `docs/FIX-LEITURA-BI.md` apontava como
+> causa principal o Worker estar desatualizado. **Estava errado** — a inspeção pela
+> API mostrou que o código publicado já era a v1.7.1, com as rotas de visão. O
+> documento foi corrigido com as medições.
+
+> Guia completo em [`docs/FIX-LEITURA-BI.md`](./FIX-LEITURA-BI.md).
+
+**Três causas, todas corrigidas:**
+
+1. **O Worker na Cloudflare estava desatualizado** (causa principal, confirmada:
+   `GET /__health` devolve 401). As rotas `/assistant/extract-member` e
+   `/assistant/extract-receipt` só existem a partir da v1.7.0, mas o Worker era
+   publicado **à mão** (colar no editor da Cloudflare) — o APK novo não o atualiza.
+   Sem as rotas, a app recebia `404 "Rota nao encontrada"`.
+   → **Novo:** `worker/wrangler.toml` + `.github/workflows/deploy-ai-worker.yml`
+   (deploy automático em cada push que mude `worker/**`), `npm run deploy:worker`,
+   `npm run worker:health`, rotas `/__health` e `/assistant/selftest` de diagnóstico,
+   e `WORKER_VERSION` no código. O 404 passa a explicar o que fazer.
+2. **O pedido ao Gemini não tinha resolução para OCR.** Sem `mediaResolution`, o
+   Gemini 3 dedica poucos tokens à imagem e não lê o texto pequeno do BI (nº,
+   emissão, morada). Além disso o texto ia **antes** da imagem (a Google recomenda o
+   inverso), `temperature: 0.1` pode provocar `400` nos modelos 3.x, e não havia
+   `responseSchema`.
+   → **Corrigido:** `MEDIA_RESOLUTION_HIGH` (global e por parte), imagem antes do
+   prompt, `responseSchema` por tipo de documento, remoção do `temperature`,
+   **fallback de modelos** (`3.8-flash → 3.6-flash → 2.5-flash`) e 4 configurações
+   tentadas por ordem. Aceita data URL, valida o MIME e o limite de 20 MB.
+3. **A app lia mas deitava os dados fora.** `Members.tsx → onApply` ignorava
+   `documentNumber`, `gender` e `issueDate`; `birthDate` vinha `07/03/1990` mas o
+   `<input type="date">` exige `1990-03-07`; `gender` vinha `M` mas o `<Select>`
+   exige `Masculino` — ambos rejeitados **em silêncio**. E o tipo `Member` nem tinha
+   campo para o nº do BI.
+   → **Corrigido:** `Member.documentNumber`/`issueDate` + campo "Nº do Bilhete de
+   Identidade" no formulário e no perfil; normalizadores `normalizeDate`,
+   `normalizeGender`, `normalizePhone`, `normalizeDocumentNumber`,
+   `normalizeMemberFields`; toast a dizer exatamente o que a IA preencheu.
+
+**Armadilha do Wrangler (documentada e contornada):** `wrangler deploy` apaga os
+segredos do Worker que não estiverem no `wrangler.toml` — destruiria
+`GEMINI_API_KEY` e `FIREBASE_SA_JSON`. Acrescentado `scripts/deploy-worker-api.mjs`,
+que publica pela API da Cloudflare **reenviando os bindings existentes** (preserva os
+segredos), pára se faltar algum, e confirma o `/__health` no fim. O
+`wrangler.toml`, o `deploy-ai-worker.yml` e os guias ficaram com o aviso; o
+workflow fotografa os segredos antes/depois e falha se algum desaparecer.
+Guia curto para não-técnicos: `docs/INICIO-RAPIDO.md`.
+
+**Ferramentas novas:** `npm run test:bi` corre a mesma foto em 3 modos (v1.7.x vs.
+corrigido vs. corrigido+schema) usando `scripts/testdata/exemplo-bi-angola.jpg`
+(BI fictício) — isola em segundos se o problema é o Gemini, o Worker ou a app.
+O `DocumentReaderModal` ganha botão **"Testar ligação"**, painel de **Diagnóstico**
+(versão do Worker, segredos presentes, papel do utilizador, Gemini alcançável),
+**"Tentar novamente"** e mostra a dimensão/peso da imagem optimizada.
+`compressImageFile` passa a ter fundo branco (PNG transparente não fica preto) e
+*fallback* para os bytes originais quando o `<canvas>` não descodifica (HEIC/HEIF).
+
+**Novo separador «Diagnóstico IA» em *Suporte***: corre automaticamente ao abrir e
+mostra, em linguagem simples, a versão do Worker, se a leitura de documentos está
+publicada, se os segredos `GEMINI_API_KEY`/`FIREBASE_SA_JSON`/`PROJECT_ID` existem,
+o papel do utilizador e se o Gemini responde — com a indicação do que fazer em cada
+falha. A lógica é partilhada com o modal de documentos através de
+`runAiDiagnostics()` em `src/lib/ai.ts` (um só sítio para manter).
+
+Validação: `npx tsc --noEmit` ✅ · `node --check worker/ai-worker.js` ✅
+
+---
+
 ## v1.7.0 (2026-10-22) — Visão com IA: ler documentos por fotografia
 
 - **Novo no Worker** (colar no painel Cloudflare!): `/assistant/extract-member` (BI e cartão de

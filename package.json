@@ -1,7 +1,7 @@
 {
   "name": "gestao-iesa-emanuel-xangongo",
   "private": true,
-  "version": "1.7.1",
+  "version": "1.7.2",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -13,7 +13,12 @@
     "build:android": "vite build && cap sync android",
     "build:web": "vite build",
     "open:android": "cap open android",
-    "cap:sync": "cap sync"
+    "cap:sync": "cap sync",
+    "deploy:worker": "node scripts/deploy-worker-api.mjs",
+    "deploy:worker:check": "node scripts/deploy-worker-api.mjs --check",
+    "deploy:worker:wrangler": "wrangler deploy --config worker/wrangler.toml",
+    "worker:health": "node scripts/worker-health.mjs",
+    "test:bi": "node scripts/test-gemini-bi.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.2",

@@ -4,7 +4,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
-import { compressImageFile, aiExtractMember, aiExtractReceipt } from '../../lib/ai';
+import {
+  compressImageFile,
+  aiExtractMember,
+  aiExtractReceipt,
+  normalizeMemberFields,
+  runAiDiagnostics,
+} from '../../lib/ai';
 
 export type DocKind = 'bi' | 'cartao' | 'comprovativo';
 
@@ -50,17 +56,27 @@ interface Props {
 export default function DocumentReaderModal({ open, onOpenChange, kind, onApply }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [payload, setPayload] = useState<{ base64: string; mimeType: string } | null>(null);
+  const [payload, setPayload] = useState<{
+    base64: string;
+    mimeType: string;
+    width?: number;
+    height?: number;
+    approxKb?: number;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState<string>('');
   const [fields, setFields] = useState<Record<string, string | number | null> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [diag, setDiag] = useState<string | null>(null);
 
   const reset = () => {
     setPreview(null);
     setPayload(null);
     setFields(null);
     setError(null);
+    setDiag(null);
     setBusy(false);
+    setBusyLabel('');
   };
 
   const handleFile = async (f: File) => {
@@ -69,8 +85,10 @@ export default function DocumentReaderModal({ open, onOpenChange, kind, onApply 
       return;
     }
     setBusy(true);
+    setBusyLabel('A preparar a imagem…');
     setError(null);
     setFields(null);
+    setDiag(null);
     try {
       const p = await compressImageFile(f);
       setPayload(p);
@@ -82,29 +100,58 @@ export default function DocumentReaderModal({ open, onOpenChange, kind, onApply 
     }
   };
 
+  /** Testa a ligação ao servidor de IA (Worker, segredos, papel, Gemini). */
+  const runDiagnostics = async () => {
+    setBusy(true);
+    setBusyLabel('A testar a ligação da IA…');
+    setError(null);
+    try {
+      const { lines } = await runAiDiagnostics();
+      setDiag(lines.join('\n'));
+    } finally {
+      setBusy(false);
+      setBusyLabel('');
+    }
+  };
+
   const extract = async () => {
     if (!payload) return;
     setBusy(true);
+    setBusyLabel('A ler o documento com IA…');
     setError(null);
+    setDiag(null);
     try {
-      const f =
-        kind === 'comprovativo'
-          ? await aiExtractReceipt(payload.base64, payload.mimeType)
-          : await aiExtractMember(payload.base64, payload.mimeType, kind);
-      const clean = Object.fromEntries(
-        Object.entries(f as Record<string, unknown>)
-          .filter(([, v]) => v !== null && v !== undefined && v !== '')
-          .map(([k, v]) => [k, v as string | number])
-      );
-      if (Object.keys(clean).length === 0) {
-        setError('Não consegui ler nada utilizável nesta imagem. Tente uma foto mais nítida, com boa luz e sem reflexos.');
+      if (kind === 'comprovativo') {
+        const f = await aiExtractReceipt(payload.base64, payload.mimeType);
+        const clean = Object.fromEntries(
+          Object.entries(f as Record<string, unknown>)
+            .filter(([, v]) => v !== null && v !== undefined && v !== '')
+            .map(([k, v]) => [k, v as string | number])
+        );
+        if (Object.keys(clean).length === 0) {
+          setError('Não consegui ler nada utilizável neste comprovativo. Tente uma foto mais nítida, com boa luz e sem reflexos.');
+        } else {
+          setFields(clean);
+        }
       } else {
-        setFields(clean);
+        const raw = await aiExtractMember(payload.base64, payload.mimeType, kind);
+        /* Normaliza datas (AAAA-MM-DD), sexo (Masculino/Feminino) e telefone (+244…)
+           — sem isto o formulário ignora os valores e parece que a IA não leu nada. */
+        const clean = normalizeMemberFields(raw);
+        if (Object.keys(clean).length === 0) {
+          setError(
+            'A IA não encontrou dados legíveis nesta imagem. Aproxime-se do documento, evite reflexos e sombras, ' +
+            'enquadre o BI todo e tire nova foto. Se o erro persistir, corra o teste de ligação.'
+          );
+        } else {
+          setFields(clean);
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao ler o documento.');
     } finally {
       setBusy(false);
+      setBusyLabel('');
     }
   };
 
@@ -170,22 +217,50 @@ export default function DocumentReaderModal({ open, onOpenChange, kind, onApply 
               </button>
             </div>
 
+            {payload?.approxKb !== undefined && (
+              <div className="text-[11px] text-slate-400 text-center">
+                Imagem optimizada: {payload.width}×{payload.height} px · ~{payload.approxKb} KB
+              </div>
+            )}
+
             {!fields && !busy && (
-              <Button onClick={extract} className="w-full gap-2">
-                <Sparkles className="h-4 w-4" /> Ler com IA
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={extract} className="flex-1 gap-2">
+                  <Sparkles className="h-4 w-4" /> Ler com IA
+                </Button>
+                <Button type="button" variant="outline" onClick={runDiagnostics} className="gap-1.5 text-xs">
+                  <AlertTriangle className="h-3.5 w-3.5" /> Testar ligação
+                </Button>
+              </div>
             )}
             {busy && (
               <div className="flex items-center justify-center gap-2 py-3 text-sm text-slate-500">
-                <Loader2 className="h-4 w-4 animate-spin" /> A ler o documento…
+                <Loader2 className="h-4 w-4 animate-spin" /> {busyLabel || 'A processar…'}
               </div>
             )}
           </div>
         )}
 
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-300/60 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300/60 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" /> <span className="whitespace-pre-line">{error}</span>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={runDiagnostics} disabled={busy} className="flex-1 text-xs">
+                Testar ligação da IA
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={extract} disabled={busy || !payload} className="flex-1 text-xs">
+                Tentar novamente
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {diag && (
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Diagnóstico</div>
+            <pre className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-slate-700 dark:text-slate-300">{diag}</pre>
           </div>
         )}
 

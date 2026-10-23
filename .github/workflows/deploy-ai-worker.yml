@@ -1,0 +1,86 @@
+name: deploy-ai-worker
+
+# Publica o Cloudflare Worker "iesa-ai" automaticamente sempre que o código do
+# Worker muda. ISTO É O QUE FALTAVA: antes o Worker só era atualizado colando o
+# código à mão no editor da Cloudflare, por isso as rotas novas
+# (/assistant/extract-member e /assistant/extract-receipt — leitura do BI)
+# nunca chegavam ao servidor e a app recebia 404 "Rota nao encontrada".
+#
+# Configuração obrigatória (uma vez):
+#   1. Cloudflare → My Profile → API Tokens → Create Token
+#      → Account / Workers Scripts / Edit → copiar o token
+#   2. GitHub → repositório → Settings → Secrets and variables → Actions
+#      → New repository secret:
+#         CLOUDFLARE_API_TOKEN  = <token>
+#         CLOUDFLARE_ACCOUNT_ID = <id da conta>
+#
+# ⚠️ O `wrangler deploy` APAGA os segredos do Worker que não estiverem no
+#    wrangler.toml. Este job fotografa os segredos antes e depois e FALHA se
+#    algum desaparecer, em vez de deixar o Worker sem chaves em silêncio.
+#
+# Verificação após o deploy:
+#   https://iesa-ai.cadupaulino99.workers.dev/__health
+#   → "version": "2.0.0" (ou superior), "vision": true
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-ai-worker.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Publicar Worker iesa-ai
+    # Sem os secrets da Cloudflare o job fica SKIPPED (verde) em vez de FAILED
+    # (vermelho) — a publicação manual continua disponível com `npm run deploy:worker`.
+    if: ${{ vars.CF_DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # scripts/deploy-worker-api.mjs lê estas duas variáveis
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar secrets do repositório
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo '::error::Faltam CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID em Settings → Secrets and variables → Actions.'
+            echo '        O token precisa de Account → Workers Scripts → EDIT (Read não chega).'
+            exit 1
+          fi
+
+      - name: Validar sintaxe do Worker
+        run: node --check worker/ai-worker.js
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ⚠️ NÃO usar cloudflare/wrangler-action: o `wrangler deploy` APAGA os
+      # segredos do Worker que não estiverem no wrangler.toml — destruiria
+      # GEMINI_API_KEY e FIREBASE_SA_JSON. Usa-se o script que publica pela API
+      # reenviando os bindings existentes (preserva-os) e pára se faltar algum.
+      - name: Inspecionar bindings antes do deploy
+        run: |
+          node scripts/deploy-worker-api.mjs --check | tee /tmp/check.txt || true
+          if grep -q 'FALTAM segredos' /tmp/check.txt; then
+            echo '::error::Faltam chaves no Worker. Defina-as no painel (Settings → Variables and Secrets) antes de publicar.'
+            exit 1
+          fi
+
+      - name: Publicar pela API (preserva os bindings)
+        run: node scripts/deploy-worker-api.mjs
+
+      - name: Confirmar /__health no ar
+        run: |
+          sleep 5
+          curl -fsS https://iesa-ai.cadupaulino99.workers.dev/__health | tee /tmp/health.json
+          echo
+          grep -q '"vision":true' /tmp/health.json || { echo '::error::vision nao esta ativo'; exit 1; }
+          grep -q '"GEMINI_API_KEY":true' /tmp/health.json || { echo '::error::GEMINI_API_KEY em falta'; exit 1; }
+          grep -q '"FIREBASE_SA_JSON":true' /tmp/health.json || { echo '::error::FIREBASE_SA_JSON em falta'; exit 1; }
+          echo 'Worker publicado, visao ativa e chaves presentes.'

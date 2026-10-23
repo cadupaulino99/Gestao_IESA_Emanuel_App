@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Badge } from '../components/ui/badge';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext';
-import { aiChat } from '../lib/ai';
+import { aiChat, runAiDiagnostics, WORKER_URL } from '../lib/ai';
 import { 
   Bot, 
   User as UserIcon, 
@@ -23,7 +23,8 @@ import {
   Check, 
   RotateCw,
   Lightbulb,
-  HeartHandshake
+  HeartHandshake,
+  Stethoscope
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -36,7 +37,12 @@ interface ChatMessage {
 export default function Support() {
   const { user, userRole } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'ai' | 'team'>('ai');
+  const [activeTab, setActiveTab] = useState<'ai' | 'team' | 'diag'>('ai');
+
+  // Diagnóstico da ligação de IA (Worker + Gemini + papel do utilizador)
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [diagLines, setDiagLines] = useState<string[]>([]);
+  const [diagOk, setDiagOk] = useState<boolean | null>(null);
 
   // Human Team Chat State
   const [teamMessage, setTeamMessage] = useState('');
@@ -152,6 +158,23 @@ export default function Support() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const runDiag = async () => {
+    setDiagBusy(true);
+    try {
+      const r = await runAiDiagnostics();
+      setDiagLines(r.lines);
+      setDiagOk(r.ok);
+    } finally {
+      setDiagBusy(false);
+    }
+  };
+
+  // Corre o diagnóstico automaticamente ao abrir o separador (uma vez)
+  useEffect(() => {
+    if (activeTab === 'diag' && diagLines.length === 0 && !diagBusy) void runDiag();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
   const suggestedPrompts = [
     'Elaborar mensagem pastoral de boas-vindas a um novo membro.',
     'Como registar devidamente uma oferta especial ou de construção?',
@@ -181,6 +204,11 @@ export default function Support() {
             <TabsTrigger value="team" className="gap-2">
               <MessageSquare className="h-4 w-4 text-blue-500" />
               Equipa Interna
+            </TabsTrigger>
+            <TabsTrigger value="diag" className="gap-2">
+              <Stethoscope className="h-4 w-4 text-emerald-500" />
+              <span className="hidden sm:inline">Diagnóstico IA</span>
+              <span className="sm:hidden">IA</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -330,7 +358,7 @@ export default function Support() {
             </form>
           </div>
         </Card>
-      ) : (
+      ) : activeTab === 'team' ? (
         <Card className="flex-1 flex flex-col overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm">
           <CardHeader className="py-3 px-4 border-b bg-slate-50/50 dark:bg-slate-900/40">
             <CardTitle className="text-base flex items-center gap-2">
@@ -393,6 +421,81 @@ export default function Support() {
               </Button>
             </form>
           </div>
+        </Card>
+      ) : (
+        <Card className="flex-1 flex flex-col overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm">
+          <CardHeader className="py-3 px-4 border-b bg-slate-50/50 dark:bg-slate-900/40 flex flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-xl bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <Stethoscope className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Diagnóstico da ligação de IA</CardTitle>
+                <CardDescription className="text-xs">
+                  Verifica o servidor (Cloudflare Worker), os segredos, o seu papel e o Gemini.
+                  Use antes de reportar uma falha na leitura do BI, de comprovativos ou do assistente.
+                </CardDescription>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={runDiag} disabled={diagBusy} className="gap-2 shrink-0">
+              <RotateCw className={`h-4 w-4 ${diagBusy ? 'animate-spin' : ''}`} />
+              Repetir
+            </Button>
+          </CardHeader>
+
+          <CardContent className="flex-1 overflow-y-auto p-4 space-y-3">
+            {diagBusy && diagLines.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+                <Sparkles className="h-4 w-4 animate-spin text-emerald-500" /> A testar a ligação…
+              </div>
+            ) : (
+              <>
+                <div
+                  className={`rounded-xl border px-3 py-2.5 text-sm font-medium ${
+                    diagOk
+                      ? 'border-emerald-300/60 bg-emerald-50 text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-200'
+                      : 'border-amber-300/60 bg-amber-50 text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200'
+                  }`}
+                >
+                  {diagOk
+                    ? '✓ Tudo operacional — a leitura de documentos por fotografia deve funcionar.'
+                    : '⚠ Há algo a corrigir. Siga as indicações com "→" abaixo.'}
+                </div>
+
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-3">
+                  <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-slate-700 dark:text-slate-300">
+                    {diagLines.join('\n') || 'Sem resultado ainda — carregue em "Repetir".'}
+                  </pre>
+                </div>
+
+                <div className="text-[11px] text-muted-foreground space-y-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-medium">Servidor:</span>
+                    <code className="break-all">{WORKER_URL}</code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(`${WORKER_URL}/__health`);
+                        toast.success('Link de diagnóstico copiado.');
+                      }}
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      <Copy className="h-3 w-3" /> copiar /__health
+                    </button>
+                  </div>
+                  <p>
+                    O mesmo teste está disponível dentro do leitor de documentos
+                    (Membros → Novo → 🪪 Bilhete de Identidade → <b>Testar ligação</b>).
+                  </p>
+                  <p>
+                    Fora da app: <code>npm run worker:health</code> (versão do servidor) e{' '}
+                    <code>npm run test:bi</code> (teste de OCR direto ao Gemini). Guia completo em{' '}
+                    <code>docs/FIX-LEITURA-BI.md</code>.
+                  </p>
+                </div>
+              </>
+            )}
+          </CardContent>
         </Card>
       )}
     </div>

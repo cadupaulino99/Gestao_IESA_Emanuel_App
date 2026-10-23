@@ -32,6 +32,7 @@ import 'jspdf-autotable';
 
 const memberSchema = z.object({
   name: z.string().min(2, "O nome deve ter pelo menos 2 caracteres"),
+  documentNumber: z.string().optional(),
   phone: z.string().optional(),
   birthDate: z.string().optional(),
   baptismDate: z.string().optional(),
@@ -306,6 +307,7 @@ export default function Members() {
 
     reset({
       name: member.name,
+      documentNumber: member.documentNumber || '',
       phone: member.phone || '',
       birthDate: member.birthDate || '',
       baptismDate: member.baptismDate || '',
@@ -460,13 +462,26 @@ export default function Members() {
                         onOpenChange={(o) => { if (!o) setDocKind(null); }}
                         kind={(docKind || 'bi') as DocKind}
                         onApply={(f) => {
-                          const s = (v: unknown) => (v === null || v === undefined ? undefined : String(v));
-                          if (s(f.name) !== undefined) setValue('name', s(f.name));
-                          if (s(f.phone) !== undefined) setValue('phone', s(f.phone));
-                          if (s(f.birthDate) !== undefined) setValue('birthDate', s(f.birthDate));
-                          if (s(f.baptismDate) !== undefined) setValue('baptismDate', s(f.baptismDate));
-                          if (s(f.address) !== undefined) setValue('address', s(f.address));
-                          if (s(f.groupCell) !== undefined) setValue('groupCell', s(f.groupCell));
+                          /* Os valores já vêm normalizados por normalizeMemberFields()
+                             (datas AAAA-MM-DD, sexo Masculino/Feminino, tel. +244…).
+                             Aqui só copiamos para o formulário — e avisamos o que a IA leu. */
+                          const s = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : String(v));
+                          const applied: string[] = [];
+                          const set = (field: 'name' | 'documentNumber' | 'phone' | 'birthDate' | 'baptismDate' | 'address' | 'groupCell' | 'gender', label: string) => {
+                            const v = s(f[field]);
+                            if (v !== undefined) { setValue(field, v as never, { shouldDirty: true }); applied.push(label); }
+                          };
+                          set('name', 'Nome');
+                          set('documentNumber', 'Nº do BI');
+                          set('phone', 'Telefone');
+                          set('birthDate', 'Nascimento');
+                          set('baptismDate', 'Baptismo');
+                          set('address', 'Morada');
+                          set('groupCell', 'Célula');
+                          set('gender', 'Género');
+                          if (applied.length) {
+                            toast.success(`IA preencheu: ${applied.join(', ')}. Confira antes de guardar.`);
+                          }
                         }}
                       />
                     </div>
@@ -478,7 +493,13 @@ export default function Members() {
                       </div>
                       <div className="space-y-2">
                         <Label>Telefone</Label>
-                        <Input {...register("phone")} />
+                        <Input {...register("phone")} placeholder="+244 9XX XXX XXX" inputMode="tel" />
+                      </div>
+
+                      <div className="space-y-2 md:col-span-2">
+                        <Label>Nº do Bilhete de Identidade</Label>
+                        <Input {...register("documentNumber")} placeholder="Ex.: 004578123LA040" inputMode="numeric" />
+                        <span className="text-[11px] text-muted-foreground">Preenchido automaticamente ao ler a foto do BI com IA.</span>
                       </div>
                       
                       <div className="space-y-2">
@@ -706,6 +727,18 @@ export default function Members() {
                       <div>
                         <span className="text-muted-foreground block">Telefone</span>
                         {selectedMember.phone || '-'}
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Nº do BI</span>
+                        {selectedMember.documentNumber || '-'}
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Nascimento</span>
+                        {selectedMember.birthDate || '-'}
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Morada</span>
+                        {selectedMember.address || '-'}
                       </div>
                       <div>
                         <span className="text-muted-foreground block">Célula</span>

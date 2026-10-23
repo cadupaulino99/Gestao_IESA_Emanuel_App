@@ -17,10 +17,20 @@
  *   PROJECT_ID        iesa-emanuel-xangongo
  */
 
+/* VERSAO do codigo do Worker.
+   IMPORTANTE: sempre que este ficheiro mudar, o Worker TEM de ser re-publicado
+   (Cloudflare -> Workers -> iesa-ai -> Edit code -> colar -> Save and Deploy,
+   ou `npm run deploy:worker`). O APK nao contem o Worker: se publicar so o APK,
+   as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
+   app recebe 404 "Rota nao encontrada".
+   Consulte GET /__health para confirmar qual versao esta no ar. */
+const WORKER_VERSION = '2.1.0';
+const WORKER_BUILD = '2026-10-23 (modelos rapidos + timeout)';
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
 const json = (obj, status = 200) =>
@@ -225,51 +235,238 @@ async function getRole(email, env) {
 /* ------------------------------------------------------------------ */
 /* 3. Gemini                                                           */
 /* ------------------------------------------------------------------ */
-async function gemini(env, prompt, systemInstruction) {
-  const r = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-      }),
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   ORDEM DOS MODELOS — ISTO ERA A CAUSA DA FALHA NA LEITURA DO BI
+   ─────────────────────────────────────────────────────────────────────────────
+   Medicoes reais em 2026-10-22 com a chave do projeto (BI de exemplo, 6 campos):
+
+     gemini-3.8-flash      170.0 s  e  390.6 s   ← 6/6 campos, mas LENTISSIMO
+     gemini-3.6-flash        3.0 s               ← 6/6 campos
+     gemini-3.5-flash-lite   1.9 s               ← 6/6 campos
+     gemini-3.1-flash-lite   2.2 s               ← 6/6 campos
+     gemini-2.5-flash        HTTP 404 "no longer available to new users"
+
+   O Worker usava gemini-3.8-flash. Um subrequest de um Worker da Cloudflare e
+   cortado aos ~100 s (CPU/wall), portanto a chamada AO GEMINI NUNCA CHEGAVA AO
+   FIM: a app recebia 5xx/502 e o utilizador via "falha na leitura". E como o
+   fallback so existia para 400/404 de modelo, nao havia rede de seguranca.
+
+   Regra: para OCR de documentos usa-se um modelo RAPIDO. Ha um relato publico
+   de latencia extrema no Gemini 3 Flash ("API requests that would take seconds
+   now take over 5 minutes"), o que bate certo com a medicao acima.
+
+   NAO voltar a meter gemini-3.8-flash aqui sem medir primeiro (`npm run test:bi`).
+   gemini-2.5-flash esta removido: devolve 404 em chaves novas e so queimava tempo.
+   ───────────────────────────────────────────────────────────────────────────── */
+const GEMINI_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+];
+
+/* Timeout por tentativa. Tem de ficar ABAIXO do limite de subrequest da
+   Cloudflare (~100 s), senao e a Cloudflare que desliga e o fallback nao corre.
+   Com 45 s ha margem para 2 tentativas dentro do orcamento. */
+const GEMINI_TIMEOUT_MS = 45_000;
+
+/* Le a chave do header `x-goog-api-key` (v1beta), com timeout explicito. */
+async function geminiPost(env, model, body, timeoutMs = GEMINI_TIMEOUT_MS) {
+  let r;
+  try {
+    r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      }
+    );
+  } catch (e) {
+    /* AbortError / TimeoutError: o modelo demorou demais. Marca como repetivel
+       para que geminiWithFallback passe ao modelo seguinte em vez de rebentar. */
+    const err = new Error(`Tempo esgotado ao falar com ${model} (>${Math.round(timeoutMs / 1000)}s).`);
+    err.status = 408;
+    err.model = model;
+    err.retryable = true;
+    throw err;
+  }
+  const txt = await r.text();
+  let j = null;
+  try { j = txt ? JSON.parse(txt) : null; } catch { /* HTML/pagina de erro */ }
+  if (!r.ok) {
+    const msg = j?.error?.message || txt.slice(0, 300) || `erro Gemini ${r.status}`;
+    const e = new Error(msg);
+    e.status = r.status;
+    e.model = model;
+    throw e;
+  }
+  return j;
+}
+
+/* Tenta os modelos por ordem. Faz fallback para: modelo inexistente/config
+   invalida (400/404), timeout (408), quota (429) e erro do servidor (5xx) —
+   que e exatamente o que acontecia com gemini-3.8-flash: a Cloudflare cortava a
+   chamada aos ~100 s e a app ficava sem resposta nenhuma. */
+function isRetryable(e) {
+  if (e?.retryable) return true;
+  const st = e?.status;
+  return st === 400 || st === 404 || st === 408 || st === 429 || (st >= 500 && st <= 599);
+}
+
+async function geminiWithFallback(env, body) {
+  let last = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const j = await geminiPost(env, model, body);
+      return { json: j, model };
+    } catch (e) {
+      last = e;
+      if (!isRetryable(e)) break;
     }
-  );
-  const j = await r.json();
-  if (!r.ok) throw new Error(j?.error?.message || 'erro Gemini ' + r.status);
-  const parts = j?.candidates?.[0]?.content?.parts || [];
-  return parts.map((p) => p.text || '').join('');
+  }
+  throw last || new Error('Sem modelo Gemini disponivel.');
+}
+
+const partsToText = (j) =>
+  (j?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+
+async function gemini(env, prompt, systemInstruction) {
+  const { json: j, model } = await geminiWithFallback(env, {
+    contents: [{ parts: [{ text: prompt }] }],
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+  });
+  const t = partsToText(j);
+  if (!t) throw new Error(`Resposta vazia do modelo ${model}.`);
+  return t;
 }
 
 /* ------------------------------------------------------------------ */
 /* 3b. Gemini com VISAO (documentos: BI, cartao de membro, comprovativos) */
+/*                                                                     */
+/* Tres correcoes face a versao anterior:                              */
+/*  A) `mediaResolution: MEDIA_RESOLUTION_HIGH` — sem isto o Gemini 3   */
+/*     aloca poucos tokens a imagem e NAO le o texto pequeno do BI      */
+/*     (numero, data de emissao, morada). E o parametro oficial para     */
+/*     "compreensao de documentos densos".                              */
+/*  B) A imagem vai ANTES do texto — recomendacao oficial da Google      */
+/*     para pedidos com uma imagem + prompt.                            */
+/*  C) `responseSchema` — obriga o modelo a devolver exatamente as       */
+/*     chaves/tipos pedidos (structured output). Acaba com o "a IA       */
+/*     devolveu texto livre e o JSON.parse falhou".                     */
 /* ------------------------------------------------------------------ */
-async function geminiVision(env, prompt, systemInstruction, imageBase64, mimeType) {
-  const r = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType, data: imageBase64 } }] }],
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
-      }),
-    }
-  );
-  const j = await r.json();
-  if (!r.ok) throw new Error(j?.error?.message || 'erro Gemini ' + r.status);
-  const txt = (j?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
-  try { return JSON.parse(txt); } catch {
-    const m = txt.match(/\{[\s\S]*\}/);
-    if (m) { try { return JSON.parse(m[0]); } catch { /* cai para erro */ } }
-    const e = new Error('Resposta da IA nao era JSON valido.');
-    e.raw = txt.slice(0, 300);
-    throw e;
+async function geminiVision(env, prompt, systemInstruction, imageBase64, mimeType, responseSchema) {
+  if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY nao esta definida no Worker (Settings -> Variables and Secrets).');
+  if (!imageBase64 || typeof imageBase64 !== 'string') throw new Error('Imagem vazia ou em formato invalido.');
+
+  /* Aceita base64 puro ou data URL ("data:image/jpeg;base64,....") — alguns
+     clientes mandam o data URL inteiro e o Gemini rejeita-o. */
+  let data = String(imageBase64).trim();
+  let mime = mimeType || 'image/jpeg';
+  const m = data.match(/^data:([^;,]+);base64,(.*)$/s);
+  if (m) { mime = m[1]; data = m[2]; }
+  data = data.replace(/\s+/g, '');
+
+  const SUPPORTED = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+  if (!SUPPORTED.includes(mime)) mime = 'image/jpeg';
+
+  /* ~20 MB e o limite do pedido inline; base64 incha 33%. */
+  if (data.length > 26_000_000) {
+    throw new Error('Imagem demasiado grande para enviar (limite ~20 MB). Tire outra foto ou reduza a resolucao.');
   }
+
+  const imagePart = {
+    inlineData: { mimeType: mime, data },
+    /* Per-part: garante alta resolucao mesmo que o global seja ignorado. */
+    mediaResolution: { level: 'MEDIA_RESOLUTION_HIGH' },
+  };
+
+  const baseBody = {
+    /* (B) imagem primeiro, prompt depois */
+    contents: [{ parts: [imagePart, { text: prompt }] }],
+    systemInstruction: { parts: [{ text: systemInstruction }] },
+  };
+
+  /* thinkingLevel 'low' — OCR de documentos nao precisa de raciocinio profundo e
+     o nivel baixo corta a latencia. Medido: 6/6 campos em ~2-3 s nos flash-lite. */
+  const THINK = { thinkingLevel: 'low' };
+  const configs = [
+    { responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH', thinkingConfig: THINK, ...(responseSchema ? { responseSchema } : {}) },
+    { responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH', ...(responseSchema ? { responseSchema } : {}) },
+    { responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH' },
+    { responseMimeType: 'application/json' },
+    {},
+  ];
+
+  let lastErr = null;
+  for (const generationConfig of configs) {
+    try {
+      const { json: j, model } = await geminiWithFallback(env, { ...baseBody, generationConfig });
+      const txt = partsToText(j).trim();
+      if (!txt) { lastErr = new Error(`Resposta vazia do modelo ${model}.`); continue; }
+      try {
+        return JSON.parse(txt);
+      } catch {
+        const found = txt.match(/\{[\s\S]*\}/);
+        if (found) { try { return JSON.parse(found[0]); } catch { /* continua */ } }
+        const e = new Error('A IA nao devolveu JSON valido.');
+        e.raw = txt.slice(0, 300);
+        throw e;
+      }
+    } catch (e) {
+      lastErr = e;
+      /* generationConfig invalido, modelo indisponivel, timeout ou 5xx:
+         tenta a configuracao seguinte em vez de desistir. */
+      if (isRetryable(e)) continue;
+      throw e;
+    }
+  }
+  throw lastErr || new Error('Falha desconhecida na leitura da imagem.');
 }
+
+/* Esquemas de saida (structured output). `nullable: true` para que o modelo
+   possa dizer "nao vejo este campo" em vez de inventar. */
+const SCHEMA_MEMBER_BI = {
+  type: 'OBJECT',
+  properties: {
+    name: { type: 'STRING', nullable: true, description: 'Nome completo como esta no BI' },
+    documentNumber: { type: 'STRING', nullable: true, description: 'Numero do Bilhete de Identidade' },
+    birthDate: { type: 'STRING', nullable: true, description: 'Data de nascimento em AAAA-MM-DD' },
+    address: { type: 'STRING', nullable: true, description: 'Residencia/morada' },
+    gender: { type: 'STRING', nullable: true, enum: ['M', 'F', null], description: 'Sexo: M ou F' },
+    issueDate: { type: 'STRING', nullable: true, description: 'Data de emissao em AAAA-MM-DD' },
+  },
+  propertyOrdering: ['name', 'documentNumber', 'birthDate', 'address', 'gender', 'issueDate'],
+};
+
+const SCHEMA_MEMBER_CARTAO = {
+  type: 'OBJECT',
+  properties: {
+    name: { type: 'STRING', nullable: true },
+    memberNumber: { type: 'STRING', nullable: true },
+    baptismDate: { type: 'STRING', nullable: true, description: 'Data em AAAA-MM-DD' },
+    groupCell: { type: 'STRING', nullable: true },
+    phone: { type: 'STRING', nullable: true },
+    notes: { type: 'STRING', nullable: true },
+  },
+  propertyOrdering: ['name', 'memberNumber', 'baptismDate', 'groupCell', 'phone', 'notes'],
+};
+
+const SCHEMA_RECEIPT = {
+  type: 'OBJECT',
+  properties: {
+    amount: { type: 'NUMBER', nullable: true, description: 'Valor numerico em AOA, sem simbolos' },
+    currency: { type: 'STRING', nullable: true },
+    date: { type: 'STRING', nullable: true, description: 'Data em AAAA-MM-DD' },
+    method: { type: 'STRING', nullable: true, enum: ['transferencia', 'deposito', 'multicaixa', 'outro', null] },
+    bank: { type: 'STRING', nullable: true },
+    payerName: { type: 'STRING', nullable: true },
+    reference: { type: 'STRING', nullable: true },
+    notes: { type: 'STRING', nullable: true },
+  },
+  propertyOrdering: ['amount', 'currency', 'date', 'method', 'bank', 'payerName', 'reference', 'notes'],
+};
 
 const SYS_EXTRACTOR = 'Voce e um extrator de dados de documentos angolanos (IESA - Igreja Evangelica Sinodal de Angola). Devolva APENAS JSON valido, sem texto extra, exatamente com as chaves pedidas. Use null quando um dado nao estiver visivel ou legivel. Datas sempre em AAAA-MM-DD. Telefones no formato +244XXXXXXXXX quando possivel. Nao invente dados: se duvidar, use null.';
 
@@ -287,6 +484,35 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const url = new URL(request.url);
     const path = url.pathname;
+
+    /* --- Diagnostico PUBLICO (sem auth): diz qual versao do Worker esta no ar.
+       Abra https://iesa-ai.<conta>.workers.dev/__health no browser.
+       Se devolver 404 "Rota nao encontrada", o Worker publicado e ANTIGO
+       (anterior a v2.0.0) e precisa de ser re-publicado. --- */
+    if (path === '/__health' || path === '/health') {
+      return json({
+        ok: true,
+        service: 'iesa-ai',
+        version: WORKER_VERSION,
+        build: WORKER_BUILD,
+        vision: true,
+        routes: [
+          '/assistant/chat',
+          '/assistant/financial-insights',
+          '/assistant/draft-message',
+          '/assistant/extract-member',
+          '/assistant/extract-receipt',
+          '/admin/create-auth-account',
+        ],
+        models: GEMINI_MODELS,
+        config: {
+          GEMINI_API_KEY: !!env.GEMINI_API_KEY,
+          FIREBASE_SA_JSON: !!env.FIREBASE_SA_JSON,
+          PROJECT_ID: env.PROJECT_ID || null,
+        },
+        time: new Date().toISOString(),
+      });
+    }
 
     try {
       /* --- auth comum --- */
@@ -342,6 +568,33 @@ export default {
         return json({ error: 'Muitos pedidos em pouco tempo. Aguarde alguns minutos e tente novamente.' }, 429);
       }
 
+      /* --- Autodiagnostico (lideranca): confirma segredos, papel e o Gemini.
+             Usado pelo ecra Suporte → "Testar ligação da IA". --- */
+      if (path === '/assistant/selftest') {
+        const out = {
+          ok: true,
+          workerVersion: WORKER_VERSION,
+          workerBuild: WORKER_BUILD,
+          user: { email: claims.email || null, uid: claims.sub || null, role: role || null },
+          config: {
+            GEMINI_API_KEY: !!env.GEMINI_API_KEY,
+            FIREBASE_SA_JSON: !!env.FIREBASE_SA_JSON,
+            PROJECT_ID: env.PROJECT_ID || null,
+          },
+          gemini: { reachable: false, model: null, error: null },
+          routes: ['/assistant/chat', '/assistant/financial-insights', '/assistant/draft-message', '/assistant/extract-member', '/assistant/extract-receipt'],
+        };
+        try {
+          const { model } = await geminiWithFallback(env, {
+            contents: [{ parts: [{ text: 'Responda apenas com a palavra OK.' }] }],
+          });
+          out.gemini = { reachable: true, model, error: null };
+        } catch (e) {
+          out.gemini = { reachable: false, model: e?.model || null, error: e?.message || 'erro desconhecido' };
+        }
+        return json(out);
+      }
+
       if (path === '/assistant/chat') {
         const { prompt, context } = await request.json();
         if (!prompt) return json({ error: 'Prompt obrigatório.' }, 400);
@@ -367,13 +620,32 @@ export default {
         const { imageBase64, mimeType, kind } = await request.json();
         if (!imageBase64) return json({ error: 'Imagem obrigatoria.' }, 400);
         const mime = mimeType || 'image/jpeg';
-        const prompt = kind === 'cartao'
-          ? 'Nota: a fotografia pode estar rodada 90 graus; leia-a na orientacao correta. Leia este CARTAO DE MEMBRO BATIZADO da igreja (texto manuscrito ou impresso). Extraia e devolva JSON com as chaves: {"name": nome completo, "memberNumber": numero do membro/codigo, "baptismDate": data do batismo, "groupCell": celula ou grupo, "phone": telefone, "notes": outra informacao util}. Manuscrito: faca o melhor esforco; se ilegivel, null.'
-          : 'Nota: a fotografia pode estar rodada 90 graus; leia-a na orientacao correta. Leia este BILHETE DE IDENTIDADE angolano (frente ou verso). Extraia e devolva JSON com as chaves: {"name": nome completo, "documentNumber": numero do BI, "birthDate": data de nascimento, "address": residencia, "gender": "M" ou "F", "issueDate": data de emissao}.';
+        const isCartao = kind === 'cartao';
+
+        const REGRAS = [
+          'A fotografia pode estar rodada 90 ou 180 graus: leia-a na orientacao correta.',
+          'Transcreva APENAS o que estiver realmente visivel e legivel na imagem.',
+          'NUNCA invente, deduza ou complete dados (nomes, numeros, datas, moradas).',
+          'Se um campo nao estiver visivel ou estiver ilegivel, devolva null nesse campo.',
+          'Datas SEMPRE em AAAA-MM-DD (ex.: 1990-03-07).',
+          'Mantenha a ortografia e os acentos originais do documento.',
+        ].join(' ');
+
+        const prompt = isCartao
+          ? `${REGRAS} Este documento e um CARTAO DE MEMBRO BATIZADO da IESA (Igreja Evangelica Sinodal de Angola), possivelmente manuscrito. Extraia: name (nome completo), memberNumber (numero/codigo do membro), baptismDate (data do batismo), groupCell (celula, grupo, congregacao ou paroquia), phone (telefone, formato +244XXXXXXXXX), notes (outra informacao util). Em texto manuscrito faca o melhor esforco; se uma palavra for ilegivel, use null.`
+          : `${REGRAS} Este documento e um BILHETE DE IDENTIDADE (BI) da Republica de Angola — pode ser a frente, o verso, o modelo antigo ou o novo modelo. Extraia: name (nome completo, ignorando o campo "Filiacao"), documentNumber (numero do BI, apenas digitos, sem espacos), birthDate (data de nascimento), address (residencia/morada), gender ("M" ou "F"), issueDate (data de emissao). Se a imagem nao for um BI angolano, devolva todos os campos a null.`;
+
         try {
-          return json({ fields: await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mime) });
+          const fields = await geminiVision(
+            env, prompt, SYS_EXTRACTOR, imageBase64, mime,
+            isCartao ? SCHEMA_MEMBER_CARTAO : SCHEMA_MEMBER_BI
+          );
+          return json({ fields: fields || {}, workerVersion: WORKER_VERSION });
         } catch (e) {
-          return json({ error: e?.message || 'Falha na leitura.', detalhe: e?.raw || undefined }, 502);
+          return json(
+            { error: e?.message || 'Falha na leitura.', detalhe: e?.raw || undefined, status: e?.status, model: e?.model, workerVersion: WORKER_VERSION },
+            e?.status === 429 ? 429 : 502
+          );
         }
       }
 
@@ -381,15 +653,23 @@ export default {
       if (path === '/assistant/extract-receipt') {
         const { imageBase64, mimeType } = await request.json();
         if (!imageBase64) return json({ error: 'Imagem obrigatoria.' }, 400);
-        const prompt = 'Leia este COMPROVATIVO BANCARIO (transferencia ou deposito, banco angolano: BAI, BFA, BIC, BPC, Standard Bank, Millennium, etc.). Extraia e devolva JSON com as chaves: {"amount": valor numerico em AOA sem simbolos, "currency": "AOA", "date": data da operacao, "method": "transferencia" ou "deposito" ou "multicaixa" ou "outro", "bank": nome do banco, "payerName": nome de quem pagou, "reference": numero de operacao/referencia, "notes": observacoes}.';
+        const prompt = 'A fotografia pode estar rodada; leia-a na orientacao correta. Este documento e um COMPROVATIVO BANCARIO angolano (transferencia, deposito ou Multicaixa Express — bancos: BAI, BFA, BIC, BPC, Standard Bank, Millennium Atlantico, Sol, Keve, etc.). Extraia APENAS o que estiver visivel (null caso contrario, sem inventar): amount (valor numerico em AOA, sem simbolos), currency ("AOA"), date (data da operacao em AAAA-MM-DD), method ("transferencia" | "deposito" | "multicaixa" | "outro"), bank (nome do banco), payerName (nome de quem pagou), reference (numero da operacao/comprovativo/referencia), notes (observacoes).';
         try {
-          return json({ fields: await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mimeType || 'image/jpeg') });
+          const fields = await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mimeType || 'image/jpeg', SCHEMA_RECEIPT);
+          return json({ fields: fields || {}, workerVersion: WORKER_VERSION });
         } catch (e) {
-          return json({ error: e?.message || 'Falha na leitura.', detalhe: e?.raw || undefined }, 502);
+          return json(
+            { error: e?.message || 'Falha na leitura.', detalhe: e?.raw || undefined, status: e?.status, model: e?.model, workerVersion: WORKER_VERSION },
+            e?.status === 429 ? 429 : 502
+          );
         }
       }
 
-      return json({ error: 'Rota nao encontrada.' }, 404);
+      return json({
+        error: 'Rota nao encontrada.',
+        workerVersion: WORKER_VERSION,
+        dica: 'Se a app chamou /assistant/extract-member ou /assistant/extract-receipt e recebeu isto, o Worker publicado esta DESATUALIZADO. Re-publique o conteudo de worker/ai-worker.js (ver docs/GUIA-CLOUDFLARE-WORKER.md) — instalar um APK novo NAO atualiza o Worker.',
+      }, 404);
     } catch (e) {
       return json({ error: e?.message || 'Erro interno.' }, 500);
     }
