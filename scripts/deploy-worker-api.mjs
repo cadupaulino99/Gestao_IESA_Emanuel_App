@@ -40,6 +40,10 @@ const HEALTH_URL = process.env.HEALTH_URL || `https://${WORKER_NAME}.cadupaulino
 
 const REQUIRED_SECRETS = ['GEMINI_API_KEY', 'FIREBASE_SA_JSON'];
 
+/* Em 2026-10-23 estes dois bindings foram convertidos de plain_text para
+   secret_text (cifrado). Este script mantém esse estado: qualquer upload envia-os
+   como secret_text com o valor vindo do ambiente. NUNCA os grave como plain_text. */
+
 const args = process.argv.slice(2);
 const CHECK_ONLY = args.includes('--check');
 const FORCE = args.includes('--force');
@@ -150,27 +154,48 @@ console.log(`   ${code.length.toLocaleString('pt-PT')} bytes · WORKER_VERSION =
 
 /* ── 3. Publicar, reenviando os bindings existentes ───────────────────── */
 /* Mantém os segredos tal como estão; garante PROJECT_ID como variável simples. */
-/* Reenvia os bindings EXATAMENTE como estão (incluindo os valores das chaves em
-   plain_text) para que nada se perca. Só garante que PROJECT_ID existe. */
-const nextBindings = bindings.filter((b) => b && b.name).map((b) => ({ ...b }));
+/* Reconstrói os bindings. REGRAS APRENDIDAS NA PRÁTICA (2026-10-23):
+   1. O upload do script é PUT (POST devolve 405).
+   2. Os bindings vão DENTRO do JSON de `metadata` — um campo `bindings` solto
+      no multipart é IGNORADO e o Worker fica sem bindings nenhuns.
+   3. Um binding `secret_text` no upload EXIGE a propriedade `text`
+      (erro 10021 sem ela). Os valores vêm do ambiente — nunca do repositório.
+      Sem eles no ambiente, o deploy é abortado ANTES de tocar no Worker. */
+const ENV_SECRET = {
+  GEMINI_API_KEY: process.env.WORKER_SECRET_GEMINI_API_KEY || process.env.GEMINI_API_KEY,
+  FIREBASE_SA_JSON: process.env.WORKER_SECRET_FIREBASE_SA_JSON || process.env.FIREBASE_SA_JSON,
+};
+
+const nextBindings = [];
+for (const b of bindings.filter((x) => x && x.name)) {
+  if (b.type === 'secret_text') {
+    const text = ENV_SECRET[b.name];
+    if (!text) {
+      fail(`O binding "${b.name}" é um Secret e o upload exige o valor, mas ele não está no ambiente.`,
+        `  → export ${b.name}=<valor>  (ou WORKER_SECRET_${b.name}) antes de correr este script.
+  → Sem isto o deploy removeria o segredo do Worker.`);
+    }
+    nextBindings.push({ type: 'secret_text', name: b.name, text });
+  } else {
+    nextBindings.push({ ...b });
+  }
+}
 if (!nextBindings.some((b) => b.name === 'PROJECT_ID')) {
   nextBindings.push({ type: 'plain_text', name: 'PROJECT_ID', text: PROJECT_ID });
 }
 
+const COMPAT = settings?.compatibility_date || '2026-01-01';
 const form = new FormData();
-form.append('main_module', 'ai-worker.js');
-form.append('compatibility_date', settings?.compatibility_date || '2026-01-01');
-form.append('observability', JSON.stringify({ enabled: true, head_sampling_rate: 1 }));
-form.append('bindings', JSON.stringify(nextBindings));
 form.append(
   'metadata',
-  JSON.stringify({ main_module: 'ai-worker.js', compatibility_date: settings?.compatibility_date || '2026-01-01' })
+  new Blob([JSON.stringify({ main_module: 'ai-worker.js', compatibility_date: COMPAT, bindings: nextBindings })],
+    { type: 'application/json' })
 );
 form.append('ai-worker.js', new Blob([code], { type: 'application/javascript+module' }), 'ai-worker.js');
 
 try {
-  console.log('\n→ A publicar…');
-  await cf(API, { method: 'POST', body: form });
+  console.log('\n→ A publicar (PUT)…');
+  await cf(API, { method: 'PUT', body: form });
   console.log('✓ Publicado.');
 } catch (e) {
   fail(`A publicação falhou: ${e.message}`,
