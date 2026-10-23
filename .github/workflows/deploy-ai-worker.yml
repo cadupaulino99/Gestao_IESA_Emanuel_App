@@ -33,6 +33,9 @@ on:
 jobs:
   deploy:
     name: Publicar Worker iesa-ai
+    # Sem os secrets da Cloudflare o job fica SKIPPED (verde) em vez de FAILED
+    # (vermelho) — a publicação manual continua disponível com `npm run deploy:worker`.
+    if: ${{ vars.CF_DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
