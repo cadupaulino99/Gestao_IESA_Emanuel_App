@@ -144,6 +144,19 @@ function drawSeal(doc: jsPDF, x: number, y: number, r: number) {
   doc.text('IESA', x, y + r * 0.62, { align: 'center' });
 }
 
+function drawCheckPdf(doc: jsPDF, x: number, y: number) {
+  doc.setDrawColor(16, 120, 60);
+  doc.setLineWidth(0.5);
+  doc.line(x - 1.6, y + 0.1, x - 0.5, y + 1.2);
+  doc.line(x - 0.5, y + 1.2, x + 1.8, y - 1.3);
+}
+function drawCrossPdf(doc: jsPDF, x: number, y: number) {
+  doc.setDrawColor(200, 30, 30);
+  doc.setLineWidth(0.45);
+  doc.line(x - 1.3, y - 1.3, x + 1.3, y + 1.3);
+  doc.line(x - 1.3, y + 1.3, x + 1.3, y - 1.3);
+}
+
 function yearsOfPdf(d: MemberCardPdfData): number[] {
   const ys = new Set<number>();
   d.communions.forEach((c) => c.year && ys.add(c.year));
@@ -226,10 +239,21 @@ export const generateMemberCardPdf = async (
       `${MONTHS_SHORT[i]}.`,
       ...years.map((yr) => data.communions.find((c) => c.year === yr && c.month === mi)?.mark || ''),
     ]),
-    styles: { fontSize: 7.5, cellPadding: 1.1, halign: 'center' },
+    styles: { fontSize: 7.5, cellPadding: 1.6, halign: 'center' },
     headStyles: { fillColor: [210, 215, 210], textColor: 20, fontStyle: 'bold' },
-    alternateRowStyles: {},
     theme: 'grid',
+    /* ✓ / ✗ desenhados a vetor (decisão da liderança: as casas do papel levavam
+       a assinatura do pastor; no digital, correcto/incorrecto). */
+    didParseCell: (d: any) => {
+      if (d.section === 'body' && (d.cell.raw === 'present' || d.cell.raw === 'absent')) d.cell.text = '';
+    },
+    didDrawCell: (d: any) => {
+      if (d.section !== 'body') return;
+      const cx = d.cell.x + d.cell.width / 2;
+      const cy = d.cell.y + d.cell.height / 2;
+      if (d.cell.raw === 'present') drawCheckPdf(doc, cx, cy);
+      else if (d.cell.raw === 'absent') drawCrossPdf(doc, cx, cy);
+    },
   });
   y = (doc as any).lastAutoTable.finalY + 6;
 

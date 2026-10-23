@@ -1,3 +1,4 @@
+import { Check, X } from 'lucide-react';
 import {
   Member,
   CommunionMark,
@@ -96,6 +97,15 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
 
   const comOf = (y: number, mi: string) =>
     data.communions.find((c) => c.year === y && c.month === mi)?.mark || '';
+
+  /** No papel era a assinatura do pastor; no digital, ✓ / ✗ (decisão da liderança). */
+  const ComMark = ({ mark }: { mark: string }) => {
+    if (mark === 'present')
+      return <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 inline" aria-label="participou" />;
+    if (mark === 'absent')
+      return <X className="h-3.5 w-3.5 text-red-500 dark:text-red-400 inline" aria-label="não participou" />;
+    return <>{mark}</>;
+  };
   const donOf = (y: number, mi: string) =>
     data.donations
       .filter((d) => d.referenceYear === y && d.referenceMonth === mi)
@@ -167,7 +177,7 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
                     <td className={cell + ' font-medium'}>{MONTHS_SHORT[i]}.</td>
                     {years.map((y) => (
                       <td key={y} className={cell + ' text-blue-800 dark:text-blue-300 font-semibold'}>
-                        {comOf(y, mi)}
+                        <ComMark mark={comOf(y, mi)} />
                       </td>
                     ))}
                   </tr>

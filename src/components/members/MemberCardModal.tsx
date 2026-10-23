@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { db } from '../../lib/firebase';
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { toast } from 'sonner';
-import { Loader2, Download, Plus, Trash2, Church, HandCoins, HeartHandshake, RefreshCw } from 'lucide-react';
+import { Loader2, Download, Plus, Trash2, Church, HandCoins, HeartHandshake, RefreshCw, Check, X } from 'lucide-react';
 import MemberCardView, { MemberCardData } from './MemberCardView';
 import { generateMemberCardPdf } from '../../lib/pdfUtils';
 import { useAuth } from '../../context/AuthContext';
@@ -42,8 +42,6 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
 
   // registos
   const [comYear, setComYear] = useState<number>(THIS_YEAR);
-  const [comMonth, setComMonth] = useState<string>(String(new Date().getMonth() + 1).padStart(2, '0'));
-  const [comMark, setComMark] = useState('FM');
 
   const [donAmount, setDonAmount] = useState('');
   const [donDate, setDonDate] = useState(new Date().toISOString().slice(0, 10));
@@ -92,21 +90,26 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
 
   if (!member) return null;
 
-  const addCommunion = async () => {
+  /** Grelha de comunhão: cada clique roda  vazio → ✓ → ✗ → vazio.
+   *  No papel a casa levava a assinatura do pastor; aqui guarda-se quem marcou
+   *  (recordedBy) — a «assinatura» digital. */
+  const cycleCommunion = async (mi: string) => {
     setBusy(true);
     try {
-      // substitui a marca existente desse (ano, mês), se houver
-      const existing = data.communions.find((c) => c.year === comYear && c.month === comMonth);
-      if (existing) await deleteDoc(doc(db, 'communions', existing.id));
-      await addDoc(collection(db, 'communions'), {
-        memberId: member.id,
-        year: comYear,
-        month: comMonth,
-        mark: comMark.trim() || 'FM',
-        recordedBy: user?.email || 'unknown',
-        createdAt: Date.now(),
-      });
-      toast.success(`Comunhão ${MONTHS_SHORT[Number(comMonth) - 1]}/${comYear} registada.`);
+      const existing = data.communions.find((c) => c.year === comYear && c.month === mi);
+      if (!existing) {
+        await addDoc(collection(db, 'communions'), {
+          memberId: member.id, year: comYear, month: mi, mark: 'present',
+          recordedBy: user?.email || 'unknown', createdAt: Date.now(),
+        });
+      } else if (existing.mark === 'present') {
+        await updateDoc(doc(db, 'communions', existing.id), { mark: 'absent', recordedBy: user?.email || 'unknown' });
+      } else if (existing.mark === 'absent') {
+        await deleteDoc(doc(db, 'communions', existing.id));
+      } else {
+        // marca antiga em texto livre: primeiro clique normaliza para ✓
+        await updateDoc(doc(db, 'communions', existing.id), { mark: 'present', recordedBy: user?.email || 'unknown' });
+      }
       await load(member.id);
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao registar comunhão.');
@@ -157,17 +160,6 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
       await load(member.id);
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao registar renovação.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const removeCommunion = async (id: string) => {
-    setBusy(true);
-    try {
-      await deleteDoc(doc(db, 'communions', id));
-      toast.success('Marca de comunhão removida.');
-      await load(member.id);
     } finally {
       setBusy(false);
     }
@@ -224,39 +216,45 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
             {/* ── registos da liderança ── */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t">
               <div className="space-y-2 rounded-lg border p-3">
-                <div className="flex items-center gap-1.5 text-xs font-semibold">
-                  <Church className="h-4 w-4 text-purple-600" /> Comunhão
-                </div>
-                <div className="flex gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold">
+                    <Church className="h-4 w-4 text-purple-600" /> Comunhão
+                  </div>
                   <Select value={String(comYear)} onValueChange={(v) => setComYear(Number(v))}>
                     <SelectTrigger className="w-[86px] h-8 text-xs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {yearsOptions.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                  <Select value={comMonth} onValueChange={setComMonth}>
-                    <SelectTrigger className="w-[86px] h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {MONTHS_IDX.map((mi, i) => <SelectItem key={mi} value={mi}>{MONTHS_SHORT[i]}.</SelectItem>)}
-                    </SelectContent>
-                  </Select>
                 </div>
-                <div>
-                  <Label className="text-[11px]">Marca (sigla usada no papel)</Label>
-                  <Input value={comMark} onChange={(e) => setComMark(e.target.value)} className="h-8 text-xs" placeholder="FM" />
-                </div>
-                <Button size="sm" onClick={addCommunion} disabled={busy} className="w-full gap-1.5">
-                  <Plus className="h-3.5 w-3.5" /> Marcar mês
-                </Button>
-                {data.communions.length > 0 && (
-                  <div className="text-[10px] text-slate-500 space-y-0.5 max-h-16 overflow-y-auto">
-                    {[...data.communions].sort((a, b) => (b.year - a.year) || b.month.localeCompare(a.month)).slice(0, 6).map((c) => (
-                      <button key={c.id} onClick={() => removeCommunion(c.id)} className="flex items-center gap-1 hover:text-destructive" title="Remover">
-                        <Trash2 className="h-3 w-3" /> {MONTHS_SHORT[Number(c.month) - 1]}/{c.year} → {c.mark}
+                <div className="grid grid-cols-6 gap-1">
+                  {MONTHS_IDX.map((mi, i) => {
+                    const mark = data.communions.find((c) => c.year === comYear && c.month === mi)?.mark || '';
+                    return (
+                      <button
+                        key={mi}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => cycleCommunion(mi)}
+                        title={`${MONTHS_SHORT[i]}: clique para rodar  vazio → ✓ → ✗ → vazio`}
+                        className={`h-8 rounded border text-[10px] font-medium flex items-center justify-center gap-1 transition-colors ${
+                          mark === 'present'
+                            ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+                            : mark === 'absent'
+                              ? 'border-red-300 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300'
+                              : 'border-slate-300 dark:border-slate-700 text-slate-400 hover:border-slate-400'
+                        }`}
+                      >
+                        {MONTHS_SHORT[i]}
+                        {mark === 'present' ? <Check className="h-3 w-3" /> : mark === 'absent' ? <X className="h-3 w-3" /> : null}
                       </button>
-                    ))}
-                  </div>
-                )}
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  ✓ participou · ✗ não participou · vazio = ainda não registado.
+                  Cada marca guarda quem a registou (a «assinatura» digital do pastor).
+                </p>
               </div>
 
               <div className="space-y-2 rounded-lg border p-3">

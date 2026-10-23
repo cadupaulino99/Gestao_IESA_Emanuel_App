@@ -125,7 +125,12 @@ export interface Announcement {
 /* ------------------------------------------------------------------ */
 
 /** Marca de «Participou da Comunhão»: uma por (membro, ano, mês).
- *  `mark` é texto livre — a sigla manuscrita do cartão de papel (ex.: "FM"). */
+ *  No papel as casas levavam a ASSINATURA do pastor; no digital (decisão da
+ *  liderança, 2026-10-23) usa-se:
+ *    'present' → ✓ participou
+ *    'absent'  → ✗ não participou
+ *    (sem registo) → casa vazia, mês ainda não marcado
+ *  Valores antigos em texto livre continuam a ser mostrados como texto. */
 export interface CommunionMark {
   id: string;
   memberId: string;
