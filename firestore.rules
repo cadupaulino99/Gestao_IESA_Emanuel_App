@@ -68,6 +68,31 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // --- Cartão de membro: comunhão, donativos voluntários, renovações ---
+    // Leitura: qualquer sessão (o portal do membro filtra pelo próprio memberId
+    // no cliente, tal como já faz com `tithes`). Escrita: só liderança.
+    match /communions/{docId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(docId)
+                    && incoming().keys().hasAll(['memberId', 'year', 'month', 'mark']);
+      allow update, delete: if hasFinancialWriteAccess();
+    }
+
+    match /donations/{docId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(docId)
+                    && incoming().keys().hasAll(['memberId', 'amount', 'date'])
+                    && incoming().amount is number && incoming().amount > 0;
+      allow update, delete: if hasFinancialWriteAccess();
+    }
+
+    match /renewals/{docId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(docId)
+                    && incoming().keys().hasAll(['memberId', 'date']);
+      allow update, delete: if hasFinancialWriteAccess();
+    }
+
     // --- Member Collection ---
     function isValidMemberCreate(data) {
       return data.keys().hasAll(['name', 'createdAt', 'updatedAt']) &&

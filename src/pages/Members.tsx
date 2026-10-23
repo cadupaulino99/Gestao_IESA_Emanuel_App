@@ -26,6 +26,8 @@ import { useConfirm } from '../context/ConfirmContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { generateMembershipCard } from '../lib/pdfUtils';
 import { MemberTithesTracker } from '../components/members/MemberTithesTracker';
+import MemberCardModal from '../components/members/MemberCardModal';
+import { compressImageFile } from '../lib/ai';
 import { PastoralMessageGeneratorModal } from '../components/members/PastoralMessageGeneratorModal';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -33,6 +35,11 @@ import 'jspdf-autotable';
 const memberSchema = z.object({
   name: z.string().min(2, "O nome deve ter pelo menos 2 caracteres"),
   documentNumber: z.string().optional(),
+  memberNumber: z.string().optional(),
+  fatherName: z.string().optional(),
+  motherName: z.string().optional(),
+  placeOfBirth: z.string().optional(),
+  photoBase64: z.string().optional(),
   phone: z.string().optional(),
   birthDate: z.string().optional(),
   baptismDate: z.string().optional(),
@@ -164,6 +171,7 @@ export default function Members() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [aiMessageMember, setAiMessageMember] = useState<Member | null>(null);
   const [docKind, setDocKind] = useState<DocKind | null>(null);
+  const [cardMember, setCardMember] = useState<Member | null>(null);
   const [memberTithes, setMemberTithes] = useState<any[]>([]);
   const [loadingTithes, setLoadingTithes] = useState(false);
   const confirmDialog = useConfirm();
@@ -308,6 +316,11 @@ export default function Members() {
     reset({
       name: member.name,
       documentNumber: member.documentNumber || '',
+      memberNumber: member.memberNumber || '',
+      fatherName: member.fatherName || '',
+      motherName: member.motherName || '',
+      placeOfBirth: member.placeOfBirth || '',
+      photoBase64: member.photoBase64 || '',
       phone: member.phone || '',
       birthDate: member.birthDate || '',
       baptismDate: member.baptismDate || '',
@@ -485,6 +498,52 @@ export default function Members() {
                         }}
                       />
                     </div>
+                    <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2.5 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nº do Cartão de Membro</Label>
+                        <Input {...register("memberNumber")} placeholder="Ex.: 0141" inputMode="numeric" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Naturalidade</Label>
+                        <Input {...register("placeOfBirth")} placeholder="Ex.: Quitwa" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Filiação — pai («Filho de…»)</Label>
+                        <Input {...register("fatherName")} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Filiação — mãe («…e de…»)</Label>
+                        <Input {...register("motherName")} />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <Label className="text-xs">Fotografia do titular (para o cartão)</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = '';
+                              if (!f) return;
+                              try {
+                                const p = await compressImageFile(f, { max: 400, quality: 0.8 });
+                                setValue('photoBase64', p.base64, { shouldDirty: true });
+                                toast.success('Fotografia anexada ao cartão.');
+                              } catch {
+                                toast.error('Não foi possível ler a imagem.');
+                              }
+                            }}
+                          />
+                          {watch('photoBase64') && (
+                            <>
+                              <img src={`data:image/jpeg;base64,${watch('photoBase64')}`} alt="pré-visualização" className="h-10 w-9 rounded object-cover border" />
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setValue('photoBase64', '', { shouldDirty: true })}>Remover</Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Nome Completo *</Label>
@@ -712,10 +771,15 @@ export default function Members() {
               </SheetDescription>
             </div>
             {selectedMember && (
-              <Button variant="outline" size="sm" onClick={() => generateMembershipCard(selectedMember)}>
-                <CreditCard className="h-4 w-4 mr-2 text-emerald-600" />
-                Gerar Cartão
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCardMember(selectedMember)}>
+                  <CreditCard className="h-4 w-4 mr-2 text-emerald-600" />
+                  Cartão de Membro
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => generateMembershipCard(selectedMember)} title="Cartão pequeno (CR80)">
+                  <Download className="h-4 w-4" />
+                </Button>
+              </div>
             )}
           </SheetHeader>
           <ScrollArea className="flex-1 p-6">
@@ -833,6 +897,12 @@ export default function Members() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      <MemberCardModal
+        member={cardMember}
+        open={!!cardMember}
+        onOpenChange={(o) => { if (!o) setCardMember(null); }}
+      />
 
       <PastoralMessageGeneratorModal
         member={aiMessageMember}
