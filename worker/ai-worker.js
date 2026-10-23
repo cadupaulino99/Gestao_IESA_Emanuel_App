@@ -24,8 +24,8 @@
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.1.0';
-const WORKER_BUILD = '2026-10-23 (modelos rapidos + timeout)';
+const WORKER_VERSION = '2.2.0';
+const WORKER_BUILD = '2026-10-23 (bootstrap admin + scope identitytoolkit)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -168,6 +168,11 @@ function pemToDerKey(pem) {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
+/* scope: datastore (Firestore) + identitytoolkit (criar/repor contas Auth).
+   So com datastore, o signupNewUser falhava com PERMISSION_DENIED — foi a
+   segunda causa do "nao me deixa atribuir credenciais". */
+const SA_SCOPES = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit';
+
 async function saAccessToken(saJson) {
   if (saCache.token && Date.now() - saCache.ts < saCache.exp - 60 * 1000) return saCache.token;
   const sa = JSON.parse(saJson);
@@ -175,7 +180,7 @@ async function saAccessToken(saJson) {
   const header = b64url(str2buf(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
   const claim = b64url(str2buf(JSON.stringify({
     iss: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/datastore',
+    scope: SA_SCOPES,
     aud: 'https://oauth2.googleapis.com/token',
     iat: now, exp: now + 3600,
   })));
@@ -216,9 +221,16 @@ function rateOk(email) {
   return b.count <= RATE_LIMIT;
 }
 
+/* Admins de arranque — ESPELHA o bootstrap das firestore.rules.
+   Sem isto, um utilizador que ainda nao tem documento em `admins` recebe 403 no
+   Worker mesmo quando o Firestore o aceita (foi o que bloqueou a criacao de
+   contas de administrador). */
+const BOOTSTRAP_ADMINS = ['cadupaulino99@gmail.com'];
+
 async function getRole(email, env) {
   if (!email) return null;
   const lower = email.toLowerCase();
+  if (BOOTSTRAP_ADMINS.includes(lower)) return 'admin';
   if (Date.now() - roleCache.ts > ROLE_TTL) roleCache = { ts: Date.now(), map: {} };
   if (roleCache.map[lower] !== undefined) return roleCache.map[lower];
   const tok = await saAccessToken(env.FIREBASE_SA_JSON);

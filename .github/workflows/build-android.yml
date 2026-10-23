@@ -56,8 +56,14 @@ jobs:
           NAME="$(printf '%s' "$VERSION_NAME_VAR" | tr -d '[:space:]')"
           CODE="$(printf '%s' "$VERSION_CODE_VAR" | tr -d '[:space:]')"
           case "$CODE" in ''|*[!0-9]*) CODE="" ;; esac
-          if [ -z "$NAME" ]; then
-            NAME="$(node -p "require('./package.json').version")"
+          PKG="$(node -p "require('./package.json').version")"
+          if [ -z "$NAME" ] || [ -n "$NAME" ]; then
+            # Desde a v1.8.2 a fonte de verdade e o package.json; a variable do
+            # repo, se existir, e so override explicito (com aviso).
+            if [ -n "$NAME" ] && [ "$NAME" != "$PKG" ]; then
+              echo "::warning::Variable VERSION_NAME=$NAME difere do package.json=$PKG — uso o package.json."
+            fi
+            NAME="$PKG"
           fi
           if [ -z "$CODE" ]; then
             CODE="$RUN_NUMBER"
