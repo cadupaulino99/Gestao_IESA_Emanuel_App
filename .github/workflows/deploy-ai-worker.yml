@@ -42,6 +42,10 @@ jobs:
       # scripts/deploy-worker-api.mjs lê estas duas variáveis
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # o upload do Worker EXIGE os valores dos segredos (a API não os devolve).
+      # Guardados cifrados em Settings → Secrets and variables → Actions.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      FIREBASE_SA_JSON: ${{ secrets.FIREBASE_SA_JSON }}
     steps:
       - uses: actions/checkout@v4
 

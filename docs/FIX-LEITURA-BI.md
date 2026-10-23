@@ -290,7 +290,18 @@ O que isto significa na prática:
 | `FIREBASE_SA_JSON` | É a **chave-mestra** do projeto Firebase: dá acesso de administrador ao Firestore, Auth e Storage de toda a igreja |
 | `GEMINI_API_KEY` | Permite gastar a quota/crédito em seu nome |
 
-### O que fazer, por ordem
+### Estado em 2026-10-23
+
+✅ **Convertido:** os dois bindings passaram de `plain_text` a **`secret_text`**
+(cifrado) via `PUT /accounts/{acc}/workers/scripts/iesa-ai/secrets`, com o Worker
+re-publicado a seguir (`bindings` dentro do JSON de `metadata`, método **PUT** —
+POST dá 405 e um campo `bindings` solto no multipart é ignorado). Um token de
+leitura já **não** devolve os valores. `PROJECT_ID` ficou `plain_text` de
+propósito (não é sensível).
+
+⚠️ **Por fazer:** a conversão impede leituras futuras, mas **não desexpõe os
+valores antigos**, que já tinham sido lidos. As duas chaves continuam a precisar
+de ser rodadas:
 
 1. **Rodar a chave da service account do Firebase** (é o mais grave):
    - https://console.firebase.google.com → projeto `iesa-emanuel-xangongo`
@@ -311,7 +322,15 @@ Enquanto não rodar, assuma que estas duas chaves estão comprometidas.
 
 ## 9. Tokens usados nesta intervenção
 
-Para permitir a publicação foram partilhados em chat:
+Estado em 2026-10-23:
+
+| Token | Permissão | Estado |
+|---|---|---|
+| `cfut_peHS…` (1º) | Workers Scripts **Read** | **revogado pelo utilizador** ✅ |
+| `cfut_wis9…` (2º) | Workers Scripts **Edit** (conta) | usado para converter os segredos — **revogar agora** |
+| `github_pat_11A6…` | Contents+Workflows R/W no repo | usado para push/merge — **revogar agora** |
+
+Histórico: para permitir a publicação foram partilhados em chat:
 
 - um **token da Cloudflare** (`cfut_…`) — só com *Workers Scripts: **Read***,
   o que chegou para inspecionar mas **não** para publicar; expira em 2026-10-24;
