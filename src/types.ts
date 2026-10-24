@@ -135,10 +135,100 @@ export interface DashboardStats {
 export interface Announcement {
   id: string;
   title: string;
+  /** LEGADO pré-v1.13: texto simples (textarea). Continua a ser escrito (espelho). */
   content: string;
+  /** v1.13: texto formatado — HTML saneado (allowlist de lib/richtext.ts). */
+  contentHtml?: string;
   createdAt: number;
   adminId: string;
+  /** LEGADO/espelho: true = visível aos membros. v1.13: derivado de status+visibleUntil. */
   active: boolean;
+  /** v1.13: 'rascunho' só a liderança vê; 'publicado' visível (dentro do prazo);
+   *  'arquivado' oculto, republicável. Em falta (legado): active ? publicado : arquivado. */
+  status?: 'rascunho' | 'publicado' | 'arquivado';
+  /** v1.13: em falta = 'normal'. */
+  level?: 'normal' | 'urgente';
+  /** v1.13: fixar no topo da lista dos membros. Em falta = false. */
+  pinned?: boolean;
+  /** v1.13: 'AAAA-MM-DD' (Luanda) — último dia visível aos membros; null = sem prazo.
+   *  Passou o prazo ⇒ some aos membros mas fica no arquivo da Administração. */
+  visibleUntil?: string | null;
+  createdBy?: string;
+  updatedBy?: string;
+  updatedAt?: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* v1.13.0 — Avisos, Agenda e Eventos (fonte única: Admin publica,     */
+/* Portal do Membro só lê). Datas/horas são strings LOCAIS de Luanda   */
+/* ('AAAA-MM-DD' / 'HH:MM') — sem fuso embutido, não deslocam um dia   */
+/* entre aparelhos.                                                    */
+/* ------------------------------------------------------------------ */
+
+/** Evento com data própria (colecção `events`; campos legados mantidos). */
+export interface ChurchEvent {
+  id: string;
+  title: string;
+  /** Data de início 'AAAA-MM-DD' (Luanda). */
+  date: string;
+  /** Hora de início 'HH:MM' 24 h (opcional). */
+  time?: string;
+  /** LEGADO/espelho de uma linha (Dashboard da liderança lê isto). */
+  description?: string;
+  /** v1.13: descrição formatada (HTML saneado). */
+  descriptionHtml?: string;
+  dateEnd?: string | null;
+  timeEnd?: string | null;
+  location?: string;
+  responsible?: string;
+  /** Estado do evento; em falta (legado) = 'marcado'. */
+  status?: 'marcado' | 'adiado' | 'cancelado' | 'realizado';
+  /** Rascunho não aparece aos membros; em falta (legado) = 'publicado'. */
+  publishStatus?: 'rascunho' | 'publicado';
+  /** Caminhos no Storage (posters/<id>.<ext>); NUNCA base64 no documento. */
+  posterPath?: string | null;
+  posterThumbPath?: string | null;
+  /** Lembrete interno 1 dia antes (opcional, activado por evento). */
+  reminder1d?: boolean;
+  /** 'AAAA-MM-DD' em que o Worker já enviou o lembrete (idempotência). */
+  reminderSentDay?: string | null;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+/** Programação SEMANAL regular (colecção nova `agenda_items`). */
+export interface AgendaItem {
+  id: string;
+  title: string;
+  /** 1=segunda … 7=domingo (semana ISO, à moda de Luanda). */
+  weekday: number;
+  startTime: string;        // 'HH:MM'
+  endTime?: string | null;  // 'HH:MM' (opcional)
+  location?: string;
+  responsible?: string;
+  notes?: string;
+  /** Ocorrências suspensas: datas 'AAAA-MM-DD'. A programação NÃO se apaga. */
+  cancelledDates?: string[];
+  /** Em falta = true. */
+  ativo?: boolean;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+/** Controlo do digest diário de notificações do módulo (colecção
+ *  `board_notify_log`, um documento por dia de Luanda: id = 'AAAA-MM-DD'). */
+export interface BoardNotifyLog {
+  dayKey: string;
+  items: { kind: string; refId: string | null; label: string; at: number }[];
+  count: number;
+  firstAt: number;
+  updatedAt: number;
+  /** memberIds já com SMS/WhatsApp na fila hoje (máx. 1/dia/membro). */
+  smsQueuedFor?: string[];
 }
 
 /* ------------------------------------------------------------------ */

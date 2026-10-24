@@ -33,15 +33,17 @@ jobs:
           echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/sa.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json" >> $GITHUB_ENV
 
-      - name: Deploy (regras + índices + funções)
+      - name: Deploy (regras + índices + storage + funções)
         env:
           PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
         # Plano Spark (gratuito) nao permite Cloud Functions (exige Blaze).
-        # Regras + indices implantam-se normalmente. Quando ativares o Blaze,
-        # acrescenta ",functions" ao --only para levar tambem a IA.
+        # Regras + indices + storage implantam-se normalmente. Quando ativares
+        # o Blaze, acrescenta ",functions" ao --only para levar tambem a IA.
+        # v1.13: "storage" entra no deploy (regras dos cartazes de eventos;
+        # o bucket tem de existir — Storage → Começar, uma vez, no console).
         run: |
           set -o pipefail
-          npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ID" 2>&1 | tee /tmp/deploy.log
+          npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes,storage --project "$PROJECT_ID" 2>&1 | tee /tmp/deploy.log
 
       - name: Reportar falha em issue (com o log)
         if: failure()

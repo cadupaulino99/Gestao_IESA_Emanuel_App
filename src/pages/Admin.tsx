@@ -3,6 +3,9 @@ import { prefGet,prefSet } from '../lib/prefs';
 import { createAuthAccount, resetTempPassword, setAccountDisabled } from '../lib/ai';
 import { genTempPassword, type ShareCtx } from '../lib/admins';
 import OneTimeCredentials from '../components/admin/OneTimeCredentials';
+import AnnouncementsAdmin from '../components/admin/AnnouncementsAdmin';
+import AgendaAdmin from '../components/admin/AgendaAdmin';
+import EventsAdmin from '../components/admin/EventsAdmin';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, setDoc, deleteDoc, doc, where, updateDoc, addDoc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -78,112 +81,6 @@ export default function Admin() {
   });
   const [savingChurch, setSavingChurch] = useState(false);
 
-  const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [annForm, setAnnForm] = useState({ title: '', content: '' });
-
-  const [events, setEvents] = useState<any[]>([]);
-  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '' });
-
-  const loadEvents = async () => {
-    try {
-      const q = query(collection(db, 'events'));
-      const snap = await getDocs(q);
-      setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()));
-    } catch (e) {
-      console.log(e);
-    }
-  };
-
-  const handleAddEvent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!eventForm.title || !eventForm.date) return;
-    try {
-      setLoading(true);
-      await addDoc(collection(db, 'events'), {
-        ...eventForm,
-        createdAt: Date.now()
-      });
-      setEventForm({ title: '', description: '', date: '', time: '' });
-      toast.success("Evento adicionado.");
-      loadEvents();
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'events');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteEventSafely = async (id: string) => {
-    const confirmed = await confirmDialog("Deseja eliminar este evento? Esta ação é irreversível.", "APAGAR");
-    if (!confirmed) return;
-    try {
-      setLoading(true);
-      await deleteDocSafely('events', id);
-      toast.success("Evento eliminado.");
-      loadEvents();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadAnnouncements = async () => {
-    try {
-      const q = query(collection(db, 'announcements'));
-      const snap = await getDocs(q);
-      setAnnouncements(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => b.createdAt - a.createdAt));
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  const handleAddAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if(!annForm.title || !annForm.content) return;
-    try {
-      setLoading(true);
-      await addDoc(collection(db, 'announcements'), {
-        ...annForm,
-        active: true,
-        createdAt: Date.now(),
-        adminId: user?.uid
-      });
-      setAnnForm({ title: '', content: '' });
-      toast.success("Aviso publicado.");
-      loadAnnouncements();
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'announcements');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleAnnouncement = async (id: string, active: boolean) => {
-    try {
-      await updateDoc(doc(db, 'announcements', id), { active });
-      loadAnnouncements();
-    } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, `announcements/${id}`);
-    }
-  };
-
-  const deleteAnnouncementSafely = async (path: string, id: string) => {
-    const confirmed = await confirmDialog("Tem a certeza que deseja eliminar este aviso? Esta ação é irreversível.", "APAGAR");
-    if (!confirmed) return;
-    try {
-      setLoading(true);
-      await deleteDocSafely(path, id);
-      toast.success("Registo eliminado.");
-      loadAnnouncements();
-    } catch (e) {
-      console.error(e);
-      toast.error("Erro ao eliminar.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadRequests = async () => {
     try {
       const q = query(collection(db, 'pedidos_atualizacao'), where('status', '==', 'pendente'));
@@ -222,8 +119,6 @@ export default function Admin() {
 
         await loadRequests();
         await loadAuditLogs();
-        await loadAnnouncements();
-        await loadEvents();
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, 'admins');
       } finally {
@@ -884,7 +779,7 @@ export default function Admin() {
         <TabsList className="mb-4 flex-wrap">
           {isSuperAdmin && (<TabsTrigger value="users"><Shield className="h-4 w-4 mr-2" /> Administradores</TabsTrigger>)}
           <TabsTrigger value="members"><Shield className="h-4 w-4 mr-2" /> Membros Inativos</TabsTrigger>
-          <TabsTrigger value="mural"><Bell className="h-4 w-4 mr-2" /> Mural e Agenda</TabsTrigger>
+          <TabsTrigger value="mural"><Bell className="h-4 w-4 mr-2" /> Avisos, Agenda e Eventos</TabsTrigger>
           <TabsTrigger value="church"><Church className="h-4 w-4 mr-2" /> Dados da Instituição</TabsTrigger>
           <TabsTrigger value="data"><Database className="h-4 w-4 mr-2" /> Gestão de Dados</TabsTrigger>
           <TabsTrigger value="trash"><Trash2 className="h-4 w-4 mr-2" /> Lixeira</TabsTrigger>
@@ -1250,107 +1145,12 @@ export default function Admin() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="mural">
-          <div className="grid md:grid-cols-2 gap-6">
-             <Card>
-                <CardHeader>
-                   <CardTitle>Mural de Avisos</CardTitle>
-                   <CardDescription>Crie e gira os anúncios da página inicial.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                   <form onSubmit={handleAddAnnouncement} className="space-y-4 mb-6 p-4 border rounded-lg bg-slate-50 dark:bg-slate-900">
-                      <div className="space-y-2">
-                         <Label>Título do Aviso</Label>
-                         <Input placeholder="Ex: Jejum Nacional..." value={annForm.title} onChange={e => setAnnForm({...annForm, title: e.target.value})} required />
-                      </div>
-                      <div className="space-y-2">
-                         <Label>Conteúdo</Label>
-                         <textarea 
-                           className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                           placeholder="Detalhes do aviso..."
-                           value={annForm.content}
-                           onChange={e => setAnnForm({...annForm, content: e.target.value})}
-                           required
-                         />
-                      </div>
-                      <Button type="submit" disabled={loading} className="w-full">Publicar Aviso</Button>
-                   </form>
-
-                   <div className="space-y-4">
-                      {announcements.map(ann => (
-                         <div key={ann.id} className={`border rounded-lg p-4 flex justify-between gap-4 ${!ann.active ? 'opacity-50' : ''}`}>
-                            <div className="flex-1 w-0">
-                               <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-bold truncate">{ann.title}</h4>
-                                  <Badge variant={ann.active ? 'default' : 'secondary'} className="text-[10px] shrink-0">{ann.active ? 'Ativo' : 'Oculto'}</Badge>
-                               </div>
-                               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{ann.content}</p>
-                            </div>
-                            <div className="flex flex-col gap-2 justify-start items-end shrink-0">
-                               <Button variant="outline" size="sm" onClick={() => toggleAnnouncement(ann.id, !ann.active)}>
-                                  {ann.active ? 'Ocultar' : 'Ativar'}
-                               </Button>
-                               <Button variant="ghost" size="icon" onClick={() => deleteAnnouncementSafely('announcements', ann.id)}>
-                                  <Trash2 className="text-destructive h-4 w-4" />
-                               </Button>
-                            </div>
-                         </div>
-                      ))}
-                      {announcements.length === 0 && <div className="text-center py-4 text-muted-foreground text-sm border rounded-md">Sem avisos publicados.</div>}
-                   </div>
-                </CardContent>
-             </Card>
-
-             <Card>
-                <CardHeader>
-                   <CardTitle>Agenda e Eventos</CardTitle>
-                   <CardDescription>Eventos programados para o calendário geral.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                   <form onSubmit={handleAddEvent} className="space-y-4 mb-6 p-4 border rounded-lg bg-blue-50/50 dark:bg-blue-900/10">
-                      <div className="space-y-2">
-                         <Label>Título do Evento</Label>
-                         <Input placeholder="Ex: Conferência de Jovens" value={eventForm.title} onChange={e => setEventForm({...eventForm, title: e.target.value})} required />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-2">
-                           <Label>Data</Label>
-                           <Input type="date" value={eventForm.date} onChange={e => setEventForm({...eventForm, date: e.target.value})} required />
-                         </div>
-                         <div className="space-y-2">
-                           <Label>Hora (opcional)</Label>
-                           <Input type="time" value={eventForm.time} onChange={e => setEventForm({...eventForm, time: e.target.value})} />
-                         </div>
-                      </div>
-                      <div className="space-y-2">
-                         <Label>Descrição Mínima</Label>
-                         <Input placeholder="Local ou tema do evento..." value={eventForm.description} onChange={e => setEventForm({...eventForm, description: e.target.value})} />
-                      </div>
-                      <Button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700">Adicionar Evento</Button>
-                   </form>
-
-                   <div className="space-y-4">
-                      {events.map((ev: any) => (
-                         <div key={ev.id} className="border rounded-lg p-3 flex justify-between gap-4">
-                            <div className="flex-1">
-                               <div className="flex gap-2 justify-between items-start mb-1">
-                                  <h4 className="font-bold text-sm">{ev.title}</h4>
-                               </div>
-                               {ev.description && <p className="text-xs text-muted-foreground mb-2">{ev.description}</p>}
-                               <div className="text-xs font-medium text-blue-700 bg-blue-50 w-fit px-2 py-0.5 rounded">
-                                  {new Date(ev.date).toLocaleDateString('pt-AO')} {ev.time ? `às ${ev.time}` : ''}
-                               </div>
-                            </div>
-                            <Button variant="ghost" size="icon" className="shrink-0" onClick={() => deleteEventSafely(ev.id)}>
-                               <Trash2 className="text-destructive h-4 w-4" />
-                            </Button>
-                         </div>
-                      ))}
-                      {events.length === 0 && <div className="text-center py-4 text-muted-foreground text-sm border rounded-md">Sem eventos na agenda.</div>}
-                   </div>
-                </CardContent>
-             </Card>
-          </div>
+        <TabsContent value="mural" className="space-y-6">
+          {/* v1.13.0 — «Avisos, Agenda e Eventos»: gestão pela liderança, leitura
+              pelos membros no Portal (mesmas colecções — fonte única). */}
+          <AnnouncementsAdmin />
+          <AgendaAdmin />
+          <EventsAdmin />
         </TabsContent>
 
         <TabsContent value="church">

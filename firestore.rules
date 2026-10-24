@@ -171,15 +171,23 @@ service cloud.firestore {
     match /notifications/{docId} {
       allow read, list: if isAuthenticated() && resource.data.userEmail == request.auth.token.email;
       allow create: if hasFinancialWriteAccess() || (isAuthenticated() && incoming().userEmail == request.auth.token.email);
-      allow update: if isAuthenticated() && resource.data.userEmail == request.auth.token.email
-                    && incoming().diff(resource.data).affectedKeys().hasOnly(['read']);
+      // O dono marca como lida; a liderança (v1.13) actualiza APENAS os
+      // documentos do digest do módulo (kind == 'board'), campos limitados.
+      allow update: if (isAuthenticated() && resource.data.userEmail == request.auth.token.email
+                    && incoming().diff(resource.data).affectedKeys().hasOnly(['read']))
+                    || (hasFinancialWriteAccess() && resource.data.kind == 'board'
+                    && incoming().diff(resource.data).affectedKeys().hasOnly(['title', 'body', 'refId', 'read', 'createdAt', 'updatedAt', 'byEmail']));
       allow delete: if isAuthenticated() && resource.data.userEmail == request.auth.token.email;
     }
 
     // --- Fila de mensagens externas (SMS/WhatsApp) e campanhas ---
     match /message_outbox/{docId} {
       allow read, list: if hasFinancialWriteAccess();
-      allow create, update: if isAdmin() && isValidId(docId);
+      allow create: if (isAdmin() && isValidId(docId))
+                    // v1.13: a liderança enfileira o digest «board» (avisos/
+                    // eventos) quando marca «enviar também por SMS/WhatsApp».
+                    || (hasFinancialWriteAccess() && incoming().kind == 'board');
+      allow update: if isAdmin() && isValidId(docId);
       allow delete: if hasFinancialWriteAccess();
     }
 
@@ -437,13 +445,97 @@ service cloud.firestore {
       allow read, list: if isAuthenticated();
       allow create, update, delete: if isAdmin();
     }
+    // --- v1.13.0: Avisos, Agenda e Eventos -----------------------------
+    // Publicação: LIDERANÇA (admin/pastor/tesoureiro) — decisão de 2026-10-25.
+    // Membros: só LEITURA (o Portal lê as mesmas colecções — fonte única).
+    function canPublishBoard() {
+      return hasFinancialWriteAccess();
+    }
+    function hasField(d, k) {
+      return d.keys().hasAny([k]);
+    }
+    function isDateIsoStr(s) {
+      return s is string && s.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+    function isTimeHHMMStr(s) {
+      return s is string && s.matches('^(0\\d|1\\d|2[0-3]):[0-5]\\d$');
+    }
+    // Texto formatado: o editor/client já saneia (allowlist), mas o SERVIDOR
+    // é a autoridade — recusa padrões perigosos mesmo em pedido directo.
+    function isSafeRichText(s) {
+      return s is string && s.size() <= 20000 &&
+        !s.matches('(?is).*<\\s*script.*') &&
+        !s.matches('(?is).*<\\s*iframe.*') &&
+        !s.matches('(?is).*<\\s*style.*') &&
+        !s.matches('(?is).*<\\s*object.*') &&
+        !s.matches('(?is).*<\\s*embed.*') &&
+        !s.matches('(?is).*<\\s*svg.*') &&
+        !s.matches('(?is).*javascript\\s*:.*') &&
+        !s.matches('(?is).*on(load|error|click|mouseover|focus|blur)\\s*=.*');
+    }
+    function isValidAnnouncementDoc(d) {
+      return d.keys().hasAll(['title']) &&
+        d.title is string && d.title.size() > 0 && d.title.size() <= 200 &&
+        (!hasField(d, 'content') || d.content is string) &&
+        (!hasField(d, 'contentHtml') || isSafeRichText(d.contentHtml)) &&
+        (!hasField(d, 'level') || d.level in ['normal', 'urgente']) &&
+        (!hasField(d, 'status') || d.status in ['rascunho', 'publicado', 'arquivado']) &&
+        (!hasField(d, 'pinned') || d.pinned is bool) &&
+        (!hasField(d, 'visibleUntil') || d.visibleUntil == null || isDateIsoStr(d.visibleUntil)) &&
+        (!hasField(d, 'active') || d.active is bool);
+    }
+    function isValidEventDoc(d) {
+      return d.keys().hasAll(['title', 'date']) &&
+        d.title is string && d.title.size() > 0 && d.title.size() <= 200 &&
+        isDateIsoStr(d.date) &&
+        (!hasField(d, 'time') || d.time == null || d.time == '' || isTimeHHMMStr(d.time)) &&
+        (!hasField(d, 'dateEnd') || d.dateEnd == null || isDateIsoStr(d.dateEnd)) &&
+        (!hasField(d, 'timeEnd') || d.timeEnd == null || d.timeEnd == '' || isTimeHHMMStr(d.timeEnd)) &&
+        (!hasField(d, 'description') || d.description is string) &&
+        (!hasField(d, 'descriptionHtml') || isSafeRichText(d.descriptionHtml)) &&
+        (!hasField(d, 'status') || d.status in ['marcado', 'adiado', 'cancelado', 'realizado']) &&
+        (!hasField(d, 'publishStatus') || d.publishStatus in ['rascunho', 'publicado']) &&
+        (!hasField(d, 'reminder1d') || d.reminder1d is bool) &&
+        (!hasField(d, 'posterPath') || d.posterPath == null ||
+          (d.posterPath is string && d.posterPath.matches('^posters/[^/]+\\.(jpg|png|webp)$'))) &&
+        (!hasField(d, 'posterThumbPath') || d.posterThumbPath == null ||
+          (d.posterThumbPath is string && d.posterThumbPath.matches('^posters/thumbs/[^/]+\\.(jpg|png|webp)$')));
+    }
+    function isValidAgendaItemDoc(d) {
+      return d.keys().hasAll(['title', 'weekday', 'startTime']) &&
+        d.title is string && d.title.size() > 0 && d.title.size() <= 140 &&
+        d.weekday is int && d.weekday >= 1 && d.weekday <= 7 &&
+        isTimeHHMMStr(d.startTime) &&
+        (!hasField(d, 'endTime') || d.endTime == null || isTimeHHMMStr(d.endTime)) &&
+        (!hasField(d, 'cancelledDates') || (d.cancelledDates is list && d.cancelledDates.size() <= 400)) &&
+        (!hasField(d, 'location') || d.location is string) &&
+        (!hasField(d, 'responsible') || d.responsible is string) &&
+        (!hasField(d, 'notes') || d.notes is string);
+    }
+
     match /announcements/{annId} {
       allow read, list: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
+      allow create: if canPublishBoard() && isValidAnnouncementDoc(incoming());
+      allow update: if canPublishBoard() && isValidAnnouncementDoc(incoming());
+      allow delete: if canPublishBoard();
     }
     match /events/{eventId} {
       allow read, list: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
+      allow create: if canPublishBoard() && isValidEventDoc(incoming());
+      allow update: if canPublishBoard() && isValidEventDoc(incoming());
+      allow delete: if canPublishBoard();
+    }
+    match /agenda_items/{itemId} {
+      allow read, list: if isAuthenticated();
+      allow create: if canPublishBoard() && isValidAgendaItemDoc(incoming());
+      allow update: if canPublishBoard() && isValidAgendaItemDoc(incoming());
+      allow delete: if canPublishBoard();
+    }
+    // Controlo do digest diário de notificações do módulo (só liderança).
+    match /board_notify_log/{dayKey} {
+      allow read, list: if canPublishBoard();
+      allow create, update: if canPublishBoard() && isDateIsoStr(dayKey);
+      allow delete: if canPublishBoard();
     }
     match /pedidos_atualizacao/{reqId} {
       allow read, list: if isAuthenticated();
