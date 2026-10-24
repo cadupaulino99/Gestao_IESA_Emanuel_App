@@ -17,7 +17,23 @@
  *   PROJECT_ID        iesa-emanuel-xangongo
  */
 
-import { PROVIDERS } from './providers.config.js';
+/* ─────────────────────────────────────────────────────────────────────────────
+   CONFIGURAÇÃO DE FORNECEDORES DE CANAIS (v1.11.0)
+   ─────────────────────────────────────────────────────────────────────────────
+   'manual'  → a fila mostra botões wa.me / sms: pré-preenchidos e o operador
+               marca como enviada. SEMPRE funcional, sem contas nem custos.
+   Depois de criar contas e aprovar modelos, troque aqui o fornecedor e acrescente
+   as chaves como SEGREDOS do Worker (nunca neste ficheiro):
+     sms:       'infobip' | 'twilio' | 'manual'   (segredos: SMS_API_KEY, SMS_SENDER_ID,
+                                                  TWILIO_SID no caso twilio)
+     whatsapp:  'meta'   | 'manual'               (segredos: WA_TOKEN, WA_PHONE_ID)
+   Adaptadores: sendSms() / sendWhatsApp() abaixo.
+   ───────────────────────────────────────────────────────────────────────────── */
+const PROVIDERS = {
+  system: 'internal',   // notificações dentro da app: sempre ligadas
+  sms: 'manual',
+  whatsapp: 'manual',
+};
 
 /* VERSAO do codigo do Worker.
    IMPORTANTE: sempre que este ficheiro mudar, o Worker TEM de ser re-publicado
