@@ -24,6 +24,7 @@ import { restoreFromTrash, moveToTrash } from '../lib/trash';
 import { migrateTitheDoc, codeForSeq } from '../lib/migrate';
 import { cleanBi } from '../lib/members';
 import { maxSeqFromCodes } from '../lib/members';
+import { NOTIF_SETTINGS_DEFAULT } from '../types';
 import { writeBatch } from 'firebase/firestore';
 import { orderBy } from 'firebase/firestore';
 
@@ -596,6 +597,16 @@ export default function Admin() {
     }
   };
 
+  const createNotifSettings = async () => {
+    if (!backupConfirmed) { toast.error('Confirme primeiro a cópia de segurança.'); return; }
+    try {
+      const d0 = await getDoc(doc(db, 'settings', 'notifications'));
+      if (d0.exists()) { toast.info('Já existe configuração de notificações (Definições → Notificações & Lembretes).'); return; }
+      await setDoc(doc(db, 'settings', 'notifications'), { ...NOTIF_SETTINGS_DEFAULT });
+      toast.success('Configurações de notificações criadas com os valores por defeito.');
+    } catch (e: any) { toast.error(e?.message || 'Erro ao criar configurações.'); }
+  };
+
   const runAdminMigration = async () => {
     if (!backupConfirmed) { toast.error('Confirme primeiro a cópia de segurança.'); return; }
     const ok = await confirmDialog('Migrar contas de admin existentes (campos nome/telefone/estado/último acesso + flag isSuper do super)? Idempotente.', 'MIGRAR');
@@ -996,6 +1007,24 @@ export default function Admin() {
                 <Button onClick={runAdminMigration} disabled={!backupConfirmed || migrating}>
                   {migrating ? 'A migrar…' : '2. Executar migração de admins'}
                 </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="border shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base">Estruturas v1.11.0 (notificações, orçamento, contribuições)</CardTitle>
+                <CardDescription>
+                  As coleções novas criam-se ao primeiro uso. Este botão cria o documento
+                  de configuração dos lembretes com os valores por defeito (3×/semana,
+                  seg-qua-sex, 9h Luanda, máx. 8 semanas, externos desligados).
+                  Os índices de consulta são publicados pelo workflow <i>Deploy Firebase</i>.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" onClick={createNotifSettings} disabled={!backupConfirmed}>
+                  Criar configurações de notificações
+                </Button>
+                <p className="text-[11px] text-muted-foreground mt-2">Use o mesmo checkbox de cópia de segurança acima.</p>
               </CardContent>
             </Card>
 

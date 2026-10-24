@@ -134,6 +134,61 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // --- v1.11.0: orçamento único, contribuições, pagamentos ---
+    // Escrita: só liderança (servidor). Leitura: o próprio membro ou liderança.
+    function isOwnOrLeader() {
+      return hasFinancialWriteAccess() || isOwnMemberDoc();
+    }
+
+    match /member_budgets/{docId} {
+      allow read, list: if isOwnOrLeader();
+      allow create, update: if isAdmin() && isValidId(docId)
+                            && incoming().keys().hasAll(['memberId', 'year', 'amount', 'setBy', 'setAt', 'history'])
+                            && incoming().amount is int && incoming().amount > 0;
+      allow delete: if hasFinancialWriteAccess();
+    }
+
+    match /contributions/{docId} {
+      allow read, list: if isOwnOrLeader();
+      allow create: if isAdmin() && isValidId(docId)
+                    && incoming().keys().hasAll(['memberId', 'description', 'amount', 'dueDate', 'status', 'setBy', 'setAt', 'history'])
+                    && incoming().amount is int && incoming().amount > 0
+                    && incoming().description is string && incoming().description.size() > 0
+                    && incoming().dueDate is string;
+      allow update: if hasFinancialWriteAccess();
+      allow delete: if hasFinancialWriteAccess();
+    }
+
+    match /contribution_payments/{docId} {
+      allow read, list: if isOwnOrLeader();
+      allow create: if isAdmin() && isValidId(docId)
+                    && incoming().keys().hasAll(['contributionId', 'memberId', 'amount', 'deliveryDate', 'recordedBy', 'createdAt'])
+                    && incoming().amount is number && incoming().amount > 0;
+      allow update, delete: if hasFinancialWriteAccess();
+    }
+
+    // --- Notificações por utilizador: cada um vê só as suas; liderança cria ---
+    match /notifications/{docId} {
+      allow read, list: if isAuthenticated() && resource.data.userEmail == request.auth.token.email;
+      allow create: if hasFinancialWriteAccess() || (isAuthenticated() && incoming().userEmail == request.auth.token.email);
+      allow update: if isAuthenticated() && resource.data.userEmail == request.auth.token.email
+                    && incoming().diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isAuthenticated() && resource.data.userEmail == request.auth.token.email;
+    }
+
+    // --- Fila de mensagens externas (SMS/WhatsApp) e campanhas ---
+    match /message_outbox/{docId} {
+      allow read, list: if hasFinancialWriteAccess();
+      allow create, update: if isAdmin() && isValidId(docId);
+      allow delete: if hasFinancialWriteAccess();
+    }
+
+    match /campaigns/{docId} {
+      allow read, list: if hasFinancialWriteAccess();
+      allow create, update: if isAdmin() && isValidId(docId);
+      allow delete: if false;
+    }
+
     // --- Cartão de membro: comunhão, donativos voluntários, renovações ---
     // Leitura: qualquer sessão (o portal do membro filtra pelo próprio memberId
     // no cliente, tal como já faz com `tithes`). Escrita: só liderança.

@@ -34,6 +34,7 @@ const MemberPortal = lazy(() => import('./pages/MemberPortal'));
 const Obligations = lazy(() => import('./pages/Obligations'));
 const Support = lazy(() => import('./pages/Support'));
 const Radio = lazy(() => import('./pages/Radio'));
+const Contributions = lazy(() => import('./pages/Contributions'));
 import { useNotifications } from './hooks/useNotifications';
 
 const queryClient = new QueryClient();
@@ -252,6 +253,7 @@ export default function App() {
                       <Route path="admin" element={<Admin />} />
                       <Route path="support" element={<Support />} />
                       <Route path="radio" element={<Radio />} />
+                      <Route path="contributions" element={<Contributions />} />
                       <Route path="settings" element={<Settings />} />
                     </Route>
                   </Routes>

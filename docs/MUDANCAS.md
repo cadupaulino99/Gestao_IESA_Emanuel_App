@@ -1,5 +1,42 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.11.0 (2026-10-24) — Orçamento único, contribuições, notificações e mensagens em massa
+
+- **Orçamento único** por membro/ano (`member_budgets`): inteiros positivos, histórico
+  de alterações (antes/depois/autor/data), definição individual e **em massa**
+  (selecionar todos, pesquisa, filtro «sem valor», confirmação com «actual → novo»
+  e manter/substituir, gravação atómica tudo-ou-nada).
+- **Contribuições** (`contributions` + `contribution_payments`): descrição, valor,
+  prazo, estado calculado (em curso / em atraso por prazo / concluída por pagamentos),
+  pagamentos parciais com data de entrega (contabilidade por entrega, separada dos
+  dízimos), conclusão automática + manual com motivo, reabertura só admin com motivo,
+  histórico. Linhas novas no cartão (membro e portal).
+- **Notificações**: coleção `notifications` por email + **sino com contador**
+  (Layout, desktop e móvel); cada utilizador vê só as suas (regra no servidor).
+- **Fila de mensagens** (`message_outbox`): janela de **10 min** para cancelar ou
+  substituir (correção dentro da janela não duplica); estados por canal
+  (pendente/manual_hold/enviada/falhada/sem-número/não-aceita/cancelada);
+  «Repetir falhadas»; **modo manual** por defeito (botões wa.me/sms: + marcar enviada).
+- **Lembretes** por cron do Worker (1 min): config única em `settings/notifications`
+  (3×/semana, seg-qua-sex, 9h Luanda, máx. 8 semanas, externos OFF por defeito com
+  tecto semanal, modo de teste); máx. 1 mensagem/dia/membro somando canais/campanhas;
+  param ao concluir e às 8 semanas (+aviso ao super).
+- **IA em massa** (`/assistant/bulk-templates` no Worker): a IA recebe só objectivo +
+  contagens por grupo; devolve modelos com {nome} {descricao} {valor} {prazo}
+  {valor_em_falta}; substituição no cliente; pré-visualização obrigatória (contagens
+  + 3 exemplos reais por grupo); envio bloqueado se faltar marcador; aviso de SMS
+  longa; registo em `campaigns`. Gemini 3.6 flash pelo Worker existente.
+- **Telefones**: normalização +2449XXXXXXXX na gravação, validação e aviso de
+  número duplicado entre membros; campo «Aceita mensagens» (defeito sim).
+- **Permissões no servidor**: escritas das coleções novas só `isAdmin()`; leitura
+  dos valores só do próprio membro ou liderança; aba e página mostram «Acesso
+  negado» a não-admins.
+- Fornecedores propostos e textos de modelo WhatsApp: `docs/MENSAGENS-FORNECEDORES.md`.
+- Guia de testes (9 cenários do utilizador): `docs/VERIFICACAO-V1.11.0.md`.
+- **Fora desta versão:** pagamentos online, recibos automáticos de contribuições,
+  outros canais (email/push), dashboards de facturação de fornecedor.
+
+
 ## v1.10.2 (2026-10-24) — «Sucesso… e depois erro ao sincronizar» ao lançar dízimo
 
 Causa (cadeia de três defeitos no estado do formulário `tD`, `Finances.tsx`):
