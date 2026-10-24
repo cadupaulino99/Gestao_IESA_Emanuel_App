@@ -186,7 +186,7 @@ export default function Assets() {
           ) : (
             <>
               <div className="hidden md:block">
-                <Table>
+                <div className="overflow-x-auto"><Table className="min-w-[560px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Bem</TableHead>
@@ -220,7 +220,7 @@ export default function Assets() {
                     ))}
                     {assets?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center">Nenhum activo registado.</TableCell></TableRow>}
                   </TableBody>
-                </Table>
+                </Table></div>
               </div>
               <div className="md:hidden space-y-4">
                  {assets?.length === 0 ? (

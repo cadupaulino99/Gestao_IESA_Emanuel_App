@@ -281,7 +281,7 @@ export default function BuildingFund() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+            <div className="space-y-4 pr-2">
               {isLoading ? (
                 <div className="text-center py-4">A carregar...</div>
               ) : fundData?.history.length === 0 ? (

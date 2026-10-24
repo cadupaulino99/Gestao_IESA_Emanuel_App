@@ -592,7 +592,7 @@ export default function Dashboard() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
+                  <div className="space-y-4 pr-2">
                     {isLoading ? (
                       <div className="text-muted-foreground">A carregar...</div>
                     ) : stats?.cellStats?.length === 0 ? (

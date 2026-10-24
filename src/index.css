@@ -355,3 +355,16 @@ html {
   .grid > * { min-width: 0; }
   .recharts-responsive-container, .recharts-wrapper { max-width: 100% !important; }
 }
+
+/* v1.9.4 — acessibilidade de rolagem:
+   1 scroller vertical por aba (o do Layout); tabelas com rolagem horizontal;
+   cabeçalho de tabela visível durante o scroll vertical. */
+.overflow-auto table thead:not([class*="sticky"]) th,
+.overflow-x-auto table thead:not([class*="sticky"]) th,
+.overflow-y-auto table thead:not([class*="sticky"]) th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--card);
+  box-shadow: inset 0 -1px 0 var(--border);
+}

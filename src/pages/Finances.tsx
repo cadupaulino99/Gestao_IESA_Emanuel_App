@@ -1722,7 +1722,7 @@ export default function Finances() {
             </CardHeader>
             <CardContent>
                 <div className="hidden md:block">
-                  <Table>
+                  <div className="overflow-x-auto"><Table className="min-w-[560px]">
                     <TableHeader>
                       <TableRow><TableHead>Recibo</TableHead><TableHead>Membro</TableHead><TableHead>Tipo</TableHead><TableHead>Ref.</TableHead><TableHead>Valor</TableHead><TableHead></TableHead></TableRow>
                     </TableHeader>
@@ -1778,7 +1778,7 @@ export default function Finances() {
                       ))}
                       {!loading && filteredTithes.length === 0 && <TableRow><TableCell colSpan={6} className="text-center">Sem registos.</TableCell></TableRow>}
                     </TableBody>
-                  </Table>
+                  </Table></div>
                 </div>
                 {/* Mobile View */}
                 <div className="md:hidden flex flex-col gap-4">
@@ -1910,7 +1910,7 @@ export default function Finances() {
             </CardHeader>
             <CardContent>
               <div className="hidden md:block">
-                <Table>
+                <div className="overflow-x-auto"><Table className="min-w-[560px]">
                   <TableHeader>
                     <TableRow><TableHead>Descrição</TableHead><TableHead>Tipo</TableHead><TableHead>Data Ref.</TableHead><TableHead>Valor</TableHead><TableHead></TableHead></TableRow>
                   </TableHeader>
@@ -1951,7 +1951,7 @@ export default function Finances() {
                     ))}
                     {!loading && filteredOfferings.length === 0 && <TableRow><TableCell colSpan={5} className="text-center">Sem registos.</TableCell></TableRow>}
                   </TableBody>
-                </Table>
+                </Table></div>
               </div>
               <div className="md:hidden flex flex-col gap-4">
                  {loading ? (
@@ -2065,7 +2065,7 @@ export default function Finances() {
             </CardHeader>
             <CardContent>
               <div className="hidden md:block">
-                <Table>
+                <div className="overflow-x-auto"><Table className="min-w-[560px]">
                   <TableHeader>
                     <TableRow><TableHead>Data/Desc.</TableHead><TableHead>Responsável</TableHead><TableHead>Categoria</TableHead><TableHead>Valor</TableHead><TableHead></TableHead></TableRow>
                   </TableHeader>
@@ -2102,7 +2102,7 @@ export default function Finances() {
                     ))}
                     {!loading && filteredExpenses.length === 0 && <TableRow><TableCell colSpan={5} className="text-center">Sem registos.</TableCell></TableRow>}
                   </TableBody>
-                </Table>
+                </Table></div>
               </div>
               <div className="md:hidden flex flex-col gap-4">
                  {loading ? (

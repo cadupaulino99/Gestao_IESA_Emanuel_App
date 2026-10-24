@@ -687,7 +687,7 @@ export default function Members() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="hidden md:block">
-                <Table>
+                <div className="overflow-x-auto"><Table className="min-w-[560px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nome</TableHead>
@@ -738,7 +738,7 @@ export default function Members() {
                       </TableRow>
                     ))}
                   </TableBody>
-                </Table>
+                </Table></div>
               </div>
               
               {/* Mobile view */}
@@ -923,7 +923,7 @@ export default function Members() {
                            </div>
                          );
                        })()}
-                       <Table>
+                       <div className="overflow-x-auto"><Table className="min-w-[560px]">
                          <TableHeader>
                            <TableRow>
                              <TableHead>Mês/Ano Ref.</TableHead>
@@ -940,7 +940,7 @@ export default function Members() {
                              </TableRow>
                            ))}
                          </TableBody>
-                       </Table>
+                       </Table></div>
                      </>
                    )}
                  </div>

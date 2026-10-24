@@ -1,5 +1,31 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.9.4 (2026-10-24) — Rolagem acessível em todas as abas (uma só barra vertical)
+
+Causas encontradas (auditoria de layout, sem mudar lógica nem aspeto):
+- `Support.tsx:186` raiz com altura fixa `h-[calc(100vh-110px)]` + cartões
+  `overflow-hidden` com `CardContent overflow-y-auto` — o cálculo não batia com o
+  chrome real (cabeçalho + nav inferior + paddings) e cortava topo/fundo no móvel.
+- Listas em fluxo com tampa e scroller próprio (algumas com `scrollbar-hide`, que
+  escondia a barra e fazia o conteúdo parecer inalcançável): `Radio.tsx:331`
+  (340 px), `Dashboard.tsx:595` (220 px), `BuildingFund.tsx:284` (300 px),
+  `Admin.tsx:1226/1275` (500 px).
+- Tabelas largas **sem** wrapper horizontal: `Admin.tsx:798/841`, `Assets.tsx:189`,
+  `Finances.tsx:1725/1913/2068`, `MemberPortal.tsx:526`, `Members.tsx:690/926` —
+  cortadas ao lado em 360 px.
+
+Solução única aplicada a todas as abas: **o scroller vertical é o da página**
+(`Layout.tsx:261`, já era o desenhado para isso); removidas alturas fixas e
+scrollers internos em fluxo; tampas de listas removidas; tabelas envolvidas em
+`overflow-x-auto` + `min-w-[560px]`; cabeçalhos de tabela presos ao topo com uma
+regra CSS única em `index.css` (`thead:not([class*="sticky"]) th { position:
+sticky; top: 0; background: var(--card) }`), que respeita cabeçalhos já
+estilizados (lixeira/auditoria). Diálogos e sheets mantêm scroll próprio
+(sobreposições, não abas). Lógica de dados e aspeto: intocados.
+
+Guia de verificação (computador + 360 px, aba a aba): `docs/VERIFICACAO-ROLLAGEM.md`.
+
+
 ## v1.9.3 (2026-10-24) — Dízimos com duas datas, duplicidades, identificação de membros
 
 **1. Duas datas por lançamento** (`deliveryMonth/Year` = entrega, usada pela

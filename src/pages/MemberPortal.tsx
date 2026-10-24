@@ -523,7 +523,7 @@ export default function MemberPortal() {
                         </div>
                       ) : (
                         <div className="border rounded-md">
-                          <Table>
+                          <div className="overflow-x-auto"><Table className="min-w-[560px]">
                             <TableHeader>
                               <TableRow>
                                 <TableHead>Mês/Ano Ref.</TableHead>
@@ -553,7 +553,7 @@ export default function MemberPortal() {
                                 </TableRow>
                               ))}
                             </TableBody>
-                          </Table>
+                          </Table></div>
                         </div>
                       )}
                     </>
