@@ -24,8 +24,8 @@
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.2.0';
-const WORKER_BUILD = '2026-10-23 (bootstrap admin + scope identitytoolkit)';
+const WORKER_VERSION = '2.3.0';
+const WORKER_BUILD = '2026-10-24 (sem bootstrap: papel so pelo documento admins)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -221,16 +221,13 @@ function rateOk(email) {
   return b.count <= RATE_LIMIT;
 }
 
-/* Admins de arranque — ESPELHA o bootstrap das firestore.rules.
-   Sem isto, um utilizador que ainda nao tem documento em `admins` recebe 403 no
-   Worker mesmo quando o Firestore o aceita (foi o que bloqueou a criacao de
-   contas de administrador). */
-const BOOTSTRAP_ADMINS = ['cadupaulino99@gmail.com'];
-
+/* Sem admins hardcoded (auditoria 2026-10-24): o papel vem UNICAMENTE do
+   documento admins/<email> no Firestore. O bootstrap das regras e auto-
+   extinguivel e so permite CRIAR o primeiro documento — nao da papel nenhum
+   no Worker. Quem receber 403 aqui resolve-se com um documento em admins. */
 async function getRole(email, env) {
   if (!email) return null;
   const lower = email.toLowerCase();
-  if (BOOTSTRAP_ADMINS.includes(lower)) return 'admin';
   if (Date.now() - roleCache.ts > ROLE_TTL) roleCache = { ts: Date.now(), map: {} };
   if (roleCache.map[lower] !== undefined) return roleCache.map[lower];
   const tok = await saAccessToken(env.FIREBASE_SA_JSON);

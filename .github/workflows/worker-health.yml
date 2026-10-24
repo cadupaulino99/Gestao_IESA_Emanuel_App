@@ -1,0 +1,83 @@
+name: worker-health
+
+# Vigia o Worker publicado contra o código do repositório.
+#  - em cada push/PR: passo INFORMATIVO no ci.yml (não bloqueia);
+#  - aqui: cron diário + manual — se a versão no ar divergir da versão em
+#    `worker/ai-worker.js` (o pecado original do incidente do BI: código novo no
+#    repo, servidor antigo), abre uma issue automaticamente.
+on:
+  schedule:
+    - cron: '17 6 * * *'   # 06:17 UTC, todos os dias
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    name: Worker publicado vs. repositório
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WORKER_URL: https://iesa-ai.cadupaulino99.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versão esperada (do código)
+        id: exp
+        run: |
+          V="$(grep -o "WORKER_VERSION = '[^']*'" worker/ai-worker.js | head -1 | cut -d"'" -f2)"
+          echo "expected=$V" >> "$GITHUB_OUTPUT"
+          echo "Versão no repositório: $V"
+
+      - name: Versão no ar (/__health)
+        id: live
+        run: |
+          BODY="$(curl -fsS "$WORKER_URL/__health" || true)"
+          echo "$BODY" | tee /tmp/health.json || true
+          V="$(printf '%s' "$BODY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).version||"")}catch{console.log("")}})')"
+          VIS="$(printf '%s' "$BODY" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).vision===true?"true":"false")}catch{console.log("false")}})')"
+          echo "live=$V" >> "$GITHUB_OUTPUT"
+          echo "vision=$VIS" >> "$GITHUB_OUTPUT"
+
+      - name: Comparar e reportar
+        id: cmp
+        run: |
+          EXP="${{ steps.exp.outputs.expected }}"
+          LIVE="${{ steps.live.outputs.live }}"
+          VIS="${{ steps.live.outputs.vision }}"
+          echo "repo=$EXP  ar=$LIVE  vision=$VIS"
+          if [ -z "$LIVE" ]; then
+            echo "::error::O Worker nao respondeu ao /__health (em baixo ou demasiado antigo)."
+            echo "drift=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EXP" != "$LIVE" ] || [ "$VIS" != "true" ]; then
+            echo "::error::DRIFT: repo=$EXP mas no ar=$LIVE (vision=$VIS). Publique o Worker: docs/INICIO-RAPIDO.md (Via A) ou npm run deploy:worker."
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Sem drift: o Worker no ar e o do repositório coincidem."
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Abrir issue se houver drift (sem duplicar)
+        if: steps.cmp.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXP="${{ steps.exp.outputs.expected }}"
+          LIVE="${{ steps.live.outputs.live }}"
+          EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label worker-drift --json number -q 'length')"
+          if [ "$EXISTE" != "0" ]; then
+            echo "Ja ha issue aberta de worker-drift; nao duplico."
+            exit 0
+          fi
+          gh issue create --repo "$GITHUB_REPOSITORY" --label worker-drift \
+            --title "Worker publicado desatualizado (repo $EXP vs. ar $LIVE)" \
+            --body "O /__health devolve a versao **$LIVE** mas o repositório ja vai em **$EXP**.
+
+O Worker e um servidor a parte: publicar o APK nao o atualiza. Corrigir com:
+- Via A (3 min): colar \`worker/ai-worker.js\` no editor da Cloudflare (docs/INICIO-RAPIDO.md); ou
+- \`npm run deploy:worker\` com os segredos no ambiente.
+
+Detetado automaticamente pelo workflow \`worker-health\`."

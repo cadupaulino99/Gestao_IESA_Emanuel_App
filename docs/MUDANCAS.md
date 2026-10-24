@@ -1,5 +1,27 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## 2026-10-24 — Follow-up da auditoria (revisão externa): os três próximos passos
+
+1. **Bootstrap de email auto-extinguível** (em vez de «remover quando houver
+   admin», que depende de memória humana): nas `firestore.rules`, o email do
+   fundador **deixou de dar privilégios** (`isAdmin()` agora vem só do documento
+   `admins/<email>`); resta apenas uma cláusula de **criação única** do próprio
+   documento, que só corresponde enquanto esse documento **não existe** — no
+   instante em que existe, morre para sempre. No Worker (v2.3.0) o
+   `BOOTSTRAP_ADMINS` foi **removido por completo**: o papel vem só do Firestore.
+2. **Testes alargados ao AuthContext e ao fluxo de membros:** a lógica de decisão
+   do AuthContext foi extraída para `src/lib/access.ts` (pura) e testada
+   (`access.test.ts`: sem documento → sem papel; legado sem role → admin;
+   liderança = admin/pastor/tesoureiro). O fluxo de comunhão dos membros tem
+   testes com o Firestore mockado (`communion.test.ts`: ciclo vazio→✓→✗→vazio,
+   marcas legadas normalizadas, `memberEmail` gravado). Total: **30 testes**.
+3. **Health check do Worker no pipeline:** passo informativo no `ci.yml`
+   (compara a versão no ar com a do repo em cada push/PR, sem bloquear) +
+   workflow `worker-health.yml` (cron diário 06:17 UTC + manual) que, em caso de
+   drift, **abre automaticamente uma issue** com etiqueta `worker-drift` e o
+   procedimento de correção — sem duplicar issues abertas.
+
+
 ## v1.9.0 (2026-10-24) — Auditoria: docs, segurança, testes, resiliência da IA, performance
 
 Resposta point-by-point à auditoria externa:

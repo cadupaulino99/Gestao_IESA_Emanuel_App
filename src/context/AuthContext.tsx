@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { resolveRole, firstMemberOrNone } from '../lib/access';
 import {
   User,
   onAuthStateChanged,
@@ -59,10 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (currentUser.email) {
             const docRef = doc(db, 'admins', currentUser.email.toLowerCase());
             const docSnap = await getDoc(docRef);
-            hasAdminAccess = docSnap.exists();
-            if (hasAdminAccess) {
-              role = docSnap.data().role || 'admin';
-            }
+            // lógica pura, testada em src/lib/__tests__/access.test.ts
+            role = resolveRole(docSnap.exists(), docSnap.data()?.role);
+            hasAdminAccess = role !== null;
           }
 
           setIsAdmin(hasAdminAccess);
@@ -72,8 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (currentUser.email) {
             const memQuery = query(collection(db, 'members'), where('email', '==', currentUser.email));
             const memSnap = await getDocs(memQuery);
-            if (!memSnap.empty) {
-              setMemberData({ id: memSnap.docs[0].id, ...memSnap.docs[0].data() });
+            const first = firstMemberOrNone(memSnap.docs);
+            if (first) {
+              setMemberData({ id: first.id, ...first.data() });
             } else {
               setMemberData(null);
             }
