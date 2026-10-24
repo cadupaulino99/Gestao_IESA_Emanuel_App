@@ -213,7 +213,8 @@ export default function Layout() {
                 </Button>
               </SheetTrigger>
               {/* Menu como bottom-sheet nativo (nunca "meio ecrã" lateral) */}
-              <SheetContent side="bottom" className="rounded-t-3xl pb-safe max-h-[85dvh] overflow-y-auto border-t-0 px-4 pt-3">
+              <SheetContent side="bottom" className="rounded-t-3xl pb-safe max-h-[85vh] flex flex-col gap-0 overflow-hidden border-t-0 px-4 pt-3">
+                <div className="scroll-native min-h-0 flex-1 pb-3">
                 <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-300 dark:bg-slate-700" aria-hidden />
                 <SheetTitle className="flex items-center justify-between text-base font-semibold pb-2">
                   Menu
@@ -253,6 +254,7 @@ export default function Layout() {
                   <DoorClosed className="h-4 w-4 text-slate-500" />
                   <span>Terminar Sessão</span>
                 </Button>
+                </div>
               </SheetContent>
             </Sheet>
           </div>

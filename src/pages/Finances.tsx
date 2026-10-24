@@ -1431,7 +1431,7 @@ export default function Finances() {
                   <Input placeholder="Pesquisar membro ou recibo..." value={searchTithes} onChange={e => setSearchTithes(e.target.value)} className="w-[200px]" />
                   <Dialog open={isTOpen} onOpenChange={isClosed ? undefined : setIsTOpen}>
                     <DialogTrigger asChild><Button size="sm" disabled={isClosed}><Plus className="w-4 h-4 mr-2" /> Registar</Button></DialogTrigger>
-                  <DialogContent className="max-h-screen overflow-y-auto">
+                  <DialogContent className="max-h-[92dvh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Registar Entrada de Membro</DialogTitle>
                       <DialogDescription className="sr-only">Preencha os dados</DialogDescription>

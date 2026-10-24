@@ -1,5 +1,33 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.9.7 (2026-10-24) — Menu móvel: «Terminar Sessão» inacessível; scroll por toque endurecido
+
+Queixa com captura: no menu inferior (bottom-sheet), o botão Terminar Sessão fica
+cortado e o sheet não rola. Causa: o scroll estava no próprio content do Radix
+Sheet com `max-h-[85dvh] overflow-y-auto` — em WebViews Android o scroll por toque
+não ativa ali sem `-webkit-overflow-scrolling: touch`, e `dvh` falha em WebViews
+antigas (sem max-h, o sheet cresce para além do ecrã).
+
+- Sheet do menu: `max-h-[85vh]` + `flex flex-col overflow-hidden` e **região de
+  scroll interna** `.scroll-native` (overflow-y auto + -webkit-overflow-scrolling
+  + overscroll-contain) — o handle e o título acompanham, tudo o resto rola,
+  incluindo Terminar Sessão.
+- `index.css`: `-webkit-overflow-scrolling: touch` global (fix clássico do scroll
+  morto em WebViews) + classe `.scroll-native` reutilizável.
+- Diálogo de lançamento das Finanças: `max-h-screen` → `max-h-[92dvh]` (folga aos
+  bordos; antes colava ao topo/fundo em ecrãs baixos).
+
+Auditoria de sobreposições (todas as que podem exceder o ecrã):
+| Sobreposição | Estado |
+|---|---|
+| Sheet menu móvel (Layout) | **corrigido agora** |
+| Sheet perfil do membro (Members) | ok desde v1.9.6 (scroll nativo interno) |
+| Dialog Editar/Novo membro | ok desde v1.9.6 |
+| Dialogs Finanças / Admin / fusão / portal / cartão / leitor de docs / pastoral | ok (max-h 90-92dvh + overflow-y-auto) |
+| Paleta de comandos (Ctrl+K) | ok (lista com max-h próprio, diálogo pequeno) |
+Sem mais telas nesta condição.
+
+
 ## v1.9.6 (2026-10-24) — «Editar Membro» não rolava: ScrollArea Radix morto na WebView
 
 Queixa com captura: no diálogo *Editar Membro* havia campos cortados por baixo e a
