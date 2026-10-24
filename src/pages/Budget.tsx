@@ -8,6 +8,8 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { toast } from 'sonner';
 import { Pencil, Save, X } from 'lucide-react';
+import { formatKz } from '../lib/money';
+import MoneyInput from '../components/MoneyInput';
 
 export default function Budget() {
   const currentYear = new Date().getFullYear();
@@ -159,8 +161,8 @@ export default function Budget() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Categoria</TableHead>
-                  <TableHead>Previsto (AOA)</TableHead>
-                  <TableHead>Realizado (AOA)</TableHead>
+                  <TableHead>Previsto (Kz)</TableHead>
+                  <TableHead>Realizado (Kz)</TableHead>
                   <TableHead>Estado</TableHead>
                 </TableRow>
               </TableHeader>
@@ -173,10 +175,10 @@ export default function Budget() {
                       <TableCell className="font-medium">Entradas Dízimos</TableCell>
                       <TableCell>
                         {isEditing ? (
-                          <Input type="number" value={editData.expectedTithes} onChange={e => setEditData({...editData, expectedTithes: parseFloat(e.target.value) || 0})} className="w-32 h-8" />
-                        ) : new Intl.NumberFormat('pt-AO').format(budgetData?.tithes.expected || 0)}
+                          <MoneyInput value={editData.expectedTithes ?? null} onChange={c => setEditData({...editData, expectedTithes: c ?? 0})} className="w-36" />
+                        ) : formatKz(budgetData?.tithes.expected || 0)}
                       </TableCell>
-                      <TableCell>{new Intl.NumberFormat('pt-AO').format(budgetData?.tithes.actual || 0)}</TableCell>
+                      <TableCell>{formatKz(budgetData?.tithes.actual || 0)}</TableCell>
                       <TableCell className={percentCalc(budgetData?.tithes.actual || 0, budgetData?.tithes.expected || 0) >= 100 ? "text-green-600" : "text-amber-500"}>
                          {percentCalc(budgetData?.tithes.actual || 0, budgetData?.tithes.expected || 0)}% alcançado
                       </TableCell>
@@ -185,10 +187,10 @@ export default function Budget() {
                       <TableCell className="font-medium">Ofertas Diversas</TableCell>
                       <TableCell>
                         {isEditing ? (
-                          <Input type="number" value={editData.expectedOfferings} onChange={e => setEditData({...editData, expectedOfferings: parseFloat(e.target.value) || 0})} className="w-32 h-8" />
-                        ) : new Intl.NumberFormat('pt-AO').format(budgetData?.offerings.expected || 0)}
+                          <MoneyInput value={editData.expectedOfferings ?? null} onChange={c => setEditData({...editData, expectedOfferings: c ?? 0})} className="w-36" />
+                        ) : formatKz(budgetData?.offerings.expected || 0)}
                       </TableCell>
-                      <TableCell>{new Intl.NumberFormat('pt-AO').format(budgetData?.offerings.actual || 0)}</TableCell>
+                      <TableCell>{formatKz(budgetData?.offerings.actual || 0)}</TableCell>
                       <TableCell className={percentCalc(budgetData?.offerings.actual || 0, budgetData?.offerings.expected || 0) >= 100 ? "text-green-600" : "text-amber-500"}>
                          {percentCalc(budgetData?.offerings.actual || 0, budgetData?.offerings.expected || 0)}% alcançado
                       </TableCell>
@@ -196,9 +198,9 @@ export default function Budget() {
                     <TableRow>
                       <TableCell className="font-medium font-bold text-destructive">Total Saídas / Despesas</TableCell>
                       <TableCell className="font-bold text-destructive">
-                        {new Intl.NumberFormat('pt-AO').format(budgetData?.expenses.expected || 0)}
+                        {formatKz(budgetData?.expenses.expected || 0)}
                       </TableCell>
-                      <TableCell className="font-bold text-destructive">{new Intl.NumberFormat('pt-AO').format(budgetData?.expenses.actual || 0)}</TableCell>
+                      <TableCell className="font-bold text-destructive">{formatKz(budgetData?.expenses.actual || 0)}</TableCell>
                       <TableCell className={percentCalc(budgetData?.expenses.actual || 0, budgetData?.expenses.expected || 0) >= 100 ? "text-destructive font-bold" : "text-green-600 font-bold"}>
                          {percentCalc(budgetData?.expenses.actual || 0, budgetData?.expenses.expected || 0)}% consumido
                       </TableCell>
@@ -207,10 +209,10 @@ export default function Budget() {
                       <TableCell className="font-medium indent-4">-- Manutenção e Obras</TableCell>
                       <TableCell>
                         {isEditing ? (
-                          <Input type="number" value={editData.expectedExpenses_Obras} onChange={e => setEditData({...editData, expectedExpenses_Obras: parseFloat(e.target.value) || 0})} className="w-32 h-8" />
-                        ) : new Intl.NumberFormat('pt-AO').format(budgetData?.obras.expected || 0)}
+                          <MoneyInput value={editData.expectedExpenses_Obras ?? null} onChange={c => setEditData({...editData, expectedExpenses_Obras: c ?? 0})} className="w-36" />
+                        ) : formatKz(budgetData?.obras.expected || 0)}
                       </TableCell>
-                      <TableCell>{new Intl.NumberFormat('pt-AO').format(budgetData?.obras.actual || 0)}</TableCell>
+                      <TableCell>{formatKz(budgetData?.obras.actual || 0)}</TableCell>
                       <TableCell className={percentCalc(budgetData?.obras.actual || 0, budgetData?.obras.expected || 0) >= 100 ? "text-destructive" : "text-green-600"}>
                          {percentCalc(budgetData?.obras.actual || 0, budgetData?.obras.expected || 0)}% consumido
                       </TableCell>
@@ -219,10 +221,10 @@ export default function Budget() {
                       <TableCell className="font-medium indent-4">-- Evangelismo/Missões</TableCell>
                       <TableCell>
                         {isEditing ? (
-                          <Input type="number" value={editData.expectedExpenses_Evangelismo} onChange={e => setEditData({...editData, expectedExpenses_Evangelismo: parseFloat(e.target.value) || 0})} className="w-32 h-8" />
-                        ) : new Intl.NumberFormat('pt-AO').format(budgetData?.evangelismo.expected || 0)}
+                          <MoneyInput value={editData.expectedExpenses_Evangelismo ?? null} onChange={c => setEditData({...editData, expectedExpenses_Evangelismo: c ?? 0})} className="w-36" />
+                        ) : formatKz(budgetData?.evangelismo.expected || 0)}
                       </TableCell>
-                      <TableCell>{new Intl.NumberFormat('pt-AO').format(budgetData?.evangelismo.actual || 0)}</TableCell>
+                      <TableCell>{formatKz(budgetData?.evangelismo.actual || 0)}</TableCell>
                       <TableCell className={percentCalc(budgetData?.evangelismo.actual || 0, budgetData?.evangelismo.expected || 0) >= 100 ? "text-destructive" : "text-green-600"}>
                          {percentCalc(budgetData?.evangelismo.actual || 0, budgetData?.evangelismo.expected || 0)}% consumido
                       </TableCell>
@@ -231,10 +233,10 @@ export default function Budget() {
                       <TableCell className="font-medium indent-4">-- Sustento Pastoral</TableCell>
                       <TableCell>
                         {isEditing ? (
-                          <Input type="number" value={editData.expectedExpenses_Sustento} onChange={e => setEditData({...editData, expectedExpenses_Sustento: parseFloat(e.target.value) || 0})} className="w-32 h-8" />
-                        ) : new Intl.NumberFormat('pt-AO').format(budgetData?.sustento.expected || 0)}
+                          <MoneyInput value={editData.expectedExpenses_Sustento ?? null} onChange={c => setEditData({...editData, expectedExpenses_Sustento: c ?? 0})} className="w-36" />
+                        ) : formatKz(budgetData?.sustento.expected || 0)}
                       </TableCell>
-                      <TableCell>{new Intl.NumberFormat('pt-AO').format(budgetData?.sustento.actual || 0)}</TableCell>
+                      <TableCell>{formatKz(budgetData?.sustento.actual || 0)}</TableCell>
                       <TableCell className={percentCalc(budgetData?.sustento.actual || 0, budgetData?.sustento.expected || 0) >= 100 ? "text-destructive" : "text-green-600"}>
                          {percentCalc(budgetData?.sustento.actual || 0, budgetData?.sustento.expected || 0)}% consumido
                       </TableCell>
@@ -243,10 +245,10 @@ export default function Budget() {
                       <TableCell className="font-medium indent-4">-- Administração</TableCell>
                       <TableCell>
                         {isEditing ? (
-                          <Input type="number" value={editData.expectedExpenses_Administracao} onChange={e => setEditData({...editData, expectedExpenses_Administracao: parseFloat(e.target.value) || 0})} className="w-32 h-8" />
-                        ) : new Intl.NumberFormat('pt-AO').format(budgetData?.administracao.expected || 0)}
+                          <MoneyInput value={editData.expectedExpenses_Administracao ?? null} onChange={c => setEditData({...editData, expectedExpenses_Administracao: c ?? 0})} className="w-36" />
+                        ) : formatKz(budgetData?.administracao.expected || 0)}
                       </TableCell>
-                      <TableCell>{new Intl.NumberFormat('pt-AO').format(budgetData?.administracao.actual || 0)}</TableCell>
+                      <TableCell>{formatKz(budgetData?.administracao.actual || 0)}</TableCell>
                       <TableCell className={percentCalc(budgetData?.administracao.actual || 0, budgetData?.administracao.expected || 0) >= 100 ? "text-destructive" : "text-green-600"}>
                          {percentCalc(budgetData?.administracao.actual || 0, budgetData?.administracao.expected || 0)}% consumido
                       </TableCell>
@@ -255,10 +257,10 @@ export default function Budget() {
                       <TableCell className="font-medium indent-4">-- Outras Despesas</TableCell>
                       <TableCell>
                         {isEditing ? (
-                          <Input type="number" value={editData.expectedExpenses_Outros} onChange={e => setEditData({...editData, expectedExpenses_Outros: parseFloat(e.target.value) || 0})} className="w-32 h-8" />
-                        ) : new Intl.NumberFormat('pt-AO').format(budgetData?.outros.expected || 0)}
+                          <MoneyInput value={editData.expectedExpenses_Outros ?? null} onChange={c => setEditData({...editData, expectedExpenses_Outros: c ?? 0})} className="w-36" />
+                        ) : formatKz(budgetData?.outros.expected || 0)}
                       </TableCell>
-                      <TableCell>{new Intl.NumberFormat('pt-AO').format(budgetData?.outros.actual || 0)}</TableCell>
+                      <TableCell>{formatKz(budgetData?.outros.actual || 0)}</TableCell>
                       <TableCell className={percentCalc(budgetData?.outros.actual || 0, budgetData?.outros.expected || 0) >= 100 ? "text-destructive" : "text-green-600"}>
                          {percentCalc(budgetData?.outros.actual || 0, budgetData?.outros.expected || 0)}% consumido
                       </TableCell>

@@ -23,9 +23,11 @@ import { normalizePhoneAO, duplicatePhones } from '../lib/phone';
 import { openExternal } from '../lib/download';
 import { aiBulkTemplates } from '../lib/ai';
 import { idxToName } from '../lib/months';
+import { formatKz, parseKzInput, editValue } from '../lib/money';
 
 const THIS_YEAR = new Date().getFullYear();
-const fmtKz = (n: number) => `${(n || 0).toLocaleString('pt-AO')} Kz`;
+// v1.12: moeda única — valores em CÊNTIMOS, formato 1.500,00 Kz (lib/money)
+const fmtKz = formatKz;
 const fmtDate = (iso?: string | null) => (iso ? iso.split('-').reverse().join('/') : '—');
 
 export default function Contributions() {
@@ -138,7 +140,8 @@ export default function Contributions() {
   };
 
   const bulkConfirmInfo = useMemo(() => {
-    const val = parseInt(bulkValue, 10);
+    const p = parseKzInput(bulkValue, { required: false });
+    const val = p.ok ? p.cents : 0;
     const differing = selectedMembers
       .map((m) => ({ m, current: budgetOf(m.id)?.amount ?? null }))
       .filter((x) => x.current !== null && x.current !== val);
@@ -148,7 +151,7 @@ export default function Contributions() {
 
   const applyBulk = async () => {
     const { val, differing } = bulkConfirmInfo;
-    if (!val || val <= 0) { toast.error('Valor inválido.'); return; }
+    if (!val) { const r = parseKzInput(bulkValue); toast.error(r.ok ? 'Valor inválido.' : r.error); return; }
     setBusy(true);
     try {
       const targets = bulkMode === 'manter' ? selectedMembers.filter((m) => !budgetOf(m.id)?.amount) : selectedMembers;
@@ -184,8 +187,9 @@ export default function Contributions() {
   /* ────────────────────────── CONTRIBUIÇÕES ────────────────────────── */
   const createContribution = async () => {
     if (!memberPick) return;
-    const amount = parseInt(cForm.amount, 10);
-    if (!amount || amount <= 0 || !Number.isInteger(amount)) { toast.error('Valor inteiro positivo, em kwanzas.'); return; }
+    const cParsed = parseKzInput(cForm.amount);
+    if (!cParsed.ok || cParsed.cents < 1) { toast.error(cParsed.ok ? 'Valor inválido.' : cParsed.error); return; }
+    const amount = cParsed.cents;
     if (!cForm.description.trim()) { toast.error('Descrição obrigatória.'); return; }
     setBusy(true);
     try {
@@ -209,8 +213,9 @@ export default function Contributions() {
 
   const addPayment = async () => {
     if (!payDialog) return;
-    const amount = parseFloat(pForm.amount);
-    if (!amount || amount <= 0) { toast.error('Valor inválido.'); return; }
+    const pParsed = parseKzInput(pForm.amount);
+    if (!pParsed.ok || pParsed.cents < 1) { toast.error(pParsed.ok ? 'Valor inválido.' : pParsed.error); return; }
+    const amount = pParsed.cents;
     setBusy(true);
     try {
       await addDoc(collection(db, 'contribution_payments'), {
@@ -415,7 +420,7 @@ export default function Contributions() {
             <span className="text-xs text-muted-foreground">Selecionar todos ({filteredMembers.length})</span>
             <span className="text-xs">{selectedMembers.length} selecionado(s)</span>
             <div className="flex-1" />
-            <Input value={bulkValue} onChange={(e) => setBulkValue(e.target.value.replace(/\D/g, ''))} placeholder="Valor único (Kz, inteiros)" className="w-[170px]" inputMode="numeric" />
+            <Input value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} onBlur={() => { const r = parseKzInput(bulkValue, { required: false }); if (r.ok) setBulkValue(r.cents ? editValue(r.cents) : ''); }} placeholder="Valor único (ex.: 1.500,00)" className="w-[170px]" inputMode="decimal" type="text" />
             <Button disabled={!selectedMembers.length || !bulkValue} onClick={() => setConfirmOpen(true)}>Definir para selecionados</Button>
           </div>
 
@@ -431,11 +436,11 @@ export default function Contributions() {
                   </div>
                   <div className="text-sm font-semibold">{b?.amount ? fmtKz(b.amount) : <span className="text-muted-foreground">Não definido</span>}</div>
                   <Button variant="ghost" size="sm" onClick={async () => {
-                    const v = window.prompt(`Orçamento único ${year} para ${m.name} (Kz, inteiros):`, String(b?.amount ?? ''));
+                    const v = window.prompt(`Orçamento único ${year} para ${m.name} (ex.: 1.500,00):`, b?.amount ? editValue(b.amount) : '');
                     if (v === null) return;
-                    const n = parseInt(v, 10);
-                    if (!n || n <= 0) { toast.error('Valor inteiro positivo.'); return; }
-                    await setBudgetOne(m, n);
+                    const pr = parseKzInput(v);
+                    if (!pr.ok || pr.cents < 1) { toast.error(pr.ok ? 'Valor inválido.' : pr.error); return; }
+                    await setBudgetOne(m, pr.cents);
                     toast.success('Definido e notificado (fila com janela de 10 min).');
                   }}>Definir</Button>
                 </div>
@@ -554,7 +559,7 @@ export default function Contributions() {
                 )}
                 <div className="space-y-1"><Label className="text-xs">Descrição</Label><Input value={cForm.description} onChange={(e) => setCForm({ ...cForm, description: e.target.value })} placeholder="Ex.: Construção do templo" /></div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1"><Label className="text-xs">Valor (Kz, inteiros)</Label><Input value={cForm.amount} onChange={(e) => setCForm({ ...cForm, amount: e.target.value.replace(/\D/g, '') })} inputMode="numeric" /></div>
+                  <div className="space-y-1"><Label className="text-xs">Valor (Kz)</Label><Input value={cForm.amount} onChange={(e) => setCForm({ ...cForm, amount: e.target.value })} onBlur={() => { const r = parseKzInput(cForm.amount, { required: false }); if (r.ok) setCForm({ ...cForm, amount: r.cents ? editValue(r.cents) : '' }); }} inputMode="decimal" type="text" placeholder="0,00" /></div>
                   <div className="space-y-1"><Label className="text-xs">Prazo</Label><Input type="date" value={cForm.dueDate} onChange={(e) => setCForm({ ...cForm, dueDate: e.target.value })} /></div>
                 </div>
                 <Button className="w-full" disabled={busy || !memberPick} onClick={createContribution}>Criar e notificar</Button>
@@ -566,7 +571,7 @@ export default function Contributions() {
             <DialogContent className="max-w-sm">
               <DialogHeader><DialogTitle>Registar pagamento</DialogTitle><DialogDescription>{payDialog?.description} — em falta {payDialog ? fmtKz(payDialog.amount - paidSumOf(payments, payDialog.id)) : ''}</DialogDescription></DialogHeader>
               <div className="space-y-3">
-                <div className="space-y-1"><Label className="text-xs">Valor entregue (Kz)</Label><Input value={pForm.amount} onChange={(e) => setPForm({ ...pForm, amount: e.target.value })} inputMode="decimal" /></div>
+                <div className="space-y-1"><Label className="text-xs">Valor entregue (Kz)</Label><Input value={pForm.amount} onChange={(e) => setPForm({ ...pForm, amount: e.target.value })} onBlur={() => { const r = parseKzInput(pForm.amount, { required: false }); if (r.ok) setPForm({ ...pForm, amount: r.cents ? editValue(r.cents) : '' }); }} inputMode="decimal" type="text" placeholder="0,00" /></div>
                 <div className="space-y-1"><Label className="text-xs">Data de entrega (contabilidade)</Label><Input type="date" value={pForm.deliveryDate} onChange={(e) => setPForm({ ...pForm, deliveryDate: e.target.value })} /></div>
                 <Button className="w-full" disabled={busy} onClick={addPayment}>Registar</Button>
               </div>

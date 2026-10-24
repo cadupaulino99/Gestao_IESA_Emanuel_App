@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { prefGet,prefSet } from '../lib/prefs';
+import { formatKz } from '../lib/money';
 
 interface SettingsContextType {
   animationsEnabled: boolean;
@@ -76,9 +77,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     prefSet('app_language', v);
   };
 
+  // v1.12: moeda única — formatKz(cêntimos), sem depender do idioma do aparelho
   const formatCurrency = (value: number) => {
-    if (hideFinancials) return 'KZ ***';
-    return new Intl.NumberFormat(language, { style: 'currency', currency: 'AOA' }).format(value);
+    if (hideFinancials) return 'Kz ***';
+    return formatKz(value);
   };
 
   return (

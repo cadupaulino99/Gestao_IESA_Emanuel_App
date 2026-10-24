@@ -15,9 +15,11 @@ import { Plus, Trash2, Info, Download, Pencil, FileText, Check, ChevronsUpDown, 
 import { toast } from 'sonner';
 import { toMonthIdx, idxToName } from '../lib/months';
 import { classifyTitheDuplicate, deliveryOf, referenceOf, describeTithe } from '../lib/tithes';
-import { saveBlob, dataUrlToBlob, saveXlsx, openExternal } from '../lib/download';
+import { saveBlob, dataUrlToBlob, saveXlsx, openExternal, formatMoneyCells } from '../lib/download';
 import { savePdf } from '../lib/pdfUtils';
 import { moveToTrash, restoreFromTrash, isRecordLocked } from '../lib/trash';
+import { parseKzInput, formatKz } from '../lib/money';
+import MoneyText from '../components/MoneyText';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
 import { jsPDF } from 'jspdf';
@@ -33,7 +35,9 @@ import { YearlyStats } from '../components/finances/YearlyStats';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-export const ptAOA = (v: number) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(v);
+export const ptAOA = (v: number) => formatKz(v);
+const mvCents = (t?: string) => { const r = parseKzInput(t || '', { required: false }); return r.ok ? r.cents : 0; };
+const amtCents = (t?: string) => { const r = parseKzInput(t || '', { required: false }); return r.ok ? r.cents : null; };
 
 export default function Finances() {
   const { user, isAdmin, userRole } = useAuth();
@@ -335,7 +339,7 @@ export default function Finances() {
       docPdf.setFontSize(12);
       docPdf.text(`Recibo Nº: ${receiptNum}`, 20, 35);
       docPdf.text(`Membro: ${mem.name}`, 20, 45);
-      docPdf.text(`Valor: ${new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(amount)}`, 20, 55);
+      docPdf.text(`Valor: ${formatKz(amount)}`, 20, 55);
       docPdf.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 20, 65);
       const b64 = docPdf.output('datauristring');
       
@@ -355,7 +359,7 @@ export default function Finances() {
            action: {
              label: 'Enviar Manual',
              onClick: () => {
-                const msg = `Olá ${mem.name}, O seu recibo de contribuição (Nº ${receiptNum}) foi registado com o valor de ${amount} Kz. Que Deus o abençoe!`;
+                const msg = `Olá ${mem.name}, O seu recibo de contribuição (Nº ${receiptNum}) foi registado com o valor de ${formatKz(amount)}. Que Deus o abençoe!`;
                 openExternal(`https://wa.me/${mem.phone.replace(/[\s\+]/g, '')}?text=${encodeURIComponent(msg)}`);
              }
            }
@@ -372,12 +376,14 @@ export default function Finances() {
 
     if (editingTithe) {
       setIsSubmitting(true);
+      const editParsed = parseKzInput(tD.amount);
+      if (!editParsed.ok) { toast.error(editParsed.error); setIsSubmitting(false); return; }
       const confirmed = await confirmDialog("Deseja guardar esta informação?");
       if (!confirmed) { setIsSubmitting(false); return; }
       try {
            const newData = {
              memberId: tD.memberId,
-             amount: parseFloat(tD.amount),
+             amount: editParsed.cents,
              receiptNumber: tD.receiptNumber,
              deliveryMonth: toMonthIdx(tD.deliveryMonth) || toMonthIdx(selectedMonth),
              deliveryYear: parseInt(tD.deliveryYear, 10) || parseInt(selectedYear, 10),
@@ -414,7 +420,9 @@ export default function Finances() {
     
     setIsSubmitting(true);
     const baseReceipt = tD.receiptNumber || `REC-${Date.now()}`;
-    const totalAmount = parseFloat(tD.amount);
+    const totalAmountParsed = parseKzInput(tD.amount);
+    if (!totalAmountParsed.ok) { toast.error(totalAmountParsed.error); setIsSubmitting(false); return; }
+    const totalAmount = totalAmountParsed.cents;
 
     // Verificação de duplicidade de dízimo/contribuição com verificação de mesmo valor
     try {
@@ -430,7 +438,7 @@ export default function Finances() {
 
       tD.selectedMonths.forEach(m => {
         const inputAmountForMonth = tD.manualSplit 
-          ? parseFloat(tD.manualValues[m] || '0')
+          ? mvCents(tD.manualValues[m])
           : totalAmount / tD.selectedMonths.length;
 
         existingSnap.docs.forEach(doc => {
@@ -498,7 +506,7 @@ export default function Finances() {
       const warns: string[] = [];
       for (const pp of pairs) {
         const mi = pp.mi;
-        const val = tD.manualSplit ? parseFloat(tD.manualValues[pp.key] || '0') : totalAmount / pairs.length;
+        const val = tD.manualSplit ? mvCents(tD.manualValues[pp.key]) : Math.floor(totalAmount / pairs.length);
         const snap = await getDocs(query(collection(db, 'tithes'),
           where('memberId', '==', tD.memberId),
           where('referenceMonth', '==', mi),
@@ -530,7 +538,7 @@ export default function Finances() {
     if (isManual) {
       let sum = 0;
       for (const pp of pairs) {
-         const v = parseFloat(tD.manualValues[pp.key] || '0');
+         const v = mvCents(tD.manualValues[pp.key]);
          if (isNaN(v) || v <= 0) {
            toast.error(`Valor inválido para o mês de ${idxToName(pp.mi)}.`);
            setIsSubmitting(false);
@@ -551,7 +559,7 @@ export default function Finances() {
         return;
       }
     } else {
-      const splitAmount = totalAmount / tD.selectedMonths.length;
+      const splitAmount = Math.floor(totalAmount / tD.selectedMonths.length);
       if (pairs.length > 1) {
         const confirmed = await confirmDialog(`O valor de ${ptAOA(totalAmount)} será dividido igualmente em ${pairs.length} meses (${ptAOA(splitAmount)} cada). Confirma a divisão automática?`);
         if (!confirmed) {
@@ -568,7 +576,7 @@ export default function Finances() {
     }
 
     // --- ATUALIZAÇÃO OTIMISTA (OPTIMISTIC UI: 0 SEGUNDOS) ---
-    const splitAmount = totalAmount / pairs.length;
+    const splitAmount = Math.floor(totalAmount / pairs.length);
     const createdRecords: any[] = [];
     const createdDocIds: string[] = [];
 
@@ -578,7 +586,7 @@ export default function Finances() {
 
     for (let i = 0; i < pairs.length; i++) {
       const m = pairs[i].mi;
-      const val = isManual ? parseFloat(tD.manualValues[pairs[i].key]) : splitAmount;
+      const val = isManual ? mvCents(tD.manualValues[pairs[i].key]) : splitAmount;
       const titheDocId = doc(collection(db, 'tithes')).id;
       createdDocIds.push(titheDocId);
       createdRecords.push({
@@ -622,7 +630,7 @@ export default function Finances() {
     const sinodPct = ((tD.contributionType === 'Dízimo' || tD.contributionType === 'Oferta Geral') && parseFloat(churchConfig?.tithePercentage || '0') > 0)
       ? parseFloat(churchConfig.tithePercentage)
       : 0;
-    const sinodAmount = sinodPct > 0 ? (totalAmount * sinodPct) / 100 : 0;
+    const sinodAmount = sinodPct > 0 ? Math.round((totalAmount * sinodPct) / 100) : 0;
     if (sinodAmount > 0) {
       sinodExpId = doc(collection(db, 'expenses')).id;
       const expDesc = tD.contributionType === 'Dízimo' 
@@ -717,12 +725,14 @@ export default function Finances() {
       return;
     }
 
+    const oParsedEdit = parseKzInput(oD.amount);
+    if (!oParsedEdit.ok) { toast.error(oParsedEdit.error); setIsSubmitting(false); return; }
     if (editingOffering) {
       try {
          const newData = {
            description: oD.description,
            type: oD.type,
-           amount: parseFloat(oD.amount),
+           amount: oParsedEdit.cents,
            receiptNumber: oD.receiptNumber,
            updatedAt: Date.now()
          };
@@ -740,9 +750,9 @@ export default function Finances() {
     }
 
     try {
-       const originalAmount = parseFloat(oD.amount);
+       const originalAmount = oParsedEdit.cents;
        const sinodPct = oD.type === 'Geral' ? parseFloat(churchConfig?.offeringPercentage || '0') : (parseFloat(oD.sinodPercentage) || 0);
-       const sinodAmount = (originalAmount * sinodPct) / 100;
+       const sinodAmount = Math.round((originalAmount * sinodPct) / 100);
 
        await addDoc(collection(db, 'offerings'), {
          description: oD.description,
@@ -817,12 +827,14 @@ export default function Finances() {
 
     const finalCategory = eD.category === 'Personalizada' ? eD.customCategory : eD.category;
 
+    const eParsedEdit = parseKzInput(eD.amount);
+    if (!eParsedEdit.ok) { toast.error(eParsedEdit.error); setIsSubmitting(false); return; }
     if (editingExpense) {
       try {
          const newData: any = {
            description: eD.description,
            category: finalCategory,
-           amount: parseFloat(eD.amount),
+           amount: eParsedEdit.cents,
            responsible: eD.responsible,
            date: eD.referenceDate || new Date().toISOString().split('T')[0],
            updatedAt: Date.now()
@@ -854,7 +866,7 @@ export default function Finances() {
        const docRef = await addDoc(collection(db, 'expenses'), {
          description: eD.description,
          category: finalCategory,
-         amount: parseFloat(eD.amount),
+         amount: eParsedEdit.cents,
          responsible: eD.responsible,
          date: eD.referenceDate || new Date().toISOString().split('T')[0],
          month: selectedMonth,
@@ -1127,7 +1139,7 @@ export default function Finances() {
           'Membro/Resp': member,
           'Categoria/Tipo': t.contributionType || 'Dízimo',
           'Detalhes': t.contributionDetail || '',
-          'Valor (AOA)': t.amount,
+          'Valor (Kz)': t.amount / 100,
           'Ref. Mensal': t.referenceMonth || selectedMonth
         };
       });
@@ -1136,7 +1148,7 @@ export default function Finances() {
         'Membro/Resp': '',
         'Categoria/Tipo': o.type,
         'Detalhes': o.description,
-        'Valor (AOA)': o.amount,
+        'Valor (Kz)': o.amount / 100,
         'Ref. Mensal': selectedMonth
       }));
       const expensesRows = expenses.map(e => ({
@@ -1144,7 +1156,7 @@ export default function Finances() {
         'Membro/Resp': e.responsible,
         'Categoria/Tipo': e.category,
         'Detalhes': e.description,
-        'Valor (AOA)': -e.amount,
+        'Valor (Kz)': -e.amount / 100,
         'Ref. Mensal': selectedMonth
       }));
 
@@ -1156,6 +1168,7 @@ export default function Finances() {
       }
 
       const ws = XLSX.utils.json_to_sheet(rows);
+      formatMoneyCells(ws, XLSX);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Finanças");
       await saveXlsx(XLSX, wb, `financas_${selectedMonth}_${selectedYear}.xlsx`);
@@ -1240,7 +1253,7 @@ export default function Finances() {
 
     const memberName = isOffering ? 'Irmão(ã)' : (members.find(m => m.id === t.memberId)?.name || 'Membro');
     const memberPhone = isOffering ? '' : (members.find(m => m.id === t.memberId)?.phone || '');
-    const amount = new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(t.amount);
+    const amount = formatKz(t.amount);
     const receiptNum = t.receiptNumber || t.id.substring(0,8).toUpperCase();
     
     let text = `Olá *${memberName}*,\n\nO seu recibo (Nº ${receiptNum}) foi registado com sucesso.\n\n`;
@@ -1265,7 +1278,7 @@ export default function Finances() {
   const exportReceiptPDF = async (t: any) => {
     const doc = new jsPDF();
     const memberName = members.find(m => m.id === t.memberId)?.name || 'Membro';
-    const amount = new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(t.amount);
+    const amount = formatKz(t.amount);
     
     let churchName = 'Igreja local de Emanuel - Xangongo';
     let logoUrl = '';
@@ -1322,7 +1335,7 @@ export default function Finances() {
       }
       
       const memberName = members.find(m => m.id === t.memberId)?.name || 'Membro';
-      const amount = new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(t.amount);
+      const amount = formatKz(t.amount);
       
       const receiptNum = t.receiptNumber || t.id.substring(0,8).toUpperCase();
       printReceiptHeaderFooter(doc, churchName, logoUrl, receiptNum, yOffset, false);
@@ -1350,7 +1363,7 @@ export default function Finances() {
 
   const exportOfferingReceiptPDF = async (o: any) => {
     const doc = new jsPDF();
-    const amount = new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(o.amount);
+    const amount = formatKz(o.amount);
     
     let churchName = 'Igreja local de Emanuel - Xangongo';
     let logoUrl = '';
@@ -1597,8 +1610,8 @@ export default function Finances() {
                       ) : null}
 
                       <div className="space-y-2">
-                        <Label>Valor Total (AOA)</Label>
-                        <Input required type="number" step="0.01" value={tD.amount} onChange={e => setTD({...tD, amount: e.target.value})} />
+                        <Label>Valor Total (Kz)</Label>
+                        <MoneyText required value={tD.amount} onChange={v => setTD({...tD, amount: v})} placeholder="0,00" />
                       </div>
 
                       <div className="p-3 bg-muted/30 rounded-md border space-y-4">
@@ -1689,8 +1702,8 @@ export default function Finances() {
 
                           if (matchingDups.length === 0) return null;
 
-                          const expectedValPerMonth = tD.amount ? (parseFloat(tD.amount) / (tD.selectedMonths.length || 1)) : 0;
-                          const hasIdenticalAmount = matchingDups.some(dup => Math.abs(dup.amount - expectedValPerMonth) < 0.01 || Math.abs(dup.amount - parseFloat(tD.amount || '0')) < 0.01);
+                          const expectedValPerMonth = tD.amount ? (mvCents(tD.amount) / (tD.selectedMonths.length || 1)) : 0;
+                          const hasIdenticalAmount = matchingDups.some(dup => Math.abs(dup.amount - expectedValPerMonth) < 1 || Math.abs(dup.amount - mvCents(tD.amount)) < 1);
 
                           return (
                             <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-850 rounded-lg text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5">
@@ -1722,14 +1735,12 @@ export default function Finances() {
                               {tD.selectedMonths.map(m => (
                                 <div key={`manual-${m}`} className="flex items-center gap-2">
                                   <Label className="w-20">{idxToName(m)}</Label>
-                                  <Input 
-                                    type="number" 
-                                    step="0.01" 
+                                  <MoneyText
                                     placeholder="Valor"
                                     value={tD.manualValues[m] || ''}
-                                    onChange={e => setTD(prev => ({
-                                      ...prev, 
-                                      manualValues: {...prev.manualValues, [m]: e.target.value}
+                                    onChange={v => setTD(prev => ({
+                                      ...prev,
+                                      manualValues: {...prev.manualValues, [m]: v}
                                     }))}
                                   />
                                 </div>
@@ -1899,8 +1910,8 @@ export default function Finances() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Valor (AOA)</Label>
-                        <Input required type="number" min="0" step="0.01" value={oD.amount} onChange={e => setOD({...oD, amount: e.target.value})} />
+                        <Label>Valor (Kz)</Label>
+                        <MoneyText required value={oD.amount} onChange={v => setOD({...oD, amount: v})} placeholder="0,00" />
                       </div>
                       <div className="space-y-2">
                         <Label>Data Ref.</Label>
@@ -2079,8 +2090,8 @@ export default function Finances() {
                       <Input required value={eD.responsible} onChange={e => setED({...eD, responsible: e.target.value})} />
                     </div>
                     <div className="space-y-2">
-                      <Label>Valor (AOA)</Label>
-                      <Input required type="number" step="0.01" value={eD.amount} onChange={e => setED({...eD, amount: e.target.value})} />
+                      <Label>Valor (Kz)</Label>
+                      <MoneyText required value={eD.amount} onChange={v => setED({...eD, amount: v})} placeholder="0,00" />
                     </div>
                     <div className="space-y-2">
                       <Label>Comprovativo (Opcional, max: 800KB)</Label>

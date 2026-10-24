@@ -11,12 +11,13 @@ import { Label } from '../components/ui/label';
 import { Download, FileText, User, Sparkles } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { savePdf } from '../lib/pdfUtils';
-import { saveXlsx } from '../lib/download';
+import { saveXlsx, formatMoneyCells } from '../lib/download';
 import autoTable from 'jspdf-autotable';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, where } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { AIExecutiveAnalysis } from '../components/finances/AIExecutiveAnalysis';
+import { formatKz } from '../lib/money';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -32,7 +33,7 @@ export default function Reports() {
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [loadingXlsx, setLoadingXlsx] = useState(false);
 
-  const ptAOA = (v: number) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(v);
+  const ptAOA = (v: number) => formatKz(v);
 
   const generatePDF = async () => {
     setLoadingPdf(true);
@@ -137,7 +138,7 @@ export default function Reports() {
       
       autoTable(docPdf, {
         startY: 95,
-        head: [['Categoria', 'Valor (AOA)']],
+        head: [['Categoria', 'Valor (Kz)']],
         body: [
           ['Total de Dízimos', ptAOA(totalTithes)],
           ['Total de Ofertas', ptAOA(totalOfferings)],
@@ -216,7 +217,7 @@ export default function Reports() {
           'Detalhes': data.contributionDetail || '-',
           'Mês': idxToName(deliveryOf(data as any).month),
           'Ano': data.year,
-          'Valor (AOA)': data.amount,
+          'Valor (Kz)': data.amount / 100,
           'Recibo': data.receiptNumber || '-'
         });
       });
@@ -231,17 +232,19 @@ export default function Reports() {
           'Tipo': data.type,
           'Mês': idxToName(deliveryOf(data as any).month),
           'Ano': data.year,
-          'Valor (AOA)': data.amount,
+          'Valor (Kz)': data.amount / 100,
         });
       });
       
       const XLSX = await import('xlsx');
       
       const ws = XLSX.utils.json_to_sheet(rows);
+      formatMoneyCells(ws, XLSX);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Contribuições Membros");
 
       const wsOfferings = XLSX.utils.json_to_sheet(oRows);
+      formatMoneyCells(wsOfferings, XLSX);
       XLSX.utils.book_append_sheet(wb, wsOfferings, "Ofertas");
 
       await saveXlsx(XLSX, wb, `Declaracao_Entradas_${selectedYear}.xlsx`);
@@ -352,7 +355,7 @@ export default function Reports() {
       
       autoTable(docPdf, {
         startY: 95,
-        head: [['Categoria', 'Valor (AOA)']],
+        head: [['Categoria', 'Valor (Kz)']],
         body: [
           ['Total de Dízimos', ptAOA(totalTithes)],
           ['Total de Ofertas', ptAOA(totalOfferings)],
@@ -446,7 +449,7 @@ export default function Reports() {
 
       autoTable(docPdf, {
         startY: 45,
-        head: [['Tipo', 'Mês Registo', 'Ref.', 'Recibo', 'Valor (AOA)']],
+        head: [['Tipo', 'Mês Registo', 'Ref.', 'Recibo', 'Valor (Kz)']],
         body: historyList.length > 0 ? historyList : [['-', '-', '-', '-', 'Sem contribuições']],
         theme: 'striped',
         headStyles: { fillColor: [15, 23, 42] }

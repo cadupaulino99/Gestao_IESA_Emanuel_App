@@ -1,3 +1,4 @@
+import { formatKz, parseKzInput, editValue } from '../../lib/money';
 import { useEffect, useMemo, useState } from 'react';
 import { db } from '../../lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -127,11 +128,12 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
   };
 
   const addDonation = async () => {
-    const amount = Number(String(donAmount).replace(',', '.'));
-    if (!amount || amount <= 0) {
-      toast.error('Indique um valor válido.');
+    const parsed = parseKzInput(donAmount);
+    if (!parsed.ok || parsed.cents <= 0) {
+      toast.error(parsed.ok ? 'Indique um valor válido.' : parsed.error);
       return;
     }
+    const amount = parsed.cents;
     setBusy(true);
     try {
       await addDoc(collection(db, 'donations'), {
@@ -257,8 +259,8 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
                   <HeartHandshake className="h-4 w-4 text-rose-600" /> Donativo voluntário
                 </div>
                 <div>
-                  <Label className="text-[11px]">Valor (AOA)</Label>
-                  <Input value={donAmount} onChange={(e) => setDonAmount(e.target.value)} inputMode="decimal" className="h-8 text-xs" placeholder="Ex.: 2000" />
+                  <Label className="text-[11px]">Valor (Kz)</Label>
+                  <Input value={donAmount} onChange={(e) => setDonAmount(e.target.value)} onBlur={() => { const r = parseKzInput(donAmount, { required: false }); if (r.ok) setDonAmount(r.cents ? editValue(r.cents) : ''); }} inputMode="decimal" type="text" className="h-8 text-xs" placeholder="Ex.: 2.000,00" />
                 </div>
                 <div>
                   <Label className="text-[11px]">Data</Label>
@@ -271,7 +273,7 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
                   <div className="text-[10px] text-slate-500 space-y-0.5 max-h-16 overflow-y-auto">
                     {[...data.donations].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 6).map((d) => (
                       <button key={d.id} onClick={() => removeDonation(d.id)} className="flex items-center gap-1 hover:text-destructive" title="Remover">
-                        <Trash2 className="h-3 w-3" /> {d.date} → {d.amount.toLocaleString('pt-AO')} AOA
+                        <Trash2 className="h-3 w-3" /> {d.date} → {formatKz(d.amount)}
                       </button>
                     ))}
                   </div>

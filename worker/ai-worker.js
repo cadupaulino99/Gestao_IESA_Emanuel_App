@@ -42,7 +42,7 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.5.0';
+const WORKER_VERSION = '2.6.0';
 const WORKER_BUILD = '2026-10-24 (cron: fila de mensagens, lembretes, estados; IA de modelos)';
 
 const CORS = {
@@ -611,6 +611,12 @@ async function fsRunQuery(env, collectionId, filters, limit = 300) {
 const eq = (f, v) => ({ fieldFilter: { field: { fieldPath: f }, op: 'EQUAL', value: typeof v === 'number' ? { integerValue: String(v) } : typeof v === 'boolean' ? { booleanValue: v } : { stringValue: v } } });
 const le = (f, v) => ({ fieldFilter: { field: { fieldPath: f }, op: 'LESS_THAN_OR_EQUAL', value: { integerValue: String(v) } } });
 const fv = (fields, k) => (fields[k] && (fields[k].stringValue ?? fields[k].integerValue ?? fields[k].booleanValue ?? fields[k].doubleValue)) ?? null;
+/** Moeda única (v1.12): cêntimos → «1.500,00 Kz». Espelha src/lib/money.ts. */
+function fmtKz(cents) {
+  const c = Math.round(Number(cents) || 0);
+  const s = Math.floor(Math.abs(c) / 100).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${c < 0 ? '-' : ''}${s},${String(Math.abs(c) % 100).padStart(2, '0')} Kz`;
+}
 const fnum = (fields, k) => Number(fv(fields, k) || 0);
 
 async function fsPatch(env, col, id, obj) {
@@ -817,7 +823,7 @@ async function runReminders(env, now) {
     const body = [
       `Paz, ${fv(f, 'memberName') || 'irmão(ã)'}.`,
       `Lembrete amável: a contribuição «${fv(f, 'description')}» tem prazo ${due}.`,
-      missing > 0 ? `Valor em falta: ${missing.toLocaleString('pt-AO')} Kz.` : '',
+      missing > 0 ? `Valor em falta: ${fmtKz(missing)}.` : '',
       'Se já entregou, desconsidere — e obrigado pela sua fidelidade. Mal. 3:10',
     ].filter(Boolean).join(' ');
 

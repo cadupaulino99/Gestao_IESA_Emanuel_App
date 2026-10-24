@@ -1,3 +1,4 @@
+import { formatKz } from '../../lib/money';
 import { Check, X } from 'lucide-react';
 import { aggregateByMonth, sumYear } from '../../lib/finance';
 import {
@@ -45,7 +46,7 @@ const fmtDateLong = (iso?: string | null) => {
 };
 
 const money = (n: number) =>
-  new Intl.NumberFormat('pt-AO', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n || 0);
+  formatKz(n || 0);
 
 /** Anos a mostrar nas tabelas (união dos anos com registos, máx. 4 colunas). */
 function yearsOf(data: MemberCardData): number[] {

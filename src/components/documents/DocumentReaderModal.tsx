@@ -31,7 +31,7 @@ const LABELS: Record<string, string> = {
   baptismDate: 'Batismo',
   groupCell: 'Célula / Grupo',
   phone: 'Telefone',
-  amount: 'Valor (AOA)',
+  amount: 'Valor (Kz)',
   currency: 'Moeda',
   date: 'Data',
   method: 'Método',

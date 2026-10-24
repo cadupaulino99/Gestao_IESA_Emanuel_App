@@ -81,7 +81,11 @@ export async function aiChat(prompt: string, context?: string): Promise<string> 
 }
 
 export async function aiFinancialInsights(financialSummary: unknown): Promise<string> {
-  const r = await callWorker<{ text: string }>('/assistant/financial-insights', { financialSummary });
+  // v1.12: a app guarda cêntimos; à IA enviam-se kwanzas legíveis
+  const s: any = financialSummary || {};
+  const kz = (n: unknown) => (typeof n === 'number' ? Math.round(n) / 100 : n);
+  const readable = { ...s, totalTithes: kz(s.totalTithes), totalOfferings: kz(s.totalOfferings), totalExpenses: kz(s.totalExpenses), balance: kz(s.balance) };
+  const r = await callWorker<{ text: string }>('/assistant/financial-insights', { financialSummary: readable });
   return r.text;
 }
 

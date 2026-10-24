@@ -7,6 +7,7 @@ import { collection, query, getDocs, where } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, CartesianGrid, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useDevice } from '../../hooks/useDevice';
+import { formatKz } from '../../lib/money';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const COLORS = ['#0f172a', '#ef4444', '#f59e0b', '#10b981', '#6366f1', '#ec4899', '#8b5cf6'];
@@ -79,8 +80,8 @@ export function YearlyStats({ year }: { year: string }) {
             <BarChart data={data} margin={{ left: isMobile ? -25 : 0, right: isMobile ? 0 : 10, top: 20 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: isMobile ? 10 : 12, fill: '#64748b' }} dy={10} />
-              <YAxis fontSize={isMobile ? 10 : 12} tickFormatter={(value) => new Intl.NumberFormat('pt-AO', { notation: 'compact' }).format(value as number)} axisLine={false} tickLine={false} width={isMobile ? 40 : 60} tick={{ fill: '#64748b' }} dx={-10} />
-              <RechartsTooltip formatter={(value: number) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value)} cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+              <YAxis fontSize={isMobile ? 10 : 12} tickFormatter={(value) => formatKz(value as number)} axisLine={false} tickLine={false} width={isMobile ? 40 : 60} tick={{ fill: '#64748b' }} dx={-10} />
+              <RechartsTooltip formatter={(value: number) => formatKz(value)} cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
               <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px', paddingTop: '10px' }} iconType="circle" />
               <Bar dataKey="Entradas" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={isMobile ? 12 : 20} />
               <Bar dataKey="Saídas" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={isMobile ? 12 : 20} />
@@ -103,7 +104,7 @@ export function YearlyStats({ year }: { year: string }) {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="transparent" />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={(value: number) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value)} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                <RechartsTooltip formatter={(value: number) => formatKz(value)} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                 <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="circle" verticalAlign="bottom" />
               </PieChart>
             </ResponsiveContainer>

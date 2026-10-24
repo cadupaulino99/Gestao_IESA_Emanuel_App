@@ -163,7 +163,7 @@ service cloud.firestore {
       allow read, list: if isOwnOrLeader();
       allow create: if isAdmin() && isValidId(docId)
                     && incoming().keys().hasAll(['contributionId', 'memberId', 'amount', 'deliveryDate', 'recordedBy', 'createdAt'])
-                    && incoming().amount is number && incoming().amount > 0;
+                    && incoming().amount is int && incoming().amount > 0;
       allow update, delete: if hasFinancialWriteAccess();
     }
 
@@ -203,7 +203,7 @@ service cloud.firestore {
       allow read, list: if canReadMemberDoc();
       allow create: if hasFinancialWriteAccess() && isValidId(docId)
                     && incoming().keys().hasAll(['memberId', 'amount', 'date'])
-                    && incoming().amount is number && incoming().amount > 0;
+                    && incoming().amount is int && incoming().amount > 0;
       allow update, delete: if hasFinancialWriteAccess();
     }
 
@@ -253,7 +253,7 @@ service cloud.firestore {
              data.memberId is string && data.memberId.size() > 0 &&
              data.month is string && data.month.size() > 0 &&
              data.year is number &&
-             data.amount is number &&
+             data.amount is int &&
              data.receiptNumber is string &&
              (data.get('referenceMonth', '') is string) &&
              (data.get('referenceYear', 0) is number) &&
@@ -280,7 +280,8 @@ service cloud.firestore {
                       'memberId', 'month', 'year', 'amount', 'receiptNumber', 'referenceMonth', 'referenceYear', 'contributionType', 'contributionDetail', 'updatedAt'
                     ]) &&
                     (incoming().month == null || incoming().month is string) && 
-                    (incoming().year == null || incoming().year is number);
+                    (incoming().year == null || incoming().year is number) &&
+                    (incoming().amount == null || incoming().amount is int);
       allow delete: if hasFinancialWriteAccess() && isValidId(titheId);
     }
 
@@ -292,7 +293,7 @@ service cloud.firestore {
              data.type is string && data.type.size() > 0 &&
              data.month is string && data.month.size() > 0 &&
              data.year is number &&
-             data.amount is number &&
+             data.amount is int &&
              (data.get('receiptNumber', '') is string) &&
              (data.get('referenceDate', '') is string) &&
              data.adminId is string && data.adminId == request.auth.uid &&
@@ -308,7 +309,7 @@ service cloud.firestore {
                     incoming().diff(existing()).affectedKeys().hasOnly([
                       'description', 'type', 'month', 'year', 'amount', 'receiptNumber', 'referenceDate', 'updatedAt'
                     ]) &&
-                    incoming().description is string && incoming().type is string && incoming().month is string && incoming().year is number && incoming().amount is number;
+                    incoming().description is string && incoming().type is string && incoming().month is string && incoming().year is number && incoming().amount is int;
       allow delete: if hasFinancialWriteAccess() && isValidId(offeringId);
     }
 
@@ -322,7 +323,7 @@ service cloud.firestore {
              data.responsible is string && data.responsible.size() > 0 &&
              data.month is string && data.month.size() > 0 &&
              data.year is number &&
-             data.amount is number &&
+             data.amount is int &&
              data.adminId is string && data.adminId == request.auth.uid &&
              data.createdAt is number && data.updatedAt is number;
     }
@@ -336,7 +337,7 @@ service cloud.firestore {
                     incoming().diff(existing()).affectedKeys().hasOnly([
                       'description', 'category', 'subCategory', 'responsible', 'month', 'year', 'amount', 'updatedAt'
                     ]) &&
-                     incoming().description is string && incoming().category is string && incoming().responsible is string && incoming().month is string && incoming().year is number && incoming().amount is number;
+                     incoming().description is string && incoming().category is string && incoming().responsible is string && incoming().month is string && incoming().year is number && incoming().amount is int;
       allow delete: if hasFinancialWriteAccess() && isValidId(expenseId);
     }
 
@@ -345,7 +346,7 @@ service cloud.firestore {
       return data.keys().hasAll(['description', 'type', 'amount', 'date', 'adminId', 'createdAt', 'updatedAt']) && data.keys().size() == 7 &&
              data.description is string && data.description.size() > 0 &&
              data.type is string && (data.type == 'IN' || data.type == 'OUT') &&
-             data.amount is number &&
+             data.amount is int &&
              data.date is string && data.date.size() > 0 &&
              data.adminId is string && data.adminId == request.auth.uid &&
              data.createdAt is number && data.updatedAt is number;
@@ -360,7 +361,7 @@ service cloud.firestore {
                     incoming().diff(existing()).affectedKeys().hasOnly([
                       'description', 'type', 'amount', 'date', 'updatedAt'
                     ]) &&
-                     incoming().description is string && incoming().type is string && incoming().amount is number && incoming().date is string;
+                     incoming().description is string && incoming().type is string && incoming().amount is int && incoming().date is string;
       allow delete: if hasFinancialWriteAccess() && isValidId(fundId);
     }
 
@@ -371,7 +372,7 @@ service cloud.firestore {
              data.name is string && data.name.size() > 0 &&
              data.category is string && data.category.size() > 0 &&
              data.acquisitionDate is string && data.acquisitionDate.size() > 0 &&
-             data.purchaseValue is number &&
+             data.purchaseValue is int &&
              (data.get('currentRate', 0) is number) &&
              data.adminId is string && data.adminId == request.auth.uid &&
              data.createdAt is number && data.updatedAt is number;
@@ -396,8 +397,8 @@ service cloud.firestore {
              data.month is string && data.month.size() > 0 &&
              data.year is number &&
              data.status is string && (data.status == 'open' || data.status == 'closed') &&
-             data.openingBalance is number &&
-             (data.get('closingBalance', 0) is number) &&
+             data.openingBalance is int &&
+             (data.get('closingBalance', 0) is int) &&
              (data.get('closedAt', 0) is number) &&
              data.adminId is string && data.adminId == request.auth.uid &&
              data.createdAt is number && data.updatedAt is number;

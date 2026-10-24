@@ -1,3 +1,4 @@
+import { formatKz } from './money';
 import { jsPDF } from 'jspdf';
 import { saveBlob } from './download';
 import { prefGet } from './prefs';
@@ -140,7 +141,7 @@ const pdfDateLong = (iso?: string | null) => {
   const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${Number(m[3])} de ${MESES_LONG[Number(m[2]) - 1]} de ${m[1]}` : iso || '—';
 };
-const pdfMoney = (n: number) => (n || 0).toLocaleString('pt-AO', { maximumFractionDigits: 2 });
+const pdfMoney = (n: number) => formatKz((n || 0));
 
 function drawSeal(doc: jsPDF, x: number, y: number, r: number) {
   doc.setFillColor(180, 35, 42);

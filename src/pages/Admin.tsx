@@ -21,12 +21,13 @@ import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Badge } from '../components/ui/badge';
 import { restoreFromTrash, moveToTrash } from '../lib/trash';
-import { migrateTitheDoc, codeForSeq } from '../lib/migrate';
+import { migrateTitheDoc, codeForSeq, moneyPatchFor, MONEY_FIELDS_V112, type MoneyUnsure } from '../lib/migrate';
 import { cleanBi } from '../lib/members';
 import { maxSeqFromCodes } from '../lib/members';
 import { NOTIF_SETTINGS_DEFAULT } from '../types';
 import { writeBatch } from 'firebase/firestore';
 import { orderBy } from 'firebase/firestore';
+import { formatKz } from '../lib/money';
 
 export default function Admin() {
   const { user, userRole, isSuperAdmin } = useAuth();
@@ -361,6 +362,67 @@ export default function Admin() {
       toast.error(e?.message || 'Erro ao aplicar a migração de B.I.');
     } finally {
       setBiApplying(false);
+    }
+  };
+
+  /* ─────────── Migração v1.12.0 — dinheiro em cêntimos (Kz) ─────────── */
+  const [moneyPlan, setMoneyPlan] = useState<{
+    patches: { col: string; id: string; data: Record<string, unknown> }[];
+    unsure: MoneyUnsure[]; analyzed: boolean; scanned: number; done: boolean;
+  }>({ patches: [], unsure: [], analyzed: false, scanned: 0, done: false });
+  const [moneyApplying, setMoneyApplying] = useState(false);
+
+  const analyzeMoney = async () => {
+    try {
+      const marker = await getDoc(doc(db, 'settings', 'system'));
+      if (marker.exists() && marker.data()?.moneyCents === 2) {
+        toast.info('A migração de cêntimos já foi aplicada (marcador moneyCents=2). Nada a fazer.');
+        setMoneyPlan((p) => ({ ...p, analyzed: true, done: true }));
+        return;
+      }
+      const patches: { col: string; id: string; data: Record<string, unknown> }[] = [];
+      const unsure: MoneyUnsure[] = [];
+      let scanned = 0;
+      for (const col of Object.keys(MONEY_FIELDS_V112)) {
+        const snap = await getDocs(collection(db, col));
+        snap.forEach((d) => {
+          scanned++;
+          const { patch, unsure: u } = moneyPatchFor(col, d.id, d.data() as Record<string, unknown>);
+          if (Object.keys(patch).length > 0) patches.push({ col, id: d.id, data: patch });
+          unsure.push(...u);
+        });
+      }
+      setMoneyPlan({ patches, unsure, analyzed: true, scanned, done: false });
+      toast.success(`Análise concluída: ${scanned} documentos, ${patches.length} a converter, ${unsure.length} duvidoso(s).`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao analisar.');
+    }
+  };
+
+  const applyMoneyMigration = async () => {
+    if (!backupConfirmed) { toast.error('Confirme primeiro a cópia de segurança.'); return; }
+    if (!moneyPlan.analyzed || moneyPlan.done) { toast.error('Corra primeiro a análise.'); return; }
+    const ok = await confirmDialog(
+      `Converter ${moneyPlan.patches.length} documento(s) para cêntimos (700,00 Kz → 70000)? ` +
+      `${moneyPlan.unsure.length} valor(es) duvidoso(s) NÃO serão tocados. ` +
+      'Depois de aplicar, TODOS os utilizadores devem actualizar a app (os ecrãs passam a ler cêntimos).',
+      'MIGRAR'
+    );
+    if (!ok) return;
+    setMoneyApplying(true);
+    try {
+      for (let i = 0; i < moneyPlan.patches.length; i += 400) {
+        const batch = writeBatch(db);
+        moneyPlan.patches.slice(i, i + 400).forEach((p) => batch.update(doc(db, p.col, p.id), p.data));
+        await batch.commit();
+      }
+      await setDoc(doc(db, 'settings', 'system'), { moneyCents: 2, at: Date.now() }, { merge: true });
+      toast.success(`Migração concluída: ${moneyPlan.patches.length} documento(s). Duvidosos por decidir: ${moneyPlan.unsure.length}.`);
+      setMoneyPlan((p) => ({ ...p, done: true }));
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao aplicar a migração de cêntimos.');
+    } finally {
+      setMoneyApplying(false);
     }
   };
 
@@ -1075,6 +1137,60 @@ export default function Admin() {
                 </Button>
               </CardContent>
             </Card>
+
+            <Card className="border shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base">Migração v1.12.0 — dinheiro em cêntimos (Kz)</CardTitle>
+                <CardDescription>
+                  Converte todos os valores monetários guardados (dízimos, ofertas, despesas,
+                  fundo de construção, activos, donativos, previsões, orçamentos únicos,
+                  contribuições, pagamentos e saldos mensais) para inteiros de cêntimos,
+                  com formato único «1.500,00 Kz». Valores que não der para interpretar com
+                  certeza NÃO são tocados e ficam listados para si. Faça a cópia de segurança
+                  (botão acima) antes de aplicar.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button variant="outline" onClick={analyzeMoney}>1. Analisar valores guardados</Button>
+                {moneyPlan.analyzed && (
+                  <div className="space-y-2 text-xs">
+                    {moneyPlan.done ? (
+                      <div className="rounded border border-emerald-300/60 bg-emerald-50 dark:bg-emerald-950/40 p-2 text-emerald-900 dark:text-emerald-200">
+                        Migração já aplicada. Se houver valores duvidosos por decidir, corrija-os à mão nos ecrãs.
+                      </div>
+                    ) : (
+                      <>
+                        <div><b>{moneyPlan.scanned}</b> documentos analisados · <b>{moneyPlan.patches.length}</b> seriam convertidos · <b>{moneyPlan.unsure.length}</b> duvidoso(s).</div>
+                        {moneyPlan.patches.length > 0 && (
+                          <div className="max-h-28 overflow-y-auto rounded border p-2 space-y-0.5 bg-slate-50 dark:bg-slate-900/60">
+                            {moneyPlan.patches.slice(0, 50).map((p, i) => (
+                              <div key={i}><code>{p.col}/{p.id.slice(0, 8)}</code>: {Object.entries(p.data).filter(([k]) => k !== 'history').map(([k, v]) => `${k} → ${formatKz(Number(v))}`).join(', ') || 'histórico'}</div>
+                            ))}
+                          </div>
+                        )}
+                        {moneyPlan.unsure.length > 0 && (
+                          <div className="rounded border border-amber-300/60 bg-amber-50 dark:bg-amber-950/40 p-2 space-y-1 text-amber-900 dark:text-amber-200">
+                            <b>Não interpretei com certeza — decida manualmente (não serão tocados):</b>
+                            {moneyPlan.unsure.map((u, i) => (
+                              <div key={i}><code>{u.col}/{u.id.slice(0, 8)}</code> · campo <code>{u.field}</code> · valor: <code>{JSON.stringify(u.value)}</code></div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />
+                    Fiz a cópia de segurança (botão acima)
+                  </label>
+                </div>
+                <Button onClick={applyMoneyMigration} disabled={!moneyPlan.analyzed || moneyPlan.done || !backupConfirmed || moneyApplying}>
+                  {moneyApplying ? 'A converter…' : '2. Aplicar conversão para cêntimos'}
+                </Button>
+              </CardContent>
+            </Card>
           </div>
           )}
         </TabsContent>
@@ -1553,12 +1669,12 @@ export default function Admin() {
                           <TableCell className="text-xs text-muted-foreground uppercase">{log.collectionName}</TableCell>
                           <TableCell className="max-w-xs text-xs font-mono text-muted-foreground">
                             {log.action === 'DELETE' && (
-                              <div>Eliminou registo de {new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(log.originalData?.amount || 0)}</div>
+                              <div>Eliminou registo de {formatKz(log.originalData?.amount || 0)}</div>
                             )}
                             {log.action === 'UPDATE' && (
                               <div className="space-y-1">
-                                <div><span className="text-red-500 line-through mr-2">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(log.originalData?.amount || 0)}</span>
-                                <span className="text-emerald-500">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(log.newData?.amount || 0)}</span></div>
+                                <div><span className="text-red-500 line-through mr-2">{formatKz(log.originalData?.amount || 0)}</span>
+                                <span className="text-emerald-500">{formatKz(log.newData?.amount || 0)}</span></div>
                                 <details className="cursor-pointer text-[10px] text-blue-500 hover:text-blue-600">
                                   <summary>Ver JSON</summary>
                                   <div className="mt-1 p-2 bg-slate-100 dark:bg-slate-800 rounded">
