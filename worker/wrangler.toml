@@ -55,3 +55,10 @@ vars = { PROJECT_ID = "iesa-emanuel-xangongo" }
 [observability]
 enabled = true
 head_sampling_rate = 1
+
+
+# Cron do agendador (fila de mensagens, lembretes, estados).
+# Se publicar pelo EDITOR DA CLOUDFLARE (Via A), o cron NÃO vai junto:
+# acrescente-o em Workers → iesa-ai → Settings → Triggers → Cron → "* * * * *".
+[triggers]
+crons = ["* * * * *"]

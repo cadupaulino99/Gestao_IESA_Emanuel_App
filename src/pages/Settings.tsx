@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useTheme, type Mode, type Palette as PaletteId } from '../context/ThemeContext';
@@ -8,9 +10,36 @@ import { useDevice } from '../hooks/useDevice';
 import { Switch } from '../components/ui/switch';
 import { Button } from '../components/ui/button';
 import { currentVersion, lastKnownTag } from '../lib/updateCheck';
+import { db } from '../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { NOTIF_SETTINGS_DEFAULT, type NotifSettings } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'sonner';
 import { ArrowDownToLine } from 'lucide-react';
 
 export default function Settings() {
+  const { isAdmin } = useAuth();
+  const [ns, setNs] = useState<NotifSettings>(NOTIF_SETTINGS_DEFAULT);
+  const [nsLoaded, setNsLoaded] = useState(false);
+  const [nsSaving, setNsSaving] = useState(false);
+
+  useEffect(() => {
+    getDoc(doc(db, 'settings', 'notifications'))
+      .then((d) => { if (d.exists()) setNs({ ...NOTIF_SETTINGS_DEFAULT, ...(d.data() as any) }); setNsLoaded(true); })
+      .catch(() => setNsLoaded(true));
+  }, []);
+
+  const saveNs = async () => {
+    setNsSaving(true);
+    try {
+      await setDoc(doc(db, 'settings', 'notifications'), ns);
+      toast.success('Configuração de notificações guardada.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Sem permissão para alterar (só administração).');
+    } finally {
+      setNsSaving(false);
+    }
+  };
   const { mode, setMode, palette, setPalette } = useTheme();
   const { 
     animationsEnabled, soundEnabled, compactMode, hideFinancials, language,
@@ -202,6 +231,56 @@ export default function Settings() {
             </Button>
           </CardContent>
         </Card>
+      {isAdmin && nsLoaded && (
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">Notificações & Lembretes</CardTitle>
+            <CardDescription>Configuração única dos lembretes de contribuições (hora de Luanda, UTC+1).</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Lembretes por semana</Label>
+                <Input type="number" min={0} max={7} value={ns.perWeek} onChange={(e) => setNs({ ...ns, perWeek: parseInt(e.target.value || '0', 10) })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Hora (Luanda)</Label>
+                <Input type="number" min={0} max={23} value={ns.hour} onChange={(e) => setNs({ ...ns, hour: parseInt(e.target.value || '0', 10) })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Máx. de semanas</Label>
+                <Input type="number" min={1} max={52} value={ns.maxWeeks} onChange={(e) => setNs({ ...ns, maxWeeks: parseInt(e.target.value || '1', 10) })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Máx. externas/semana</Label>
+                <Input type="number" min={0} max={7} value={ns.maxExternalPerWeek} onChange={(e) => setNs({ ...ns, maxExternalPerWeek: parseInt(e.target.value || '0', 10) })} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Dias da semana</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i2) => (
+                  <Button key={d} type="button" size="sm" variant={ns.days.includes(i2 + 1) ? 'default' : 'outline'}
+                    onClick={() => setNs({ ...ns, days: ns.days.includes(i2 + 1) ? ns.days.filter((x) => x !== i2 + 1) : [...ns.days, i2 + 1].sort() })}>
+                    {d}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <Switch checked={ns.externalReminders} onCheckedChange={(c) => setNs({ ...ns, externalReminders: c })} />
+                Lembretes também por SMS/WhatsApp
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Switch checked={ns.testMode} onCheckedChange={(c) => setNs({ ...ns, testMode: c })} />
+                Modo de teste (lembretes a cada minuto, ignora dias/hora/limite diário)
+              </label>
+            </div>
+            <Button onClick={saveNs} disabled={nsSaving}>{nsSaving ? 'A guardar…' : 'Guardar configuração'}</Button>
+          </CardContent>
+        </Card>
+      )}
       </div>
     </div>
   );

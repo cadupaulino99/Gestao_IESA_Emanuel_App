@@ -73,6 +73,7 @@ import {
   Renewal,
   CARD_HEADER_DEFAULT,
 } from "../types";
+import { computeStatus } from "../lib/contrib";
 
 export default function MemberPortal() {
   const { memberData, signOut } = useAuth();
@@ -144,15 +145,26 @@ export default function MemberPortal() {
 
     const fetchCard = async () => {
       try {
-        const [c, d, r] = await Promise.all([
+        const [c, d, r, b, co, pa] = await Promise.all([
           getDocs(query(collection(db, "communions"), where("memberId", "==", memberData.id))),
           getDocs(query(collection(db, "donations"), where("memberId", "==", memberData.id))),
           getDocs(query(collection(db, "renewals"), where("memberId", "==", memberData.id))),
+          getDocs(query(collection(db, "member_budgets"), where("memberId", "==", memberData.id))),
+          getDocs(query(collection(db, "contributions"), where("memberId", "==", memberData.id))),
+          getDocs(query(collection(db, "contribution_payments"), where("memberId", "==", memberData.id))),
         ]);
+        const pays = pa.docs.map((x) => ({ id: x.id, ...x.data() }) as any);
+        const budgets = b.docs.map((x) => x.data() as any).sort((x, y) => (y.year || 0) - (x.year || 0));
         setCardData({
           communions: c.docs.map((x) => ({ id: x.id, ...x.data() }) as CommunionMark),
           donations: d.docs.map((x) => ({ id: x.id, ...x.data() }) as Donation),
           renewals: r.docs.map((x) => ({ id: x.id, ...x.data() }) as Renewal),
+          budget: budgets[0] ? { year: budgets[0].year, amount: budgets[0].amount } : null,
+          contributions: co.docs.map((x) => {
+            const cc = x.data() as any;
+            const paid = pays.filter((pp) => pp.contributionId === x.id).reduce((a, bb) => a + (Number(bb.amount) || 0), 0);
+            return { ...cc, paid, status: computeStatus(cc, paid, cc.amount) };
+          }),
         });
       } catch (error) {
         // coleções novas: se as regras ainda não forem publicadas, não trava o portal

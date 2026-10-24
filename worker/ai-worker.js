@@ -17,6 +17,8 @@
  *   PROJECT_ID        iesa-emanuel-xangongo
  */
 
+import { PROVIDERS } from './providers.config.js';
+
 /* VERSAO do codigo do Worker.
    IMPORTANTE: sempre que este ficheiro mudar, o Worker TEM de ser re-publicado
    (Cloudflare -> Workers -> iesa-ai -> Edit code -> colar -> Save and Deploy,
@@ -24,8 +26,8 @@
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.4.0';
-const WORKER_BUILD = '2026-10-24 (gestao de admins: super, temp passwords, disable)';
+const WORKER_VERSION = '2.5.0';
+const WORKER_BUILD = '2026-10-24 (cron: fila de mensagens, lembretes, estados; IA de modelos)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -569,7 +571,285 @@ Responda de forma clara, estruturada, calorosa e focada na realidade de Angola.`
 /* ------------------------------------------------------------------ */
 /* Router                                                              */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* 4. Firestore: consultas estruturadas (para o cron)                  */
+/* ------------------------------------------------------------------ */
+async function fsRunQuery(env, collectionId, filters, limit = 300) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const structured = {
+    from: [{ collectionId }],
+    where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } },
+    limit,
+  };
+  const r = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents:runQuery`,
+    { method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredQuery: structured }) }
+  );
+  if (!r.ok) throw new Error('runQuery ' + collectionId + ': ' + r.status);
+  const rows = await r.json();
+  return (rows || [])
+    .filter((x) => x.document)
+    .map((x) => ({ id: (x.document.name.split('/documents/')[1] || '').split('/').pop(), fields: x.document.fields || {} }));
+}
+const eq = (f, v) => ({ fieldFilter: { field: { fieldPath: f }, op: 'EQUAL', value: typeof v === 'number' ? { integerValue: String(v) } : typeof v === 'boolean' ? { booleanValue: v } : { stringValue: v } } });
+const le = (f, v) => ({ fieldFilter: { field: { fieldPath: f }, op: 'LESS_THAN_OR_EQUAL', value: { integerValue: String(v) } } });
+const fv = (fields, k) => (fields[k] && (fields[k].stringValue ?? fields[k].integerValue ?? fields[k].booleanValue ?? fields[k].doubleValue)) ?? null;
+const fnum = (fields, k) => Number(fv(fields, k) || 0);
+
+async function fsPatch(env, col, id, obj) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const masks = Object.keys(obj).map((k) => `updateMask.fieldPaths=${k}`).join('&');
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'boolean') out[k] = { booleanValue: v };
+    else if (typeof v === 'number') out[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+    else if (v === null) out[k] = { nullValue: null };
+    else out[k] = { stringValue: String(v) };
+  }
+  const r = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/${col}/${encodeURIComponent(id)}?${masks}`,
+    { method: 'PATCH', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: out }) }
+  );
+  if (!r.ok) throw new Error('PATCH ' + col + '/' + id + ': ' + r.status);
+}
+
+async function fsAdd(env, col, obj) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'boolean') out[k] = { booleanValue: v };
+    else if (typeof v === 'number') out[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+    else if (v === null) out[k] = { nullValue: null };
+    else if (Array.isArray(v)) out[k] = { arrayValue: { values: v.map((x) => ({ stringValue: String(x) })) } };
+    else out[k] = { stringValue: String(v) };
+  }
+  const r = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/${col}`,
+    { method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: out }) }
+  );
+  if (!r.ok) throw new Error('ADD ' + col + ': ' + r.status);
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. Adaptadores de canal (config em providers.config.js)             */
+/*    'manual' → a mensagem fica em manual_hold para o operador enviar  */
+/*    pelos botões wa.me / sms: da fila. Chaves vivem nos segredos.     */
+/* ------------------------------------------------------------------ */
+async function sendSms(env, phone, text) {
+  if ((PROVIDERS.sms || 'manual') === 'manual') return { state: 'manual_hold' };
+  if (PROVIDERS.sms === 'infobip') {
+    const r = await fetch('https://api.infobip.com/sms/2/text/advanced', {
+      method: 'POST',
+      headers: { Authorization: `App ${env.SMS_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ from: env.SMS_SENDER_ID || 'IESA', destinations: [{ to: phone }], text }] }),
+    });
+    return r.ok ? { state: 'sent' } : { state: 'failed', error: 'infobip ' + r.status };
+  }
+  if (PROVIDERS.sms === 'twilio') {
+    const body = new URLSearchParams({ To: phone, From: env.SMS_SENDER_ID || '', Body: text });
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_SID}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: 'Basic ' + btoa(`${env.TWILIO_SID}:${env.SMS_API_KEY}`), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    return r.ok ? { state: 'sent' } : { state: 'failed', error: 'twilio ' + r.status };
+  }
+  return { state: 'failed', error: 'fornecedor sms desconhecido' };
+}
+
+async function sendWhatsApp(env, phone, text) {
+  if ((PROVIDERS.whatsapp || 'manual') === 'manual') return { state: 'manual_hold' };
+  if (PROVIDERS.whatsapp === 'meta') {
+    const r = await fetch(`https://graph.facebook.com/v21.0/${env.WA_PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.WA_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to: phone.replace('+', ''), type: 'text', text: { body: text } }),
+    });
+    return r.ok ? { state: 'sent' } : { state: 'failed', error: 'meta ' + r.status };
+  }
+  return { state: 'failed', error: 'fornecedor whatsapp desconhecido' };
+}
+
+/* ------------------------------------------------------------------ */
+/* 6. CRON: fila (janela de 10 min), lembretes, estados de contribuições */
+/* ------------------------------------------------------------------ */
+const LUANDA_OFFSET_MS = 60 * 60 * 1000; // UTC+1, sem DST
+
+function luandaNow(nowMs) {
+  const d = new Date(nowMs + LUANDA_OFFSET_MS);
+  return {
+    dow: ((d.getUTCDay() + 6) % 7) + 1, // 1=seg … 7=dom
+    hour: d.getUTCHours(),
+    minute: d.getUTCMinutes(),
+    dayKey: d.toISOString().slice(0, 10),
+  };
+}
+
+async function processOutbox(env, now) {
+  const rows = await fsRunQuery(env, 'message_outbox', [eq('status', 'pending'), le('cancelUntil', now)]);
+  let processed = 0;
+  for (const row of rows) {
+    const f = row.fields;
+    const phone = fv(f, 'phone');
+    const accepts = fv(f, 'acceptsMessages') !== false;
+    const channels = { sms: fv(f, 'smsState') || 'pending', whatsapp: fv(f, 'waState') || 'pending' };
+    const body = fv(f, 'body') || '';
+    if (!accepts) { channels.sms = 'not_accepted'; channels.whatsapp = 'not_accepted'; }
+    else if (!phone) { channels.sms = 'no_phone'; channels.whatsapp = 'no_phone'; }
+    else {
+      if (channels.sms === 'pending') channels.sms = (await sendSms(env, phone, body)).state;
+      if (channels.whatsapp === 'pending') channels.whatsapp = (await sendWhatsApp(env, phone, body)).state;
+    }
+    const terminal = (st) => ['sent', 'failed', 'no_phone', 'not_accepted', 'cancelled'].includes(st);
+    const held = (st) => st === 'manual_hold';
+    const done = terminal(channels.sms) && terminal(channels.whatsapp);
+    await fsPatch(env, 'message_outbox', row.id, {
+      smsState: channels.sms, waState: channels.whatsapp,
+      status: done ? 'done' : held(channels.sms) || held(channels.whatsapp) ? 'held' : 'pending',
+      updatedAt: now,
+    });
+    processed++;
+  }
+  return processed;
+}
+
+async function recomputeContributions(env, now) {
+  const rows = await fsRunQuery(env, 'contributions', [
+    { fieldFilter: { field: { fieldPath: 'status' }, op: 'IN', value: { arrayValue: { values: [{ stringValue: 'em_curso' }, { stringValue: 'em_atraso' }] } } } },
+  ], 500);
+  let changed = 0;
+  for (const row of rows) {
+    const f = row.fields;
+    const total = fnum(f, 'amount');
+    const pays = await fsRunQuery(env, 'contribution_payments', [eq('contributionId', row.id)], 500);
+    const paid = pays.reduce((a, p) => a + Number(fv(p.fields, 'amount') || 0), 0);
+    const due = fv(f, 'dueDate') || '2099-12-31';
+    let st = paid + 0.005 >= total ? 'concluida' : now > new Date(due + 'T23:59:59Z').getTime() ? 'em_atraso' : 'em_curso';
+    if (st !== fv(f, 'status')) {
+      const patch = { status: st, paidAmount: Math.round(paid * 100) / 100 };
+      if (st === 'concluida') patch.completedAt = now;
+      await fsPatch(env, 'contributions', row.id, patch);
+      if (st === 'concluida') {
+        await fsAdd(env, 'notifications', {
+          userEmail: fv(f, 'memberEmail') || '', kind: 'contribution_completed',
+          title: 'Contribuição concluída', body: `«${fv(f, 'description')}» foi concluída. Obrigado pela sua fidelidade!`,
+          read: false, createdAt: now, refId: row.id,
+        });
+      }
+      changed++;
+    } else if (fv(f, 'paidAmount') !== Math.round(paid * 100) / 100) {
+      await fsPatch(env, 'contributions', row.id, { paidAmount: Math.round(paid * 100) / 100 });
+    }
+  }
+  return changed;
+}
+
+async function runReminders(env, now) {
+  // settings/notifications é documento fixo: leitura directa
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const cr = await fetch(`https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/settings/notifications`,
+    { headers: { Authorization: `Bearer ${tok}` } });
+  const DEF = { perWeek: 3, days: [1, 3, 5], hour: 9, maxWeeks: 8, externalReminders: false, maxExternalPerWeek: 2, testMode: false };
+  let cfg = DEF;
+  if (cr.ok) {
+    const cj = await cr.json();
+    const f = cj.fields || {};
+    cfg = {
+      perWeek: fnum(f, 'perWeek') || DEF.perWeek,
+      days: (f.days?.arrayValue?.values || []).map((v) => Number(v.integerValue)).filter(Boolean),
+      hour: fnum(f, 'hour') || DEF.hour,
+      maxWeeks: fnum(f, 'maxWeeks') || DEF.maxWeeks,
+      externalReminders: f.externalReminders?.booleanValue ?? false,
+      maxExternalPerWeek: fnum(f, 'maxExternalPerWeek') || DEF.maxExternalPerWeek,
+      testMode: f.testMode?.booleanValue ?? false,
+    };
+    if (!cfg.days.length) cfg.days = DEF.days;
+  }
+  const L = luandaNow(now);
+  const timeOk = cfg.testMode || (cfg.days.includes(L.dow) && L.hour === cfg.hour);
+  if (!timeOk) return 0;
+
+  const rows = await fsRunQuery(env, 'contributions', [eq('status', 'em_curso')], 500);
+  let sent = 0;
+  for (const row of rows) {
+    const f = row.fields;
+    if (fv(f, 'reminderStopped') === true) continue;
+    const startedAt = fnum(f, 'setAt') || now;
+    const weeks = (now - startedAt) / (7 * 86400000);
+    if (!cfg.testMode && weeks > cfg.maxWeeks) {
+      await fsPatch(env, 'contributions', row.id, { reminderStopped: true });
+      await fsAdd(env, 'notifications', {
+        userEmail: 'cadupaulino99@gmail.com', kind: 'admin_alert',
+        title: 'Lembretes parados (limite de semanas)',
+        body: `«${fv(f, 'description')}» de ${fv(f, 'memberName') || fv(f, 'memberEmail')} atingiu ${cfg.maxWeeks} semanas de lembretes sem ser concluída.`,
+        read: false, createdAt: now, refId: row.id,
+      });
+      continue;
+    }
+    // máx. 1 mensagem/dia/membro (fora do modo de teste)
+    if (!cfg.testMode) {
+      const today = await fsRunQuery(env, 'message_outbox', [eq('memberId', fv(f, 'memberId')), eq('dedupeDay', L.dayKey)], 1);
+      if (today.length) continue;
+    }
+    // tecto semanal de lembretes
+    const weekKey = `${Math.floor(now / (7 * 86400000))}`;
+    if (fnum(f, 'reminderWeekKey') === Number(weekKey) && fnum(f, 'reminderWeekCount') >= cfg.perWeek) continue;
+
+    const due = fv(f, 'dueDate') || '';
+    const missing = Math.max(0, fnum(f, 'amount') - fnum(f, 'paidAmount'));
+    const body = [
+      `Paz, ${fv(f, 'memberName') || 'irmão(ã)'}.`,
+      `Lembrete amável: a contribuição «${fv(f, 'description')}» tem prazo ${due}.`,
+      missing > 0 ? `Valor em falta: ${missing.toLocaleString('pt-AO')} Kz.` : '',
+      'Se já entregou, desconsidere — e obrigado pela sua fidelidade. Mal. 3:10',
+    ].filter(Boolean).join(' ');
+
+    await fsAdd(env, 'notifications', {
+      userEmail: fv(f, 'memberEmail') || '', kind: 'reminder',
+      title: 'Lembrete de contribuição', body, read: false, createdAt: now, refId: row.id,
+    });
+    if (cfg.externalReminders && fv(f, 'acceptsMessages') !== false && fv(f, 'phone')) {
+      const extWeek = fnum(f, 'extWeekKey') === Number(weekKey) ? fnum(f, 'extWeekCount') : 0;
+      if (extWeek < cfg.maxExternalPerWeek) {
+        await fsAdd(env, 'message_outbox', {
+          memberId: fv(f, 'memberId'), memberEmail: fv(f, 'memberEmail') || null,
+          memberName: fv(f, 'memberName') || '', phone: fv(f, 'phone'),
+          acceptsMessages: fv(f, 'acceptsMessages') !== false,
+          kind: 'reminder', body, smsState: 'pending', waState: 'pending',
+          status: 'pending', cancelUntil: 0, dedupeDay: L.dayKey,
+          campaignId: null, refId: row.id, createdAt: now, updatedAt: now,
+        });
+        await fsPatch(env, 'contributions', row.id, { extWeekKey: Number(weekKey), extWeekCount: extWeek + 1 });
+      }
+    }
+    await fsPatch(env, 'contributions', row.id, {
+      reminderWeekKey: Number(weekKey),
+      reminderWeekCount: (fnum(f, 'reminderWeekKey') === Number(weekKey) ? fnum(f, 'reminderWeekCount') : 0) + 1,
+      lastReminderAt: now,
+    });
+    sent++;
+  }
+  return sent;
+}
+
+/* ------------------------------------------------------------------ */
+
 export default {
+  /* Cron do Cloudflare (Workers → Settings → Triggers, ou [triggers] no wrangler):
+     a cada minuto. O próprio código decide o que fazer com o minuto actual. */
+  async scheduled(event, env) {
+    const now = Date.now();
+    try {
+      const q = await processOutbox(env, now);
+      const c = await recomputeContributions(env, now);
+      const r = await runReminders(env, now);
+      console.log(`cron: outbox=${q} contribs=${c} lembretes=${r}`);
+    } catch (e) {
+      console.error('cron falhou:', e?.message || e);
+    }
+  },
+
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const url = new URL(request.url);
@@ -739,6 +1019,29 @@ export default {
         if (!memberName || !occasion) return json({ error: 'memberName e occasion obrigatórios.' }, 400);
         const prompt = `Escreva uma mensagem pastoral inspiradora e bíblica para o membro "${memberName}", por ocasião de "${occasion}". Tom: "${tone || 'afetuoso e inspirador'}". Inclua um versículo bíblico apropriado e felicitações em nome da Igreja Emanuel - Xangongo.`;
         return json({ text: await gemini(env, prompt, 'Você é o pastor da Igreja Evangélica Sinodal de Angola (Emanuel em Xangongo). Escreva com elegância, calor e brevidade para WhatsApp.') });
+      }
+
+      /* --- IA: modelos para mensagens em massa (só liderança) ---
+         A IA recebe APENAS o objectivo e as contagens por grupo — nunca nomes,
+         telefones ou valores reais. Devolve modelos com {marcadores}. */
+      if (path === '/assistant/bulk-templates') {
+        const { goal, groups } = await request.json();
+        if (!Array.isArray(groups) || !groups.length) return json({ error: 'Grupos obrigatórios.' }, 400);
+        const desc = groups.map((g) => `grupo "${g.id}" (${g.label}, ${g.count} pessoas)`).join('; ');
+        const prompt = `Escreve UM modelo de mensagem curta e cordial (max 140 palavras) para CADA grupo: ${desc}.
+Objectivo declarado pelo administrador: "${goal || 'informar com carinho'}.
+REGRAS OBRIGATÓRIAS: usa APENAS estes marcadores, quando fizer sentido: {nome} {descricao} {valor} {prazo} {valor_em_falta}.
+NUNCA inventes nomes, valores, telefones ou datas reais. Tom: fraterno, sem pressão, sem culpar.
+Responde APENAS com JSON: {"groupId": "texto do modelo", ...}.`;
+        try {
+          const txt = await gemini(env, prompt, 'És o pastor assistente da IESA Emanuel-Xangongo. Escreves modelos de mensagem com marcadores, nunca dados reais.');
+          let parsed = null;
+          try { parsed = JSON.parse(txt); } catch { const m2 = txt.match(/\{[\s\S]*\}/); if (m2) { try { parsed = JSON.parse(m2[0]); } catch { /* nada */ } } }
+          if (!parsed) return json({ error: 'A IA não devolveu modelos válidos. Escreva o texto à mão.' }, 502);
+          return json({ templates: parsed, workerVersion: WORKER_VERSION });
+        } catch (e) {
+          return json({ error: e?.message || 'Falha na IA. Escreva o texto à mão.' }, 502);
+        }
       }
 
       /* --- VISAO: ler BI / cartao de membro --- */

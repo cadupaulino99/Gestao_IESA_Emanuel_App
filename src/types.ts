@@ -20,6 +20,8 @@ export interface Member {
   placeOfBirth?: string;
   /** Fotografia do titular (JPEG comprimido em base64, ~400 px). */
   photoBase64?: string;
+  /** Aceita receber mensagens por telemóvel (SMS/WhatsApp). Defeito: sim. */
+  acceptsMessages?: boolean;
   phone?: string;
   email?: string;
   address?: string;
@@ -202,3 +204,112 @@ export const CARD_HEADER_DEFAULT: CardHeader = {
 
 export const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'] as const;
 export const MONTHS_IDX = ['01','02','03','04','05','06','07','08','09','10','11','12'] as const;
+
+/* ------------------------------------------------------------------ */
+/* v1.11.0 — Orçamento único, contribuições, notificações, mensagens  */
+/* ------------------------------------------------------------------ */
+
+export interface BudgetEntry {
+  id: string;
+  memberId: string;
+  memberEmail?: string | null;
+  year: number;
+  amount: number;                 // kwanzas inteiros, > 0
+  setBy: string;                  // email de quem definiu
+  setAt: number;
+  history: { from: number | null; to: number; by: string; at: number }[];
+}
+
+export type ContributionStatus = 'em_curso' | 'concluida' | 'em_atraso';
+
+export interface Contribution {
+  id: string;
+  memberId: string;
+  memberEmail?: string | null;
+  description: string;
+  amount: number;                 // valor total devido
+  dueDate: string;                // AAAA-MM-DD (prazo)
+  status: ContributionStatus;     // calculado + fechos manuais
+  paidAmount?: number;            // soma de pagamentos (mantida por trigger de app)
+  completedAt?: number | null;    // quando atingiu/marcou concluída
+  closeReason?: string | null;    // motivo do fecho manual
+  reopenReason?: string | null;   // motivo da reabertura (só admin)
+  setBy: string;
+  setAt: number;
+  history: { field: string; from: unknown; to: unknown; by: string; at: number }[];
+}
+
+export interface ContributionPayment {
+  id: string;
+  contributionId: string;
+  memberId: string;
+  amount: number;
+  deliveryDate: string;           // data de ENTREGA (contabilidade)
+  recordedBy: string;
+  createdAt: number;
+}
+
+export interface AppNotification {
+  id: string;
+  userEmail: string;              // dono da notificação (membro ou liderança)
+  kind: string;                   // budget_set | contribution_set | payment_received | reminder | admin_alert …
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: number;
+  refId?: string;
+}
+
+export type ChannelState = 'pending' | 'manual_hold' | 'sent' | 'failed' | 'no_phone' | 'not_accepted' | 'cancelled' | 'replaced';
+
+export interface OutboxMessage {
+  id: string;
+  memberId: string;
+  memberEmail?: string | null;
+  memberName?: string;
+  phone?: string | null;          // snapshot normalizado no momento do agendamento
+  acceptsMessages?: boolean;      // snapshot do campo do membro
+  kind: string;
+  body: string;                   // mensagem já com dados reais substituídos
+  smsState: ChannelState;
+  waState: ChannelState;
+  status: 'pending' | 'held' | 'done';
+  cancelUntil: number;            // janela de 10 min para cancelar/substituir
+  dedupeDay: string;              // AAAA-MM-DD: máx. 1 mensagem/dia/membro
+  campaignId?: string | null;
+  refId?: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  audience: string;               // descrição do filtro (código calcula destinatários)
+  templates: Record<string, string>; // groupId → modelo com {marcadores}
+  groupCounts: Record<string, number>;
+  createdBy: string;
+  createdAt: number;
+  status: 'draft' | 'sent';
+  recipientCount: number;
+}
+
+export interface NotifSettings {
+  perWeek: number;                // NOTIFICACOES_POR_SEMANA (def. 3)
+  days: number[];                 // 1=seg … 7=dom (def. [1,3,5])
+  hour: number;                   // hora de Luanda (def. 9)
+  maxWeeks: number;               // MAX_SEMANAS_LEMBRETE (def. 8)
+  externalReminders: boolean;     // SMS/WhatsApp nos lembretes (def. false)
+  maxExternalPerWeek: number;     // tecto por membro/semana (def. 2)
+  testMode: boolean;              // lembretes de minuto a minuto p/ testes
+}
+
+export const NOTIF_SETTINGS_DEFAULT: NotifSettings = {
+  perWeek: 3,
+  days: [1, 3, 5],
+  hour: 9,
+  maxWeeks: 8,
+  externalReminders: false,
+  maxExternalPerWeek: 2,
+  testMode: false,
+};

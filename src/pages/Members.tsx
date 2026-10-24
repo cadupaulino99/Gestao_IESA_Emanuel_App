@@ -15,6 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
+import { Checkbox } from '../components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Plus, Pencil, Trash2, Download, Upload, Eye, CreditCard, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
@@ -28,6 +29,7 @@ import { saveXlsx } from '../lib/download';
 import { MemberTithesTracker } from '../components/members/MemberTithesTracker';
 import MemberCardModal from '../components/members/MemberCardModal';
 import { validateBi, findSimilarMembers, nextInternalCode, mergeMembers, editBi } from '../lib/members';
+import { normalizePhoneAO, phoneError, duplicatePhones } from '../lib/phone';
 import CommunionTracker from '../components/members/CommunionTracker';
 import { compressImageFile } from '../lib/ai';
 import { PastoralMessageGeneratorModal } from '../components/members/PastoralMessageGeneratorModal';
@@ -42,6 +44,7 @@ const memberSchema = z.object({
   motherName: z.string().optional(),
   placeOfBirth: z.string().optional(),
   photoBase64: z.string().optional(),
+  acceptsMessages: z.boolean().optional(),
   phone: z.string().optional(),
   birthDate: z.string().optional(),
   baptismDate: z.string().optional(),
@@ -295,6 +298,20 @@ export default function Members() {
   });
 
   const handleSave = async (data: any) => {
+    // ── Telefone: normaliza +244XXXXXXXXX e avisa se outro membro tem o mesmo ──
+    if (data.phone) {
+      const err = phoneError(data.phone);
+      if (err) { toast.error(err); return; }
+      data.phone = normalizePhoneAO(data.phone)!;
+      const others = await getDocs(query(collection(db, 'members'), where('phone', '==', data.phone)));
+      const dup = others.docs.find((d) => d.id !== editingMember?.id);
+      if (dup) {
+        const okDup = await confirmDialog(`Atenção: o número ${data.phone} também está em «${dup.data().name}». Mensagens com valores podem ir para a pessoa errada. Guardar mesmo assim?`, 'GUARDAR');
+        if (!okDup) return;
+      }
+    }
+    if (data.acceptsMessages === undefined) data.acceptsMessages = true;
+
     // ── B.I.: formato angolano + unicidade (bloqueia) ──
     const bi = validateBi(data.documentNumber);
     if (!bi.ok) {
@@ -364,6 +381,7 @@ export default function Members() {
       motherName: member.motherName || '',
       placeOfBirth: member.placeOfBirth || '',
       photoBase64: member.photoBase64 || '',
+      acceptsMessages: member.acceptsMessages !== false,
       phone: member.phone || '',
       birthDate: member.birthDate || '',
       baptismDate: member.baptismDate || '',
@@ -558,6 +576,14 @@ export default function Members() {
                       <div className="space-y-1">
                         <Label className="text-xs">Filiação — mãe («…e de…»)</Label>
                         <Input {...register("motherName")} />
+                      </div>
+                      <div className="flex items-center gap-2 md:col-span-2">
+                        <Checkbox
+                          checked={watch('acceptsMessages') !== false}
+                          onCheckedChange={(c) => setValue('acceptsMessages', c === true, { shouldDirty: true })}
+                          id="accepts-msgs"
+                        />
+                        <Label htmlFor="accepts-msgs" className="text-xs">Aceita mensagens por telemóvel (SMS/WhatsApp). Se desmarcado, recebe só notificações dentro do sistema.</Label>
                       </div>
                       <div className="space-y-1 md:col-span-2">
                         <Label className="text-xs">Fotografia do titular (para o cartão)</Label>

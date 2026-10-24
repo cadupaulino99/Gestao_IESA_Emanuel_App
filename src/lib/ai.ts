@@ -440,3 +440,12 @@ export async function aiExtractReceipt(imageBase64: string, mimeType: string): P
   const r = await callWorker<{ fields: ReceiptFields }>('/assistant/extract-receipt', { imageBase64, mimeType });
   return r.fields || {};
 }
+
+/** IA gera modelos com marcadores para mensagens em massa (só liderança).
+ *  A IA recebe APENAS objectivo + contagens por grupo — nunca dados reais. */
+export async function aiBulkTemplates(
+  goal: string,
+  groups: { id: string; label: string; count: number }[]
+): Promise<{ templates: Record<string, string> }> {
+  return callWorker<{ templates: Record<string, string> }>('/assistant/bulk-templates', { goal, groups });
+}

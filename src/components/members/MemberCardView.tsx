@@ -17,6 +17,8 @@ export interface MemberCardData {
   donations: Donation[];
   tithes: Tithe[];
   renewals: Renewal[];
+  budget?: { year: number; amount: number } | null;
+  contributions?: { description: string; amount: number; paid: number; dueDate: string; status: string; completedAt?: number | null }[];
 }
 
 interface Props {
@@ -158,6 +160,35 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
             value={member.joinDate ? `${fmtDate(member.joinDate)} em ${header.igreja}` : null}
             className="col-span-2"
           />
+        </div>
+
+        {/* ORÇAMENTO ÚNICO + CONTRIBUIÇÕES (v1.11.0) */}
+        <div className="rounded-lg border border-slate-400/60 px-2 py-1.5 text-[12px] space-y-1 bg-white/40 dark:bg-slate-800/40">
+          <div className="flex items-baseline gap-1">
+            <span className="font-semibold text-slate-700 dark:text-slate-200">Orçamento único:</span>
+            {data.budget?.amount ? (
+              <span className="font-bold text-blue-900 dark:text-blue-300">
+                {money(data.budget.amount)} Kz ({data.budget.year})
+              </span>
+            ) : (
+              <span className="text-slate-500">Não definido</span>
+            )}
+          </div>
+          {(data.contributions || []).length > 0 && (
+            <div className="space-y-0.5">
+              <span className="font-semibold text-slate-700 dark:text-slate-200">Contribuições:</span>
+              {(data.contributions || []).map((c, i) => (
+                <div key={i} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+                  <span>• {c.description}</span>
+                  <span className="text-blue-900 dark:text-blue-300">{money(c.paid)}/{money(c.amount)} Kz</span>
+                  <span>prazo {fmtDate(c.dueDate)}</span>
+                  <span className={c.status === 'concluida' ? 'text-emerald-700 font-semibold' : c.status === 'em_atraso' ? 'text-red-600 font-semibold' : 'text-slate-600'}>
+                    {c.status === 'concluida' ? `Contribuição concluída${c.completedAt ? ` em ${fmtDate(new Date(c.completedAt).toISOString().slice(0, 10))}` : ''}` : c.status === 'em_atraso' ? 'Em atraso' : 'Em curso'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* PARTICIPOU DA COMUNHÃO */}

@@ -4,27 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import {
-  BarChart,
-  Users,
-  Wallet,
-  Building2,
-  Landmark,
-  ReceiptText,
-  DoorClosed,
-  Menu,
-  PieChart,
-  Settings,
-  Shield,
-  HeartHandshake,
-  MessageSquare,
-  Radio as RadioIcon,
-  Home,
-  MoreHorizontal,
-  Pause,
-  Maximize2,
-  X,
-} from 'lucide-react';
+import { BarChart, Users, Wallet, Building2, Landmark, ReceiptText, DoorClosed, Menu, PieChart, Settings, Shield, HeartHandshake, MessageSquare, Radio as RadioIcon, Home, MoreHorizontal, Pause, Maximize2, X, HandCoins } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Button } from './ui/button';
@@ -37,6 +17,7 @@ import { Search } from 'lucide-react';
 import { livePlayer } from '../lib/radio';
 import UpdateBanner from './UpdateBanner';
 import ForcePasswordChangeModal from './admin/ForcePasswordChangeModal';
+import NotificationBell from './NotificationBell';
 
 export default function Layout() {
   const { user, signOut, isAdmin, userRole } = useAuth();
@@ -92,6 +73,7 @@ export default function Layout() {
     { name: 'Património', path: '/assets', icon: Landmark },
     { name: 'Orçamento', path: '/budget', icon: BarChart },
     { name: 'Relatórios', path: '/reports', icon: ReceiptText },
+    { name: 'Contribuições', path: '/contributions', icon: HandCoins },
     { name: 'Rádio Maranata', path: '/radio', icon: RadioIcon },
     ...(userRole === 'admin' ? [{ name: 'Administração', path: '/admin', icon: Shield }] : []),
     { name: 'Suporte & IA', path: '/support', icon: MessageSquare },
@@ -138,6 +120,7 @@ export default function Layout() {
       {/* Sidebar for desktop */}
       <aside className="hidden md:flex flex-col w-72 border-r border-slate-200/60 dark:border-slate-800 bg-white/50 dark:bg-slate-950/50 backdrop-blur-xl px-4 py-6 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
         <div className="flex items-center gap-3 mb-8 px-2">
+          <div className="ml-auto hidden md:block"><NotificationBell /></div>
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl overflow-hidden bg-slate-100 shadow-sm border border-slate-200/50">
             <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
           </div>
