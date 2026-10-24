@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aggregateByMonth, sumYear, yearsPresent } from '../finance';
+import { aggregateByMonth, sumYear, yearsPresent, cardYears } from '../finance';
 
 const rows = [
   { referenceMonth: '01', referenceYear: 2024, amount: 500 },
@@ -36,5 +36,33 @@ describe('yearsPresent', () => {
   it('devolve anos crescentes e limita colunas', () => {
     expect(yearsPresent(rows)).toEqual([2023, 2024]);
     expect(yearsPresent([{ referenceYear: 2030 }, { referenceYear: 2029 }, { referenceYear: 2028 }, { referenceYear: 2027 }, { referenceYear: 2026 }], 2)).toEqual([2029, 2030]);
+  });
+});
+
+describe('cardYears (colunas do cartão de membro)', () => {
+  it('inclui anos de dízimos LEGADOS (month nome + year, sem referenceYear)', () => {
+    const legacy = [{ month: 'Janeiro', year: 2025, amount: 70000 }];
+    expect(cardYears({ tithes: legacy })).toEqual([2025]);
+  });
+  it('inclui anos de dízimos com referenceMonth numérico', () => {
+    const numeric = [{ referenceMonth: '3' as any, referenceYear: 2026, amount: 5000 }];
+    expect(cardYears({ tithes: numeric })).toEqual([2026]);
+    expect(aggregateByMonth(numeric, 2026)['03']).toEqual({ total: 5000, count: 1 });
+  });
+  it('donativos sem referenceYear: usa o ano da data ISO', () => {
+    expect(cardYears({ donations: [{ date: '2024-06-10', amount: 100 }] })).toEqual([2024]);
+  });
+  it('une comunhão, donativos, dízimos e renovações; máx. 4, crescente', () => {
+    const ys = cardYears({
+      communions: [{ year: 2026 }],
+      donations: [{ referenceYear: 2025, amount: 1 }],
+      tithes: [{ month: 'Março', year: 2022, amount: 1 }],
+      renewals: [{ date: '2023-01-15' }, { date: '2021-01-15' }],
+    });
+    // 5 anos presentes → o mais antigo (2021) cai; ordem crescente
+    expect(ys).toEqual([2022, 2023, 2025, 2026]);
+  });
+  it('sem registos: só o ano corrente', () => {
+    expect(cardYears({})).toEqual([new Date().getFullYear()]);
   });
 });

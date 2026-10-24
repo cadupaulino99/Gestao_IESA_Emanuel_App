@@ -1,5 +1,29 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.12.1 — Cartão de membro: PDF com todos os dízimos e «Kz Kz» corrigido
+
+Bugs corrigidos no cartão de membro (ecrã + PDF, liderança e Portal do Membro):
+- **PDF perdia registos legados**: `generateMemberCardPdf` filtrava dízimos e
+  donativos com comparações cruas (`t.referenceYear === ano && t.referenceMonth === '01'`).
+  Dízimos anteriores à v1.9.3 (`month: 'Janeiro'` + `year`, sem campos
+  `reference*`) ou com mês numérico (`10` em vez de `'10'`) desapareciam das
+  tabelas do PDF — mesmo aparecendo no ecrã. O PDF passa a usar os MESMOS
+  helpers canónicos do ecrã (`aggregateByMonth`/`sumYear` de `lib/finance`,
+  que resolvem mês/ano via `referenceOf`): uma única fonte de verdade.
+- **Colunas de ano com o mesmo defeito**: `yearsOf` (ecrã) e `yearsOfPdf`
+  recolhiam os anos só de `referenceYear` cru; um membro apenas com dízimos
+  legados ficava sem a coluna desse ano (e sem os valores). Substituídos por
+  `cardYears()` (novo em `lib/finance`, testado): anos canónicos de comunhões,
+  donativos (com recurso à data ISO), dízimos (`referenceOf`) e renovações.
+- **«Kz Kz» na frente do cartão**: o bloco do orçamento único e das
+  contribuições juntava « Kz» a seguir a `formatKz()`, que já inclui o sufixo
+  («12.000,00 Kz Kz (2026)», «500,00 Kz/1.000,00 Kz Kz»).
+- **Comunhão no cartão**: a comparação do mês passa por `toMonthIdx` (ecrã e
+  PDF), tolerante a '1', 1, '01' e nomes.
+- Remover donativo no modal do cartão falhava em silêncio (sem `catch`); agora
+  mostra toast de erro como os restantes botões.
+- Testes: 91 (5 novos de `cardYears` em `finance.test.ts`).
+
 ## v1.12.0 — Moeda única «Kz» e campos de valor inteligentes
 - **Causa da mistura AOA/Kz**: 135 sítios em 22 ficheiros formatavam dinheiro
   cada um à sua maneira (49× Intl.NumberFormat AOA, 13× toLocaleString,

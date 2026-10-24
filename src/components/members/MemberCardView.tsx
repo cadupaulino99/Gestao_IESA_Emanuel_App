@@ -1,6 +1,7 @@
 import { formatKz } from '../../lib/money';
 import { Check, X } from 'lucide-react';
-import { aggregateByMonth, sumYear } from '../../lib/finance';
+import { aggregateByMonth, sumYear, cardYears } from '../../lib/finance';
+import { toMonthIdx } from '../../lib/months';
 import {
   Member,
   CommunionMark,
@@ -48,20 +49,6 @@ const fmtDateLong = (iso?: string | null) => {
 const money = (n: number) =>
   formatKz(n || 0);
 
-/** Anos a mostrar nas tabelas (união dos anos com registos, máx. 4 colunas). */
-function yearsOf(data: MemberCardData): number[] {
-  const ys = new Set<number>();
-  data.communions.forEach((c) => c.year && ys.add(c.year));
-  data.donations.forEach((d) => d.referenceYear && ys.add(d.referenceYear));
-  data.tithes.forEach((t) => t.referenceYear && ys.add(t.referenceYear));
-  data.renewals.forEach((r) => {
-    const y = Number(String(r.date || '').slice(0, 4));
-    if (y) ys.add(y);
-  });
-  if (ys.size === 0) ys.add(new Date().getFullYear());
-  return [...ys].sort((a, b) => b - a).slice(0, 4).sort((a, b) => a - b);
-}
-
 const cell = 'border border-slate-400/70 px-1 py-0.5 text-center';
 const head = 'border border-slate-500/80 bg-slate-200/70 px-1 py-0.5 text-center font-semibold';
 
@@ -97,10 +84,12 @@ function Field({ label, value, className = '' }: { label: string; value?: string
  *   VERSO:  renovações, fotografia, assinatura, dízimos, Mal. 3:10.
  */
 export default function MemberCardView({ member, data, header = CARD_HEADER_DEFAULT, compact = false }: Props) {
-  const years = yearsOf(data);
+  /* cardYears (lib/finance): única fonte de verdade, partilhada com o PDF —
+     inclui anos de dízimos legados (month: 'Janeiro' + year). */
+  const years = cardYears(data);
 
   const comOf = (y: number, mi: string) =>
-    data.communions.find((c) => c.year === y && c.month === mi)?.mark || '';
+    data.communions.find((c) => Number(c.year) === y && toMonthIdx(c.month) === mi)?.mark || '';
 
   /** No papel era a assinatura do pastor; no digital, ✓ / ✗ (decisão da liderança). */
   const ComMark = ({ mark }: { mark: string }) => {
@@ -169,7 +158,7 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
             <span className="font-semibold text-slate-700 dark:text-slate-200">Orçamento único:</span>
             {data.budget?.amount ? (
               <span className="font-bold text-blue-900 dark:text-blue-300">
-                {money(data.budget.amount)} Kz ({data.budget.year})
+                {money(data.budget.amount)} ({data.budget.year})
               </span>
             ) : (
               <span className="text-slate-500">Não definido</span>
@@ -181,7 +170,7 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
               {(data.contributions || []).map((c, i) => (
                 <div key={i} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
                   <span>• {c.description}</span>
-                  <span className="text-blue-900 dark:text-blue-300">{money(c.paid)}/{money(c.amount)} Kz</span>
+                  <span className="text-blue-900 dark:text-blue-300">{money(c.paid)} / {money(c.amount)}</span>
                   <span>prazo {fmtDate(c.dueDate)}</span>
                   <span className={c.status === 'concluida' ? 'text-emerald-700 font-semibold' : c.status === 'em_atraso' ? 'text-red-600 font-semibold' : 'text-slate-600'}>
                     {c.status === 'concluida' ? `Contribuição concluída${c.completedAt ? ` em ${fmtDate(new Date(c.completedAt).toISOString().slice(0, 10))}` : ''}` : c.status === 'em_atraso' ? 'Em atraso' : 'Em curso'}

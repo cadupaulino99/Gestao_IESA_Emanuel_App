@@ -73,3 +73,44 @@ export function yearsPresent(rows: MoneyRow[], max = 4): number[] {
   for (const r of rows) if (r.referenceYear) ys.add(r.referenceYear);
   return [...ys].sort((a, b) => a - b).slice(-max);
 }
+
+/** Linha de donativo (data ISO usada como recurso para o ano). */
+export interface CardMoneyRow extends MoneyRow {
+  date?: string;
+}
+
+export interface CardYearsData {
+  communions?: { year?: number }[];
+  donations?: CardMoneyRow[];
+  tithes?: CardMoneyRow[];
+  renewals?: { date?: string }[];
+}
+
+/**
+ * Anos que merecem COLUNA nas tabelas do cartão de membro (comunhão,
+ * donativos, dízimos, renovações). Usa o mês/ano CANÓNICOS (referenceOf) —
+ * registos legados (month: 'Janeiro' + year, sem referenceYear/referenceMonth)
+ * também contam. Sem registos: só o ano corrente. Ordem crescente, máx. `max`.
+ * Única fonte de verdade do ecrã (MemberCardView) e do PDF (pdfUtils).
+ */
+export function cardYears(data: CardYearsData, max = 4): number[] {
+  const ys = new Set<number>();
+  for (const c of data.communions || []) {
+    const y = Number(c?.year);
+    if (y > 0) ys.add(y);
+  }
+  for (const d of data.donations || []) {
+    const y = Number(d.referenceYear) || Number(String(d.date || '').slice(0, 4)) || 0;
+    if (y > 0) ys.add(y);
+  }
+  for (const t of data.tithes || []) {
+    const y = referenceOf(t as any).year;
+    if (y > 0) ys.add(y);
+  }
+  for (const r of data.renewals || []) {
+    const y = Number(String(r?.date || '').slice(0, 4));
+    if (y > 0) ys.add(y);
+  }
+  if (ys.size === 0) ys.add(new Date().getFullYear());
+  return [...ys].sort((a, b) => a - b).slice(-max);
+}
