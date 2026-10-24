@@ -1,5 +1,38 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.12.2 — O PDF do cartão agora CHEGA ao telemóvel (partilha nativa a sério)
+
+**Sintoma**: ao carregar em «Descarregar PDF»/«Gerar PDF», a app dizia que o
+ficheiro foi guardado, mas nada aparecia — sem folha de partilha, sem descarga,
+sem ficheiro encontrável.
+
+**Causa real** (o fix da v1.8.3 não chegava a um aparelho real):
+- `saveBlob` tentava partilhar com a **Web Share API** (`navigator.share` /
+  `navigator.canShare`) — essa API **não existe na Android System WebView**
+  (só em browsers como o Chrome). No APK, `canShare` vinha `undefined` e a
+  folha de partilha NUNCA abria.
+- O recurso escrevia o PDF com `Filesystem` em `Directory.Documents` — que no
+  Android é a **pasta privada da app**
+  (`Android/data/ao.co.iesa.emanuelxangongo.gestao/files/Documents/Download/`),
+  inacessível a qualquer gestor de ficheiros desde o Android 11. O ficheiro
+  era mesmo criado… onde o utilizador não lhe consegue chegar. Daí o
+  «informa que baixou, mas o download nunca inicia».
+
+**Correção**: plugin oficial **@capacitor/share 8.0.3** (Intent nativo
+`ACTION_SEND` + FileProvider — o único que abre a folha de partilha do Android
+a partir da WebView). Em native, `saveBlob` passa a:
+1. gravar o ficheiro na **cache** (`Directory.Cache`);
+2. abrir a **folha de partilha real do Android** (`Share.share({ files })`) —
+   o utilizador escolhe *Guardar em Ficheiros*, *Drive*, *Imprimir*, WhatsApp…;
+3. só se a partilha falhar: grava em `Documents/Download/` com mensagem
+   honesta («cópia na pasta da app»).
+- `shareRecording` (Rádio): mesmo padrão — partilha nativa da gravação AAC
+  via cache; a Web Share API fica só para a web (onde existe mesmo).
+- Web inalterada (`<a download>`). Beneficia TODAS as descargas: cartão CR80,
+  cartão frente+verso, recibos, Excel, backups, relatórios.
+- APK: o CI já corre `npm ci` + `npx cap sync android` — o plugin entra no
+  build sem tocar manualmente na pasta `android/`.
+
 ## v1.12.1 — Cartão de membro: PDF com todos os dízimos e «Kz Kz» corrigido
 
 Bugs corrigidos no cartão de membro (ecrã + PDF, liderança e Portal do Membro):

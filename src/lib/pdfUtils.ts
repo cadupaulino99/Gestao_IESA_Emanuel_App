@@ -8,9 +8,10 @@ import { Member } from '../types';
 /**
  * Gravar PDF que FUNCIONA no APK: o `doc.save()` do jsPDF usa um <a download>
  * que a WebView do Android ignora em silêncio (era por isso que "o cartão não
- * aparecia" ao clicar). Em native: partilha via folha de partilha do Android
- * (Guardar em Ficheiros, Drive, imprimir…); se o utilizador cancelar ou não
- * houver partilha, grava em Documents/ e diz onde ficou. Na web: save() normal.
+ * aparecia" ao clicar). Em native: folha de partilha NATIVA via
+ * @capacitor/share (v1.12.2 — `navigator.share` não existe na WebView, só nos
+ * browsers); se a partilha falhar, grava em Documents/ e diz onde ficou.
+ * Na web: save() normal.
  */
 export async function savePdf(docPdf: jsPDF, filename: string): Promise<void> {
   await saveBlob(docPdf.output('blob'), filename);
