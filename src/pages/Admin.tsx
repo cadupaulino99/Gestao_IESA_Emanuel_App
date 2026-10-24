@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { prefGet,prefSet } from '../lib/prefs';
-import { createAuthAccount } from '../lib/ai';
+import { createAuthAccount, resetTempPassword, setAccountDisabled } from '../lib/ai';
+import { genTempPassword, type ShareCtx } from '../lib/admins';
+import OneTimeCredentials from '../components/admin/OneTimeCredentials';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, setDoc, deleteDoc, doc, where, updateDoc, addDoc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -10,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Shield, Plus, Trash2, Download, Upload, Church, Save, Bell, CheckCircle2, XCircle, Database, AlertTriangle } from 'lucide-react';
+import { Shield, Plus, Trash2, Download, Upload, Church, Save, Bell, CheckCircle2, XCircle, Database, AlertTriangle, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveBlob, saveXlsx } from '../lib/download';
 import { useConfirm } from '../context/ConfirmContext';
@@ -25,7 +27,7 @@ import { writeBatch } from 'firebase/firestore';
 import { orderBy } from 'firebase/firestore';
 
 export default function Admin() {
-  const { user, userRole } = useAuth();
+  const { user, userRole, isSuperAdmin } = useAuth();
   
   const [users, setUsers] = useState<any[]>([]);
   const [nonActiveMembers, setNonActiveMembers] = useState<any[]>([]);
@@ -40,6 +42,9 @@ export default function Admin() {
   const [members, setMembers] = useState<any[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
   const [picked, setPicked] = useState<any | null>(null);
+  const [userName, setUserName] = useState('');
+  const [userPhone, setUserPhone] = useState('');
+  const [creds, setCreds] = useState<ShareCtx | null>(null);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('admin');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -445,67 +450,120 @@ export default function Admin() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDialogOpen]);
 
+  /* ─────────── Gestão de administradores (só super admin) ─────────── */
+  const audit = (action: string, targetEmail: string) =>
+    addDoc(collection(db, 'audit_logs'), {
+      action, targetEmail, byEmail: user?.email || 'unknown', at: Date.now(),
+    }).catch(() => {});
+
+  const reloadUsers = async () => {
+    const uSnap = await getDocs(query(collection(db, 'admins')));
+    setUsers(uSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
-
     const targetEmail = (picked?.email || email).trim().toLowerCase();
+    const targetName = (picked?.name || userName).trim();
+    const targetPhone = (picked?.phone || userPhone).trim();
     if (!targetEmail || !targetEmail.includes('@')) {
-      toast.error("Escolha um membro cadastrado (com email) ou escreva um e-mail válido.");
+      toast.error('Escolha um membro cadastrado (com email) ou escreva um email válido.');
       return;
     }
-
     setIsSubmitting(true);
-    const confirmed = await confirmDialog(`Deseja adicionar o utilizador ${targetEmail} como ${role}?`);
-    if (!confirmed) {
-      setIsSubmitting(false);
-      return;
-    }
-
+    const confirmed = await confirmDialog(`Criar o administrador ${targetEmail} com papel «${role}»? Será gerada uma palavra-passe temporária mostrada UMA vez.`);
+    if (!confirmed) { setIsSubmitting(false); return; }
     try {
-      // sugestão da liderança: só membros cadastrados recebem credenciais.
-      // Se o membro escolhido ainda não tiver email, grava-o no registo dele.
+      const tempPassword = genTempPassword();
+      await createAuthAccount({ email: targetEmail, tempPassword, name: targetName, phone: targetPhone });
+      await setDoc(doc(db, 'admins', targetEmail), {
+        email: targetEmail,
+        role,
+        createdAt: Date.now(),
+        name: targetName,
+        phone: targetPhone,
+        disabled: false,
+        mustChangePassword: true,
+        tempPasswordIssuedAt: Date.now(),
+        isSuper: false,
+      });
       if (picked && !picked.email) {
         await updateDoc(doc(db, 'members', picked.id), { email: targetEmail, updatedAt: Date.now() });
       }
-      await setDoc(doc(db, 'admins', targetEmail), {
-        email: targetEmail,
-        role: role,
-        createdAt: Date.now()
-      });
-      toast.success("Utilizador adicionado com sucesso.");
-
-      // Cria a conta de autenticação (email + palavra-passe) via Cloud Function,
-      // para que o utilizador consiga entrar também sem Google.
-      try {
-        const r = await createAuthAccount({ email: targetEmail });
-        if (r.data?.tempPassword) {
-          toast.success(
-            `Conta de email criada. Palavra-passe temporária: ${r.data.tempPassword} — partilhe-a com o utilizador (ele poderá repô-la por email).`,
-            { duration: 20000 }
-          );
-        }
-      } catch (authErr) {
-        console.warn('createAuthAccount falhou (Cloud Functions implantadas?):', authErr);
-        toast.warning(
-          'Permissão guardada, mas a conta de email não foi criada automaticamente. O Worker "iesa-ai" precisa de estar publicado com a versão 2.2.0 ou superior (ver docs/FIX-LEITURA-BI.md) — ou crie a conta na consola Firebase.'
-        );
-      }
-
+      await audit('admin.created', targetEmail);
       setIsDialogOpen(false);
-      setEmail('');
-      setMemberSearch('');
-      setPicked(null);
-      setRole('admin');
-      
-      // Reload
-      const uSnap = await getDocs(query(collection(db, 'admins')));
-      setUsers(uSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (error) {
-      toast.error("Erro ao adicionar utilizador. Sem permissão.");
-      handleFirestoreError(error, OperationType.WRITE, 'admins');
+      setEmail(''); setUserName(''); setUserPhone(''); setMemberSearch(''); setPicked(null); setRole('admin');
+      setCreds({ appName: 'Gestão IESA Emanuel', name: targetName, email: targetEmail, phone: targetPhone, tempPassword });
+      await reloadUsers();
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (/EMAIL_EXISTS|Já existe/.test(msg)) {
+        toast.error('Já existe conta com este email. Use «Gerar nova palavra-passe temporária» na lista.');
+      } else if (/super administrador/.test(msg)) {
+        toast.error('Apenas o super administrador pode criar contas.');
+      } else {
+        toast.error(msg || 'Erro ao criar o administrador. (O Worker precisa da versão 2.4.0 publicada.)');
+      }
+      handleFirestoreError(err, OperationType.WRITE, 'admins');
     }
     setIsSubmitting(false);
+  };
+
+  const handleResetTemp = async (u: any) => {
+    const ok = await confirmDialog(`Gerar NOVA palavra-passe temporária para ${u.email}? A anterior deixa de funcionar e o utilizador será obrigado a trocá-la no próximo acesso.`);
+    if (!ok) return;
+    try {
+      const tempPassword = genTempPassword();
+      await resetTempPassword({ email: u.email, tempPassword });
+      await audit('admin.password-reset', u.email);
+      setCreds({ appName: 'Gestão IESA Emanuel', name: u.name || '', email: u.email, phone: u.phone || null, tempPassword });
+      await reloadUsers();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao repor a palavra-passe. (O Worker precisa da versão 2.4.0 publicada.)');
+    }
+  };
+
+  const handleToggleDisabled = async (u: any) => {
+    const next = !u.disabled;
+    const ok = await confirmDialog(next ? `Desativar a conta de ${u.email}? O utilizador deixa de conseguir entrar; os dados ficam intactos.` : `Reativar a conta de ${u.email}?`);
+    if (!ok) return;
+    try {
+      await setAccountDisabled({ email: u.email, disabled: next });
+      await audit(next ? 'admin.disabled' : 'admin.enabled', u.email);
+      toast.success(next ? 'Conta desativada.' : 'Conta reativada.');
+      await reloadUsers();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao alterar o estado da conta. (Worker 2.4.0 necessário.)');
+    }
+  };
+
+  const runAdminMigration = async () => {
+    if (!backupConfirmed) { toast.error('Confirme primeiro a cópia de segurança.'); return; }
+    const ok = await confirmDialog('Migrar contas de admin existentes (campos nome/telefone/estado/último acesso + flag isSuper do super)? Idempotente.', 'MIGRAR');
+    if (!ok) return;
+    setMigrating(true);
+    try {
+      const snap = await getDocs(collection(db, 'admins'));
+      let n = 0;
+      for (const d of snap.docs) {
+        const data = d.data() as any;
+        const patch: Record<string, unknown> = {};
+        if (data.name === undefined) patch.name = data.email?.split('@')[0] || '';
+        if (data.phone === undefined) patch.phone = '';
+        if (data.disabled === undefined) patch.disabled = false;
+        if (data.mustChangePassword === undefined) patch.mustChangePassword = false;
+        if (data.lastLoginAt === undefined) patch.lastLoginAt = 0;
+        if (data.isSuper === undefined) patch.isSuper = d.id.toLowerCase() === 'cadupaulino99@gmail.com';
+        if (Object.keys(patch).length) { await updateDoc(doc(db, 'admins', d.id), patch); n++; }
+      }
+      toast.success(`Migração de admins concluída: ${n} documento(s) atualizado(s).`);
+      await reloadUsers();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro na migração de admins.');
+    } finally {
+      setMigrating(false);
+    }
   };
 
   const handleRestoreTrash = async (trashId: string) => {
@@ -691,9 +749,9 @@ export default function Admin() {
         </Dialog>
       </div>
 
-      <Tabs defaultValue="users" className="w-full">
+      <Tabs defaultValue={isSuperAdmin ? "users" : "members"} className="w-full">
         <TabsList className="mb-4 flex-wrap">
-          <TabsTrigger value="users"><Shield className="h-4 w-4 mr-2" /> Utilizadores</TabsTrigger>
+          {isSuperAdmin && (<TabsTrigger value="users"><Shield className="h-4 w-4 mr-2" /> Administradores</TabsTrigger>)}
           <TabsTrigger value="members"><Shield className="h-4 w-4 mr-2" /> Membros Inativos</TabsTrigger>
           <TabsTrigger value="mural"><Bell className="h-4 w-4 mr-2" /> Mural e Agenda</TabsTrigger>
           <TabsTrigger value="church"><Church className="h-4 w-4 mr-2" /> Dados da Instituição</TabsTrigger>
@@ -705,28 +763,35 @@ export default function Admin() {
         </TabsList>
 
         <TabsContent value="users">
+          {!isSuperAdmin ? (
+            <Card className="border shadow-sm">
+              <CardContent className="p-6 text-sm text-muted-foreground">
+                Acesso negado: a gestão de administradores é exclusiva do super administrador.
+                (Restrição aplicada também no servidor — Firestore e Worker.)
+              </CardContent>
+            </Card>
+          ) : (
           <div className="space-y-6">
-            <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm">
+            <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm flex-wrap gap-2">
               <div>
-                <h3 className="text-lg font-semibold">Gestão de Permissões</h3>
-                <p className="text-sm text-muted-foreground">Controle de acesso à plataforma.</p>
+                <h3 className="text-lg font-semibold">Gestão de Administradores</h3>
+                <p className="text-sm text-muted-foreground">Credenciais com palavra-passe temporária de uso único, troca obrigatória e auditoria.</p>
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={exportUsersExcel}>
                   <Download className="w-4 h-4 mr-2" /> Exportar (Excel)
                 </Button>
-
                 <Dialog open={isDialogOpen} onOpenChange={(open) => {
-                  if(!open) { setEmail(''); setRole('admin'); }
+                  if(!open) { setEmail(''); setUserName(''); setUserPhone(''); setMemberSearch(''); setPicked(null); setRole('admin'); }
                   setIsDialogOpen(open);
                 }}>
                   <DialogTrigger asChild>
-                    <Button><Plus className="w-4 h-4 mr-2" /> Adicionar</Button>
+                    <Button><Plus className="w-4 h-4 mr-2" /> Novo administrador</Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>Novo Utilizador</DialogTitle>
-                      <DialogDescription>Autorize utilizadores ao sistema. Defina o número de permissões necessárias.</DialogDescription>
+                      <DialogTitle>Novo administrador</DialogTitle>
+                      <DialogDescription>Só membros cadastrados recebem credenciais. A palavra-passe temporária é mostrada UMA vez no ecrã de partilha.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleAddUser} className="space-y-4">
                         <div className="space-y-2">
@@ -771,6 +836,16 @@ export default function Admin() {
                             onChange={(e) => setEmail(e.target.value)}
                           />
                         </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="space-y-2">
+                            <Label>Nome</Label>
+                            <Input value={picked?.name || userName} disabled={!!picked} onChange={(e) => setUserName(e.target.value)} placeholder="Nome do administrador" />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Telefone (opcional)</Label>
+                            <Input value={picked?.phone || userPhone} disabled={!!picked} onChange={(e) => setUserPhone(e.target.value)} placeholder="+244 9XX XXX XXX" inputMode="tel" />
+                          </div>
+                        </div>
                         <div className="space-y-2">
                           <Label>Papel</Label>
                           <Select value={role} onValueChange={setRole}>
@@ -782,7 +857,7 @@ export default function Admin() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <Button type="submit" className="w-full" disabled={isSubmitting}>Guardar Utilizador</Button>
+                        <Button type="submit" className="w-full" disabled={isSubmitting}>Gerar credenciais</Button>
                     </form>
                   </DialogContent>
                 </Dialog>
@@ -791,44 +866,82 @@ export default function Admin() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5"/> Administradores Registados</CardTitle>
-                <CardDescription>Apenas estes utilizadores terão acesso total às finanças da congregação.</CardDescription>
+                <CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5"/> Administradores</CardTitle>
+                <CardDescription>Sem palavras-passe visíveis — apenas estado e metadados. A conta super não pode ser reposta nem desativada.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto"><Table className="min-w-[560px]">
+                <div className="overflow-x-auto"><Table className="min-w-[760px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>E-mail</TableHead>
-                      <TableHead>Papel</TableHead>
-                      <TableHead className="w-[100px]">Acções</TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Utilizador</TableHead>
+                      <TableHead>Contacto</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Criado</TableHead>
+                      <TableHead>Último acesso</TableHead>
+                      <TableHead className="w-[150px]">Acções</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loading ? (
-                        <TableRow><TableCell colSpan={3} className="text-center py-8">Carregando...</TableCell></TableRow>
-                    ) : users.map(u => (
+                        <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
+                    ) : users.map(u => {
+                        const isSuperRow = u.isSuper === true || u.id.toLowerCase() === 'cadupaulino99@gmail.com';
+                        return (
                         <TableRow key={u.id}>
-                          <TableCell className="font-medium">{u.email}</TableCell>
-                          <TableCell className="capitalize">{u.role === 'admin' ? "Administrador Geral" : u.role === 'pastor' ? "Pastor" : "Tesoureiro"}</TableCell>
+                          <TableCell className="font-medium">{u.name || '—'}{isSuperRow && <Badge variant="secondary" className="ml-2 text-[10px]">SUPER</Badge>}</TableCell>
+                          <TableCell className="break-all">{u.email}</TableCell>
+                          <TableCell>{u.phone || '-'}</TableCell>
                           <TableCell>
-                            <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => deleteDocSafely('admins', u.id)}>
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <Badge variant={u.disabled ? 'destructive' : 'default'} className="text-[10px]">
+                              {u.disabled ? 'Desativado' : u.mustChangePassword ? 'Troca pendente' : 'Ativo'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{u.createdAt ? new Date(u.createdAt).toLocaleDateString('pt-AO') : '-'}</TableCell>
+                          <TableCell>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString('pt-AO') : 'nunca'}</TableCell>
+                          <TableCell>
+                            {!isSuperRow && (
+                              <div className="flex gap-1">
+                                <Button variant="ghost" size="sm" title="Gerar nova palavra-passe temporária" onClick={() => handleResetTemp(u)}>
+                                  <KeyRound className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="sm" title={u.disabled ? 'Reativar' : 'Desativar'} onClick={() => handleToggleDisabled(u)}>
+                                  {u.disabled ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-amber-600" />}
+                                </Button>
+                              </div>
+                            )}
                           </TableCell>
                         </TableRow>
-                    ))}
+                        );
+                    })}
                     {!loading && users.length === 0 && (
-                        <TableRow><TableCell colSpan={3} className="text-center py-8">Sem utilizadores adicionais registados.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={7} className="text-center py-8">Sem administradores registados.</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table></div>
               </CardContent>
             </Card>
-            <div className="text-xs text-muted-foreground p-2 border border-blue-100 bg-blue-50/20 rounded-md">
-              * Nota: O endereço de e-mail deve corresponder exactamente à conta Google com que o utilizador faz Login.
-              A configuração root de Super Administrador principal está definida em código.
-            </div>
+
+            <Card className="border shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base">Migração de contas existentes</CardTitle>
+                <CardDescription>Acrescenta nome/telefone/estado/último acesso e a flag isSuper do super admin às contas criadas antes desta versão. Idempotente.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" onClick={handleBackup} className="gap-2"><Download className="h-4 w-4" /> 1. Descarregar cópia</Button>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />
+                    Fiz a cópia de segurança
+                  </label>
+                </div>
+                <Button onClick={runAdminMigration} disabled={!backupConfirmed || migrating}>
+                  {migrating ? 'A migrar…' : '2. Executar migração de admins'}
+                </Button>
+              </CardContent>
+            </Card>
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="members">
@@ -1331,6 +1444,7 @@ export default function Admin() {
           </Card>
         </TabsContent>
       </Tabs>
+      <OneTimeCredentials ctx={creds} onClose={() => setCreds(null)} />
     </div>
   );
 }

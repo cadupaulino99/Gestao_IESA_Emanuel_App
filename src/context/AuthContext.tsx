@@ -12,7 +12,7 @@ import {
 import { FirebaseAuthentication as FirebaseAuth } from '@capacitor-firebase/authentication';
 import { Capacitor } from '@capacitor/core';
 import { auth, db } from '../lib/firebase';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firebase';
 
 interface AuthContextType {
@@ -46,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [memberData, setMemberData] = useState<any | null>(null);
+  const [adminMeta, setAdminMeta] = useState<{ isSuper: boolean; disabled: boolean; mustChangePassword: boolean; tempPasswordIssuedAt: number | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const isNative = Capacitor.isNativePlatform();
 
@@ -63,6 +64,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // lógica pura, testada em src/lib/__tests__/access.test.ts
             role = resolveRole(docSnap.exists(), docSnap.data()?.role);
             hasAdminAccess = role !== null;
+            if (docSnap.exists()) {
+              const ad = docSnap.data() as any;
+              setAdminMeta({
+                isSuper: ad.isSuper === true || currentUser.email?.toLowerCase() === 'cadupaulino99@gmail.com',
+                disabled: ad.disabled === true,
+                mustChangePassword: ad.mustChangePassword === true,
+                tempPasswordIssuedAt: Number(ad.tempPasswordIssuedAt || 0) || null,
+              });
+              // conta desativada: não entra (o Worker também bloqueia)
+              if (ad.disabled === true) {
+                await firebaseSignOut(auth);
+                setUser(null);
+                return;
+              }
+              // último acesso (regras permitem ao próprio só estes campos)
+              updateDoc(docRef, { lastLoginAt: Date.now() }).catch(() => {});
+            } else {
+              setAdminMeta(null);
+            }
           }
 
           setIsAdmin(hasAdminAccess);
@@ -89,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAdmin(false);
         setUserRole(null);
         setMemberData(null);
+        setAdminMeta(null);
       }
       setLoading(false);
     });
@@ -135,6 +156,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin,
         userRole,
         memberData,
+        adminMeta,
+        isSuperAdmin: !!adminMeta?.isSuper,
+        mustChangePassword: !!adminMeta?.mustChangePassword,
+        tempPasswordIssuedAt: adminMeta?.tempPasswordIssuedAt ?? null,
         isNative,
         signIn,
         signInWithEmail,

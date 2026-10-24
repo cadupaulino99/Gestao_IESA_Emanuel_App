@@ -24,8 +24,8 @@
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.3.0';
-const WORKER_BUILD = '2026-10-24 (sem bootstrap: papel so pelo documento admins)';
+const WORKER_VERSION = '2.4.0';
+const WORKER_BUILD = '2026-10-24 (gestao de admins: super, temp passwords, disable)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -225,20 +225,91 @@ function rateOk(email) {
    documento admins/<email> no Firestore. O bootstrap das regras e auto-
    extinguivel e so permite CRIAR o primeiro documento — nao da papel nenhum
    no Worker. Quem receber 403 aqui resolve-se com um documento em admins. */
-async function getRole(email, env) {
+/* Super admin: flag isSuper no documento admins/<email> OU o email fundador
+   (antes da migracao criar a flag). Gestao de admins (criar contas, reset,
+   ativar/desativar) e EXCLUSIVA do super — tambem no servidor, nao so no UI. */
+const SUPER_EMAIL = 'cadupaulino99@gmail.com';
+
+async function getAdminDoc(email, env) {
   if (!email) return null;
   const lower = email.toLowerCase();
   if (Date.now() - roleCache.ts > ROLE_TTL) roleCache = { ts: Date.now(), map: {} };
   if (roleCache.map[lower] !== undefined) return roleCache.map[lower];
+  let out = null;
+  try {
+    const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+    const url = `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/admins/${lower}`;
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+    if (r.ok) {
+      const doc = await r.json();
+      const f = doc.fields || {};
+      const str = (k) => (f[k] && f[k].stringValue) || null;
+      const bool = (k) => (f[k] && f[k].booleanValue) || false;
+      const num = (k) => (f[k] && Number(f[k].integerValue || f[k].doubleValue)) || 0;
+      out = {
+        role: str('role') || 'admin',
+        isSuper: bool('isSuper') || lower === SUPER_EMAIL,
+        disabled: bool('disabled'),
+        mustChangePassword: bool('mustChangePassword'),
+        tempPasswordIssuedAt: num('tempPasswordIssuedAt'),
+      };
+    }
+  } catch { /* sem documento = sem papel */ }
+  roleCache.map[lower] = out;
+  return out;
+}
+
+async function getRole(email, env) {
+  const d = await getAdminDoc(email, env);
+  return d ? d.role : null;
+}
+
+/* PATCH cirúrgico num documento admins/<email> (updateMask = só estes campos). */
+async function patchAdminDoc(env, email, fields) {
   const tok = await saAccessToken(env.FIREBASE_SA_JSON);
-  const url = `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/admins/${lower}`;
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
-  if (!r.ok) { roleCache.map[lower] = null; return null; }
-  const doc = await r.json();
-  const roleField = (doc.fields || {}).role;
-  const role = roleField ? roleField.stringValue : 'admin';
-  roleCache.map[lower] = role;
-  return role;
+  const masks = Object.keys(fields).map((k) => `updateMask.fieldPaths=${k}`).join('&');
+  const fv = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (typeof v === 'boolean') fv[k] = { booleanValue: v };
+    else if (typeof v === 'number') fv[k] = { integerValue: String(v) };
+    else fv[k] = { stringValue: String(v) };
+  }
+  const r = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/admins/${email.toLowerCase()}?${masks}`,
+    { method: 'PATCH', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: fv }) }
+  );
+  if (!r.ok) throw new Error('Falha ao atualizar o documento admins/' + email + ': ' + r.status);
+  return r.json();
+}
+
+/* Identity Toolkit: localId de um email; e definir password / ativar / desativar. */
+async function itGetLocalId(env, email) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const r = await fetch('https://www.googleapis.com/identitytoolkit/v3/relyingparty/getAccountInfo', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+    body: JSON.stringify({ email: [email] }),
+  });
+  const j = await r.json();
+  return j?.users?.[0]?.localId || null;
+}
+
+async function itSetAccount(env, payload) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const r = await fetch('https://www.googleapis.com/identitytoolkit/v3/relyingparty/setAccountInfo', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j?.error?.message || 'setAccountInfo falhou (' + r.status + ')');
+  return j;
+}
+
+const TEMP_PASS_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // sem 0/O/1/l
+function genTempPassword(len = 12) {
+  const buf = crypto.getRandomValues(new Uint8Array(len));
+  let out = '';
+  for (let i = 0; i < len; i++) out += TEMP_PASS_ALPHABET[buf[i] % TEMP_PASS_ALPHABET.length];
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -522,6 +593,8 @@ export default {
           '/assistant/extract-member',
           '/assistant/extract-receipt',
           '/admin/create-auth-account',
+          '/admin/reset-temp-password',
+          '/admin/set-account-disabled',
         ],
         models: GEMINI_MODELS,
         config: {
@@ -544,13 +617,22 @@ export default {
       } catch (e) {
         return json({ error: 'Sessão inválida: ' + e.message }, 401);
       }
-      const role = await getRole(claims.email, env);
+      const adminDoc = await getAdminDoc(claims.email, env);
+      const role = adminDoc ? adminDoc.role : null;
+      const isSuper = !!adminDoc && adminDoc.isSuper;
 
-      /* --- admin-only --- */
+      /* Conta desativada: nada de IA nem de admin (o login na app tambem e
+         bloqueado pelo AuthContext; isto e a segunda linha de defesa). */
+      if (adminDoc && adminDoc.disabled) return json({ error: 'Conta desativada. Fale com o super administrador.', code: 'ACCOUNT_DISABLED' }, 403);
+      /* Palavra-passe temporaria por trocar: so pode usar o sistema depois de a trocar. */
+      if (adminDoc && adminDoc.mustChangePassword) return json({ error: 'Troque a palavra-passe temporaria antes de usar o sistema.', code: 'PASSWORD_CHANGE_REQUIRED' }, 403);
+
+      /* --- gestão de admins: SÓ super admin (servidor, nao so UI) --- */
       if (path === '/admin/create-auth-account') {
-        if (role !== 'admin') return json({ error: 'Só administradores.' }, 403);
-        const { email, tempPassword } = await request.json();
-        const pwd = tempPassword || b64url(crypto.getRandomValues(new Uint8Array(9)));
+        if (!isSuper) return json({ error: 'Só o super administrador pode criar contas.' }, 403);
+        const { email, tempPassword, name, phone } = await request.json();
+        if (!email) return json({ error: 'Email obrigatório.' }, 400);
+        const pwd = tempPassword || genTempPassword();
         const sa = JSON.parse(env.FIREBASE_SA_JSON);
         const tok = await saAccessToken(env.FIREBASE_SA_JSON);
         const r = await fetch('https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser', {
@@ -560,23 +642,48 @@ export default {
         });
         const j = await r.json();
         if (!r.ok) {
-          // conta já existe? repor palavra-passe
           if ((j.error?.message || '').includes('EMAIL_EXISTS')) {
-            const sa2 = JSON.parse(env.FIREBASE_SA_JSON);
-            void sa2;
-            const r2 = await fetch('https://www.googleapis.com/identitytoolkit/v3/relyingparty/setAccountInfo', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-              body: JSON.stringify({ email, password: pwd }),
-            });
-            const j2 = await r2.json();
-            if (!r2.ok) return json({ error: j2.error?.message || 'erro' }, 500);
-            return json({ ok: true, created: false, tempPassword: pwd });
+            return json({ error: 'Já existe uma conta com este email. Use «Gerar nova palavra-passe temporária» na lista.', code: 'EMAIL_EXISTS' }, 409);
           }
           return json({ error: j.error?.message || 'erro' }, 500);
         }
         void sa;
+        void name; void phone;
         return json({ ok: true, created: true, tempPassword: pwd });
+      }
+
+      /* --- repor palavra-passe temporária (super; o alvo não pode ser super) --- */
+      if (path === '/admin/reset-temp-password') {
+        if (!isSuper) return json({ error: 'Só o super administrador.' }, 403);
+        const { email, tempPassword } = await request.json();
+        const target = String(email || '').toLowerCase();
+        if (!target) return json({ error: 'Email obrigatório.' }, 400);
+        if (target === SUPER_EMAIL) return json({ error: 'A conta do super administrador não pode ser redefinida por aqui.' }, 403);
+        const tDoc = await getAdminDoc(target, env);
+        if (!tDoc) return json({ error: 'Este email não está na coleção admins.' }, 404);
+        const localId = await itGetLocalId(env, target);
+        if (!localId) return json({ error: 'Não encontrei a conta de autenticação deste email.' }, 404);
+        const pwd = tempPassword || genTempPassword();
+        await itSetAccount(env, { localId, password: pwd, disableUser: false });
+        await patchAdminDoc(env, target, { mustChangePassword: true, tempPasswordIssuedAt: Date.now(), disabled: false });
+        roleCache = { ts: 0, map: {} };
+        return json({ ok: true, tempPassword: pwd });
+      }
+
+      /* --- ativar / desativar conta (super; o alvo não pode ser super) --- */
+      if (path === '/admin/set-account-disabled') {
+        if (!isSuper) return json({ error: 'Só o super administrador.' }, 403);
+        const { email, disabled } = await request.json();
+        const target = String(email || '').toLowerCase();
+        if (!target) return json({ error: 'Email obrigatório.' }, 400);
+        if (target === SUPER_EMAIL) return json({ error: 'A conta do super administrador não pode ser desativada.' }, 403);
+        const tDoc = await getAdminDoc(target, env);
+        if (!tDoc) return json({ error: 'Este email não está na coleção admins.' }, 404);
+        const localId = await itGetLocalId(env, target);
+        if (localId) await itSetAccount(env, { localId, disableUser: !!disabled });
+        await patchAdminDoc(env, target, { disabled: !!disabled });
+        roleCache = { ts: 0, map: {} };
+        return json({ ok: true, disabled: !!disabled });
       }
 
       /* --- liderança (admin/pastor/tesoureiro) --- */

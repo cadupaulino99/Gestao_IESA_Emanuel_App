@@ -90,13 +90,23 @@ export async function aiDraftMessage(memberName: string, occasion: string, tone?
   return r.text;
 }
 
-/** Cria/repõe a conta Auth de um utilizador (só admins) — via Worker. */
-export async function createAuthAccount(input: { email: string; displayName?: string; tempPassword?: string }) {
+/** Cria a conta Auth de um administrador (SÓ super admin; o Worker valida). */
+export async function createAuthAccount(input: { email: string; tempPassword: string; name?: string; phone?: string }) {
   const data = await callWorker<{ ok: boolean; created?: boolean; tempPassword?: string }>(
     '/admin/create-auth-account',
     input
   );
   return { data };
+}
+
+/** Repõe a palavra-passe temporária de um admin (só super; devolve-a UMA vez). */
+export async function resetTempPassword(input: { email: string; tempPassword: string }) {
+  return callWorker<{ ok: boolean; tempPassword: string }>('/admin/reset-temp-password', input);
+}
+
+/** Ativa/desativa a conta de um admin sem apagar dados (só super). */
+export async function setAccountDisabled(input: { email: string; disabled: boolean }) {
+  return callWorker<{ ok: boolean; disabled: boolean }>('/admin/set-account-disabled', input);
 }
 
 /* ------------------------------------------------------------------ */

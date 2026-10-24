@@ -16,14 +16,30 @@ service cloud.firestore {
     }
 
     // Check if the current user is an admin.
-    // The admin collection must exist and the document with the user's UID must be present.
-    // Bootstrapped Admin: user email Cadupaulino99@gmail.com
+    // O papel vem UNICAMENTE do documento admins/<email> (auditoria 2026-10-24).
     function isAdmin() {
+      return isAuthenticated() && getRole() == 'admin';
+    }
+
+    // Super admin: flag isSuper no documento (ou o email fundador ATÉ a migração
+    // criar a flag). Só ele gere contas de admin — no servidor, não só no UI.
+    function isSuperAdmin() {
       return isAuthenticated() && (
-        getRole() == 'admin' || 
-        request.auth.token.email == "Cadupaulino99@gmail.com" || 
+        (exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) &&
+         get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.isSuper == true) ||
+        request.auth.token.email == "Cadupaulino99@gmail.com" ||
         request.auth.token.email == "cadupaulino99@gmail.com"
       );
+    }
+
+    // Bootstrap AUTO-EXTINGUÍVEL: enquanto não existir admins/<email do fundador>,
+    // esse email pode criar o PRÓPRIO documento (uma vez). Depois morre para sempre.
+    function isBootstrapCreate(adminId) {
+      return isAuthenticated() &&
+        (request.auth.token.email == "Cadupaulino99@gmail.com" ||
+         request.auth.token.email == "cadupaulino99@gmail.com") &&
+        adminId == request.auth.token.email &&
+        !exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
     }
     function isTreasurer() {
       return isAuthenticated() && getRole() == 'treasurer';
@@ -88,18 +104,29 @@ service cloud.firestore {
 
     // --- Admin Collection ---
     function isValidAdmin(data) {
-      return data.keys().hasAll(['email', 'role', 'createdAt']) && data.keys().size() == 3 &&
+      return data.keys().hasAll(['email', 'role', 'createdAt']) && data.keys().size() <= 10 &&
              data.email is string && data.email.size() <= 200 && data.email.size() > 0 &&
              data.role is string &&
              data.createdAt is number;
     }
 
+    // O próprio só pode tocar nestes dois campos (último login e troca da
+    // palavra-passe temporária). Nada mais.
+    function isSelfAdminFieldUpdate() {
+      return isAuthenticated() &&
+             request.auth.token.email == resource.data.email &&
+             incoming().keys().hasOnly(['lastLoginAt', 'mustChangePassword']) &&
+             (incoming().lastLoginAt is number || incoming().mustChangePassword is boolean);
+    }
+
     match /admins/{adminId} {
-      allow read: if isAuthenticated() && (request.auth.uid == adminId || isAdmin());
-      allow create: if hasFinancialWriteAccess() && isValidId(adminId) && isValidAdmin(incoming());
-      allow update: if false; // Admins are immutable, delete and recreate
-      allow delete: if hasFinancialWriteAccess() && isValidId(adminId);
-      allow list: if hasFinancialWriteAccess();
+      // ler a si próprio (login/portal) ou ao super; listar: só super
+      allow read: if isAuthenticated() && (request.auth.token.email == adminId || isSuperAdmin());
+      allow create: if isValidId(adminId) && isValidAdmin(incoming()) &&
+                    (isSuperAdmin() || isBootstrapCreate(adminId));
+      allow update: if isSuperAdmin() || isSelfAdminFieldUpdate();
+      allow delete: if isSuperAdmin();
+      allow list: if isSuperAdmin();
     }
 
     match /settings/{docId} {

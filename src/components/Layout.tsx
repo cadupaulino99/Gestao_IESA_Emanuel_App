@@ -36,6 +36,7 @@ import { useCommandPalette } from '../context/CommandPaletteContext';
 import { Search } from 'lucide-react';
 import { livePlayer } from '../lib/radio';
 import UpdateBanner from './UpdateBanner';
+import ForcePasswordChangeModal from './admin/ForcePasswordChangeModal';
 
 export default function Layout() {
   const { user, signOut, isAdmin, userRole } = useAuth();
@@ -250,10 +251,14 @@ export default function Layout() {
                     </p>
                   </div>
                 </div>
-                <Button variant="outline" className="w-full justify-start gap-2 h-11 mb-2" onClick={() => { setMobileMenuOpen(false); signOut(); }}>
-                  <DoorClosed className="h-4 w-4 text-slate-500" />
-                  <span>Terminar Sessão</span>
-                </Button>
+                </div>
+                {/* rodapé fixo do sheet: Terminar Sessão fica SEMPRE visível,
+                    mesmo com o menu rolado (v1.9.8) */}
+                <div className="shrink-0 border-t border-slate-200/60 dark:border-slate-800 pt-3 pb-1 bg-background/95">
+                  <Button variant="outline" className="w-full justify-start gap-2 h-11" onClick={() => { setMobileMenuOpen(false); signOut(); }}>
+                    <DoorClosed className="h-4 w-4 text-slate-500" />
+                    <span>Terminar Sessão</span>
+                  </Button>
                 </div>
               </SheetContent>
             </Sheet>
@@ -262,6 +267,7 @@ export default function Layout() {
 
         <div className="flex-1 overflow-auto p-4 md:p-8">
           <UpdateBanner />
+          <ForcePasswordChangeModal />
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
