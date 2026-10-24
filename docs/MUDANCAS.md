@@ -1,5 +1,21 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.9.6 (2026-10-24) — «Editar Membro» não rolava: ScrollArea Radix morto na WebView
+
+Queixa com captura: no diálogo *Editar Membro* havia campos cortados por baixo e a
+área não rolava. Causa: `ScrollArea` (Radix) dentro de coluna flex com `max-h` —
+sem `min-h-0` a raiz não encolhe abaixo do conteúdo e o scroll por toque morre na
+WebView do Android (funciona enganadoramente no desktop com roda do rato).
+
+- `Members.tsx` (diálogo Editar/Novo e Sheet de perfil): `ScrollArea` →
+  `<div class="flex-1 min-h-0 overflow-y-auto overscroll-contain …">` (scroll
+  nativo, sempre fiável em touch). Era o único uso de ScrollArea em páginas.
+- Diálogos sem limite de altura ganham `max-h-[90dvh] overflow-y-auto`
+  (PastoralMessageGenerator, Admin pedidos, fusão de membros) — em ecrãs baixos
+  o conteúdo deixava de caber sem forma de chegar ao fim.
+- Aspeto e lógica intocados; só comportamento de rolagem.
+
+
 ## v1.9.5 (2026-10-24) — O aviso de atualização falhava em silêncio; agora é redundante e diagnosticável
 
 Queixa: «o aplicativo não me notificou para actualizar a 1.9.4». Causas prováveis

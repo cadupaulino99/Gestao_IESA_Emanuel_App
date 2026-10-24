@@ -640,7 +640,7 @@ export default function Admin() {
               )}
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-xl">
+          <DialogContent className="max-w-xl max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Pedidos de Atualização ({requests.length})</DialogTitle>
               <DialogDescription>
