@@ -183,7 +183,7 @@ export default function Support() {
   ];
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto h-[calc(100vh-110px)] flex flex-col">
+    <div className="space-y-6 max-w-5xl mx-auto w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -215,7 +215,7 @@ export default function Support() {
       </div>
 
       {activeTab === 'ai' ? (
-        <Card className="flex-1 flex flex-col overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm">
+        <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
           <CardHeader className="py-3 px-4 border-b bg-slate-50/50 dark:bg-slate-900/40 flex flex-row items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="h-9 w-9 rounded-xl bg-purple-600/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
@@ -254,7 +254,7 @@ export default function Support() {
             </Button>
           </CardHeader>
 
-          <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+          <CardContent className="p-4 space-y-4">
             {aiChatHistory.map((m) => {
               const isAi = m.sender === 'assistant';
               return (
@@ -359,7 +359,7 @@ export default function Support() {
           </div>
         </Card>
       ) : activeTab === 'team' ? (
-        <Card className="flex-1 flex flex-col overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm">
+        <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
           <CardHeader className="py-3 px-4 border-b bg-slate-50/50 dark:bg-slate-900/40">
             <CardTitle className="text-base flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-blue-500" />
@@ -369,7 +369,7 @@ export default function Support() {
               Comunique com outros administradores, tesoureiros e equipa pastoral da congregação.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+          <CardContent className="p-4 space-y-4">
             {isLoadingTeam ? (
               <div className="text-center py-4 text-sm text-muted-foreground">A carregar mensagens...</div>
             ) : messages?.length === 0 ? (
@@ -423,7 +423,7 @@ export default function Support() {
           </div>
         </Card>
       ) : (
-        <Card className="flex-1 flex flex-col overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm">
+        <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
           <CardHeader className="py-3 px-4 border-b bg-slate-50/50 dark:bg-slate-900/40 flex flex-row items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
               <div className="h-9 w-9 rounded-xl bg-emerald-600/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
@@ -443,7 +443,7 @@ export default function Support() {
             </Button>
           </CardHeader>
 
-          <CardContent className="flex-1 overflow-y-auto p-4 space-y-3">
+          <CardContent className="p-4 space-y-3">
             {diagBusy && diagLines.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
                 <Sparkles className="h-4 w-4 animate-spin text-emerald-500" /> A testar a ligação…

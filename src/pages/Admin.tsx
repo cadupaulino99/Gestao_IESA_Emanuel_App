@@ -795,7 +795,7 @@ export default function Admin() {
                 <CardDescription>Apenas estes utilizadores terão acesso total às finanças da congregação.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
+                <div className="overflow-x-auto"><Table className="min-w-[560px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>E-mail</TableHead>
@@ -821,7 +821,7 @@ export default function Admin() {
                         <TableRow><TableCell colSpan={3} className="text-center py-8">Sem utilizadores adicionais registados.</TableCell></TableRow>
                     )}
                   </TableBody>
-                </Table>
+                </Table></div>
               </CardContent>
             </Card>
             <div className="text-xs text-muted-foreground p-2 border border-blue-100 bg-blue-50/20 rounded-md">
@@ -838,7 +838,7 @@ export default function Admin() {
               <CardDescription>Visualização de todos os membros que estão inativos, falecidos, transferidos ou sob disciplina.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
+              <div className="overflow-x-auto"><Table className="min-w-[560px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
@@ -881,7 +881,7 @@ export default function Admin() {
                     ))
                   )}
                 </TableBody>
-              </Table>
+              </Table></div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -1223,8 +1223,8 @@ export default function Admin() {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="max-h-[500px] overflow-y-auto">
-                <Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[560px]">
                   <TableHeader className="bg-muted/50 sticky top-0">
                     <TableRow>
                       <TableHead>Data Apagado</TableHead>
@@ -1272,8 +1272,8 @@ export default function Admin() {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="max-h-[500px] overflow-y-auto">
-                <Table>
+              <div className="overflow-x-auto">
+                <Table className="min-w-[560px]">
                   <TableHeader className="bg-muted/50 sticky top-0">
                     <TableRow>
                       <TableHead>Data</TableHead>
