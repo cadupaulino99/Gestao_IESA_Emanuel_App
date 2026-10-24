@@ -48,8 +48,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Deploy Firebase falhou' --json number -q 'length')"
-          if [ "$EXISTE" != "0" ]; then echo "ja ha issue de falha aberta"; exit 0; fi
+          # sem dedup: uma issue por falha, com o run no título
           {
             echo 'Ultimas 60 linhas do deploy:'
             echo ''
@@ -57,4 +56,4 @@ jobs:
             tail -60 /tmp/deploy.log || echo '(sem log)'
             echo '```'
           } > /tmp/body.md
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "Deploy Firebase falhou (log anexado)" --body-file /tmp/body.md || true
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "Deploy Firebase falhou run ${{ github.run_id }}" --body-file /tmp/body.md || true
