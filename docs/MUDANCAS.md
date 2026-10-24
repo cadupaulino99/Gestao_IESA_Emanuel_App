@@ -1,5 +1,33 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.9.5 (2026-10-24) — O aviso de atualização falhava em silêncio; agora é redundante e diagnosticável
+
+Queixa: «o aplicativo não me notificou para actualizar a 1.9.4». Causas prováveis
+encontradas na auditoria do mecanismo (`lib/updateCheck.ts` + `UpdateBanner`):
+1. **O banner só existia na área da liderança** (`Layout`); o Portal do Membro
+   nunca mostrava aviso — membros ficavam sem notificação nenhuma.
+2. **Throttle de 1 h com tag em cache**: dentro da hora, o aviso usava a tag
+   guardada da última consulta; uma release publicada entretanto só aparecia
+   na hora seguinte.
+3. **Falhas de rede/timeout (6 s) eram engolidas** (`catch { return null }`) sem
+   nova tentativa — numa ligação móvel instável, «silêncio» até ao próximo arranque.
+
+Correções:
+- Banner também no **Portal do Membro** (`MemberPortal`).
+- Throttle 1 h → **15 min**; re-consulta ao voltar ao 1.º plano (`visibilitychange`).
+- **Retry automático 60 s** após falha de rede/timeout (evento `iesa:update-retry`).
+- **Verificação manual**: Definições → Diagnóstico → botão «Verificar atualizações»
+   (força a consulta, ignora throttle; se não houver, toast «Sem atualizações:
+   está na versão X»). O cartão mostra ainda a **versão instalada** e a última
+   release vista — diagnóstico visível, não às cegas.
+- `vite.config.ts`: `__APP_VERSION__` passa a vir do `package.json` por import
+   direto (antes dependia de `npm_package_version`, que só existe em `npm run …`).
+- Testes: `compareVersions` (3 casos novos; total 56).
+
+Nota: aparelhos com ≤1.9.4 ainda têm o verificador antigo — esta versão instala-se
+manualmente; daí em diante o aviso comporta-se como acima.
+
+
 ## v1.9.4 (2026-10-24) — Rolagem acessível em todas as abas (uma só barra vertical)
 
 Causas encontradas (auditoria de layout, sem mudar lógica nem aspeto):

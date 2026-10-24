@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
+import pkg from './package.json';
 
 export default defineConfig(() => {
   return {
@@ -14,7 +15,7 @@ export default defineConfig(() => {
     ],
     // Versao da app injetada no bundle (lida pelo aviso de atualizacao)
     define: {
-      __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '0.0.0'),
+      __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
       alias: {
