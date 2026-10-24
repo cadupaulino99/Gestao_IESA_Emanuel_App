@@ -9,7 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from '../components/ui/label';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
+import { parseKzInput, editValue } from '../lib/money';
+import MoneyText from '../components/MoneyText';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
@@ -21,7 +23,7 @@ import { getDoc } from 'firebase/firestore';
 const fundSchema = z.object({
   type: z.enum(['IN', 'OUT']),
   description: z.string().min(2, "Descrição inválida"),
-  amount: z.coerce.number().min(1, "Valor inválido"),
+  amount: z.string().refine((v) => { const r = parseKzInput(v, { required: false }); return r.ok && r.cents > 0; }, { message: 'Valor inválido. Exemplo: 1.500,00' }),
   date: z.string().min(10).max(10), // Expected YYYY-MM-DD
 });
 
@@ -30,6 +32,7 @@ type FundForm = z.infer<typeof fundSchema>;
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 import { useAuth } from '../context/AuthContext';
+import { formatKz } from '../lib/money';
 
 export default function BuildingFund() {
   const { user, isAdmin } = useAuth();
@@ -39,7 +42,7 @@ export default function BuildingFund() {
   const confirmDialog = useConfirm();
   const today = new Date().toISOString().substring(0, 10);
 
-  const { register, handleSubmit, formState: { errors }, reset, setValue, watch, clearErrors } = useForm({
+  const { register, handleSubmit, control, formState: { errors }, reset, setValue, watch, clearErrors } = useForm({
     resolver: zodResolver(fundSchema),
     defaultValues: { type: 'IN', date: today }
   });
@@ -111,7 +114,7 @@ export default function BuildingFund() {
       toast.success(editingItem ? "Registo actualizado com sucesso" : "Registo gravado com sucesso");
       setIsDialogOpen(false);
       setEditingItem(null);
-      reset({ type: 'IN', date: today, description: '', amount: 0 });
+      reset({ type: 'IN', date: today, description: '', amount: '' });
       queryClient.invalidateQueries({ queryKey: ['buildingFund'] });
     },
     onError: (error: any) => {
@@ -143,9 +146,11 @@ export default function BuildingFund() {
   });
 
   const handleSave = async (data: any) => {
+    const av = parseKzInput(String(data.amount ?? ''));
+    if (!av.ok || av.cents < 1) return;
     const confirmed = await confirmDialog("Deseja guardar esta informação?");
     if (confirmed) {
-      mutation.mutate(data);
+      mutation.mutate({ ...data, amount: av.cents });
     }
   };
 
@@ -153,7 +158,7 @@ export default function BuildingFund() {
     setEditingItem(item);
     setValue('type', item.type);
     setValue('description', item.description);
-    setValue('amount', item.amount);
+    setValue('amount', item.amount ? editValue(item.amount) : '');
     setValue('date', item.date);
     clearErrors();
     setIsDialogOpen(true);
@@ -171,7 +176,7 @@ export default function BuildingFund() {
         
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
-          if (!open) { setEditingItem(null); reset({ type: 'IN', date: today, description: '', amount: 0 }); }
+          if (!open) { setEditingItem(null); reset({ type: 'IN', date: today, description: '', amount: '' }); }
         }}>
           <DialogTrigger asChild>
             <Button><Plus className="w-4 h-4 mr-2" /> Registar</Button>
@@ -198,8 +203,8 @@ export default function BuildingFund() {
                 {errors.description && <span className="text-xs text-destructive">{errors.description.message}</span>}
               </div>
               <div className="space-y-2">
-                <Label>Valor (AOA)</Label>
-                <Input type="number" step="0.01" {...register('amount')} />
+                <Label>Valor (Kz)</Label>
+                <Controller name="amount" control={control} render={({ field }) => <MoneyText value={field.value ?? ''} onChange={field.onChange} placeholder="0,00" />} />
                 {errors.amount && <span className="text-xs text-destructive">{errors.amount.message}</span>}
               </div>
               <div className="space-y-2">
@@ -223,7 +228,7 @@ export default function BuildingFund() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {isLoading ? '...' : new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(fundData?.balance || 0)}
+              {isLoading ? '...' : formatKz(fundData?.balance || 0)}
             </div>
             <p className="text-xs text-muted-foreground mt-2">Valor disponível para a obra</p>
           </CardContent>
@@ -235,7 +240,7 @@ export default function BuildingFund() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-               {isLoading ? '...' : new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(fundData?.totalReceived || 0)}
+               {isLoading ? '...' : formatKz(fundData?.totalReceived || 0)}
             </div>
           </CardContent>
         </Card>
@@ -246,7 +251,7 @@ export default function BuildingFund() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">
-               {isLoading ? '...' : new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(fundData?.totalSpent || 0)}
+               {isLoading ? '...' : formatKz(fundData?.totalSpent || 0)}
             </div>
           </CardContent>
         </Card>
@@ -265,7 +270,7 @@ export default function BuildingFund() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e5e5" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} />
                   <YAxis fontSize={12} tickFormatter={(value) => `${value}`} axisLine={false} tickLine={false} />
-                  <Tooltip cursor={{fill: 'transparent'}} formatter={(val) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(val as number)} />
+                  <Tooltip cursor={{fill: 'transparent'}} formatter={(val) => formatKz(val as number)} />
                   <Bar dataKey="Valor" fill="#0f172a" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -295,7 +300,7 @@ export default function BuildingFund() {
                        </div>
                        <div className="flex items-center gap-2">
                           <div className={`font-bold ${item.type === 'OUT' ? 'text-destructive' : 'text-green-600'}`}>
-                            {item.type === 'OUT' ? '-' : '+'}{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(item.amount)}
+                            {item.type === 'OUT' ? '-' : '+'}{formatKz(item.amount)}
                           </div>
                           <div className="flex gap-1 ml-2">
                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEditDialog(item)}>

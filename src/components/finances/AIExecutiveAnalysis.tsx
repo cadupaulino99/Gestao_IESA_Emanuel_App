@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Sparkles, TrendingUp, AlertCircle, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { aiFinancialInsights } from '../../lib/ai';
+import { formatKz } from '../../lib/money';
 
 interface AIExecutiveAnalysisProps {
   financialStats: {
@@ -74,7 +75,7 @@ export function AIExecutiveAnalysis({ financialStats }: AIExecutiveAnalysisProps
           <div className="flex items-center gap-3 py-2 text-xs text-muted-foreground">
             <CheckCircle2 className="h-4 w-4 text-purple-500 shrink-0" />
             <span>
-              Carregue no botão para processar receitas ({financialStats.totalTithes + financialStats.totalOfferings} Kz), saídas ({financialStats.totalExpenses} Kz) e propor acções estratégicas.
+              Carregue no botão para processar receitas ({formatKz(financialStats.totalTithes + financialStats.totalOfferings)}), saídas ({formatKz(financialStats.totalExpenses)}) e propor acções estratégicas.
             </span>
           </div>
         )}

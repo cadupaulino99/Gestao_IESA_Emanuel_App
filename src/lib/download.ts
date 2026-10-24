@@ -81,3 +81,24 @@ export async function openExternal(url: string): Promise<void> {
     window.open(url, '_blank', 'noopener');
   }
 }
+
+/** v1.12: aplica formato de célula «1.500,00 Kz» às colunas monetárias de uma
+ *  folha XLSX (a célula continua a guardar NÚMERO → somas funcionam no Excel). */
+export function formatMoneyCells(ws: any, XLSX: any): void {
+  try {
+    const ref = ws['!ref'];
+    if (!ref) return;
+    const range = XLSX.utils.decode_range(ref);
+    const moneyCols: number[] = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const h = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+      if (h && /Kz|Valor|Montante|Total|Dízimo|Oferta/i.test(String(h.v))) moneyCols.push(c);
+    }
+    for (const c of moneyCols) {
+      for (let r = range.s.r + 1; r <= range.e.r; r++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        if (cell && typeof cell.v === 'number') cell.z = '#,##0.00 "Kz"';
+      }
+    }
+  } catch { /* nunca bloqueia a exportação */ }
+}

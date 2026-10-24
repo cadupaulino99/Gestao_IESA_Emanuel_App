@@ -8,7 +8,9 @@ import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { db, handleFirestoreError, OperationType, auth } from '../lib/firebase';
 import { collection, query, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
+import { parseKzInput, editValue } from '../lib/money';
+import MoneyText from '../components/MoneyText';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
@@ -21,13 +23,14 @@ const assetSchema = z.object({
   name: z.string().min(2, "Nome inválido"),
   category: z.string().min(2, "Categoria inválida"),
   acquisitionDate: z.string().min(10).max(10),
-  purchaseValue: z.coerce.number().min(0, "Valor inválido"),
+  purchaseValue: z.string().refine((v) => parseKzInput(v, { required: false }).ok, { message: 'Valor inválido. Exemplo: 1.500,00' }),
   currentRate: z.coerce.number().optional()
 });
 
 type AssetForm = z.infer<typeof assetSchema>;
 
 import { useAuth } from '../context/AuthContext';
+import { formatKz } from '../lib/money';
 
 export default function Assets() {
   const { user, isAdmin } = useAuth();
@@ -37,9 +40,9 @@ export default function Assets() {
   const confirmDialog = useConfirm();
   const today = new Date().toISOString().substring(0, 10);
 
-  const { register, handleSubmit, formState: { errors }, reset, setValue, clearErrors } = useForm({
+  const { register, handleSubmit, control, formState: { errors }, reset, setValue, clearErrors } = useForm({
     resolver: zodResolver(assetSchema),
-    defaultValues: { acquisitionDate: today, purchaseValue: 0 }
+    defaultValues: { acquisitionDate: today, purchaseValue: '' }
   });
 
   const { data: assets, isLoading } = useQuery({
@@ -79,7 +82,7 @@ export default function Assets() {
       toast.success(editingItem ? "Activo actualizado" : "Activo registado");
       setIsDialogOpen(false);
       setEditingItem(null);
-      reset({ name: '', category: '', acquisitionDate: today, purchaseValue: 0 });
+      reset({ name: '', category: '', acquisitionDate: today, purchaseValue: '' });
       queryClient.invalidateQueries({ queryKey: ['assets'] });
     },
     onError: (error: any) => {
@@ -111,9 +114,11 @@ export default function Assets() {
   });
 
   const handleSave = async (data: any) => {
+    const pv = parseKzInput(String(data.purchaseValue ?? ''));
+    if (!pv.ok) return; // zod já barrou; dupla segurança do servidor
     const confirmed = await confirmDialog("Deseja guardar esta informação?");
     if (confirmed) {
-      mutation.mutate(data);
+      mutation.mutate({ ...data, purchaseValue: pv.cents });
     }
   };
 
@@ -122,7 +127,7 @@ export default function Assets() {
     setValue('name', item.name);
     setValue('category', item.category);
     setValue('acquisitionDate', item.acquisitionDate);
-    setValue('purchaseValue', item.purchaseValue);
+    setValue('purchaseValue', item.purchaseValue ? editValue(item.purchaseValue) : '');
     clearErrors();
     setIsDialogOpen(true);
   };
@@ -137,7 +142,7 @@ export default function Assets() {
         
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           setIsDialogOpen(open);
-          if (!open) { setEditingItem(null); reset({ name: '', category: '', acquisitionDate: today, purchaseValue: 0 }); }
+          if (!open) { setEditingItem(null); reset({ name: '', category: '', acquisitionDate: today, purchaseValue: '' }); }
         }}>
           <DialogTrigger asChild>
              <Button><Plus className="w-4 h-4 mr-2" /> Registar Bem</Button>
@@ -163,8 +168,8 @@ export default function Assets() {
                   {errors.acquisitionDate && <span className="text-xs text-destructive">{errors.acquisitionDate.message}</span>}
                 </div>
                 <div className="space-y-2">
-                  <Label>Valor de Aquisição (AOA)</Label>
-                  <Input type="number" step="0.01" {...register('purchaseValue')} />
+                  <Label>Valor de Aquisição (Kz)</Label>
+                  <Controller name="purchaseValue" control={control} render={({ field }) => <MoneyText value={field.value ?? ''} onChange={field.onChange} />} />
                   {errors.purchaseValue && <span className="text-xs text-destructive">{errors.purchaseValue.message}</span>}
                 </div>
                 <Button type="submit" className="w-full" disabled={mutation.isPending}>
@@ -202,7 +207,7 @@ export default function Assets() {
                         <TableCell className="font-medium">{a.name}</TableCell>
                         <TableCell>{a.category}</TableCell>
                         <TableCell>{a.acquisitionDate}</TableCell>
-                        <TableCell>{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(a.purchaseValue)}</TableCell>
+                        <TableCell>{formatKz(a.purchaseValue)}</TableCell>
                         <TableCell>
                            <div className="flex gap-1 justify-end">
                              <Button variant="ghost" size="icon" onClick={() => openEditDialog(a)}>
@@ -229,7 +234,7 @@ export default function Assets() {
                     <div key={a.id} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2 relative">
                        <div className="font-semibold pr-8">{a.name}</div>
                        <div className="text-sm text-muted-foreground">Categoria: {a.category} | Data: {a.acquisitionDate}</div>
-                       <div className="font-bold text-lg">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(a.purchaseValue)}</div>
+                       <div className="font-bold text-lg">{formatKz(a.purchaseValue)}</div>
                        <div className="flex gap-1 absolute top-2 right-2">
                          <Button variant="ghost" size="icon" onClick={() => openEditDialog(a)}>
                            <Pencil className="h-4 w-4" />

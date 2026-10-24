@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/ui/badge';
 import { useDevice } from '../hooks/useDevice';
 import { AIExecutiveAnalysis } from '../components/finances/AIExecutiveAnalysis';
+import { formatKz } from '../lib/money';
 
 export default function Dashboard() {
   const { userRole } = useAuth();
@@ -387,11 +388,11 @@ export default function Dashboard() {
             {isFinancialStaff ? (
               <Card className="bg-gradient-to-br from-card to-card/50 shadow-sm border-l-4 acc-info">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 text-muted-foreground pb-2">
-                  <CardTitle className="text-sm font-medium">Saldo Actual (AOA)</CardTitle>
+                  <CardTitle className="text-sm font-medium">Saldo Actual (Kz)</CardTitle>
                   <Wallet className="w-4 h-4 text-blue-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-lg md:text-2xl font-bold tabular-nums">{isLoading ? '...' : new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(stats?.balance || 0)}</div>
+                  <div className="text-lg md:text-2xl font-bold tabular-nums">{isLoading ? '...' : formatKz(stats?.balance || 0)}</div>
                 </CardContent>
               </Card>
             ) : (
@@ -423,7 +424,7 @@ export default function Dashboard() {
                   <TrendingUp className="w-4 h-4 text-slate-800" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-lg md:text-2xl font-bold tabular-nums">{isLoading ? '...' : new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(stats?.totalTithes || 0)}</div>
+                  <div className="text-lg md:text-2xl font-bold tabular-nums">{isLoading ? '...' : formatKz(stats?.totalTithes || 0)}</div>
                 </CardContent>
               </Card>
             ) : (
@@ -445,7 +446,7 @@ export default function Dashboard() {
                   <HandHeart className="w-4 h-4 text-yellow-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-lg md:text-2xl font-bold tabular-nums">{isLoading ? '...' : new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(stats?.totalOfferings || 0)}</div>
+                  <div className="text-lg md:text-2xl font-bold tabular-nums">{isLoading ? '...' : formatKz(stats?.totalOfferings || 0)}</div>
                 </CardContent>
               </Card>
             ) : (
@@ -475,7 +476,7 @@ export default function Dashboard() {
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: isMobile ? 10 : 12, fill: '#64748b' }} dy={10} />
                         <YAxis fontSize={isMobile ? 10 : 12} tick={{ fill: '#64748b' }} tickFormatter={(value) => `${value}`} axisLine={false} tickLine={false} width={isMobile ? 40 : 60} dx={-10} />
-                        <Tooltip cursor={{fill: '#f8fafc'}} formatter={(val) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(val as number)} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Tooltip cursor={{fill: '#f8fafc'}} formatter={(val) => formatKz(val as number)} contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} iconType="circle" />
                         <Line type="monotone" dataKey="Dízimos" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
                         <Line type="monotone" dataKey="Ofertas" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 6 }} />
@@ -503,7 +504,7 @@ export default function Dashboard() {
                              <p className="text-xs text-muted-foreground">{act.type === 'expense' ? act.category : (act.type || 'Oferta/Dízimo')}</p>
                            </div>
                            <div className={`font-bold ${act.type === 'expense' ? 'text-red-500' : 'text-green-600'}`}>
-                             {act.type === 'expense' ? '-' : '+'} {new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(act.amount)}
+                             {act.type === 'expense' ? '-' : '+'} {formatKz(act.amount)}
                            </div>
                         </div>
                       ))}
@@ -537,7 +538,7 @@ export default function Dashboard() {
                                <div className={`h-2.5 rounded-full ${isOver ? 'bg-destructive' : 'bg-green-500'}`} style={{ width: `${Math.min(b.percentage, 100)}%`, transition: 'width 0.5s ease-in-out' }}></div>
                             </div>
                             <div className="text-xs text-muted-foreground text-right">
-                              {new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(b.actual)} / {new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(b.expected)}
+                              {formatKz(b.actual)} / {formatKz(b.expected)}
                             </div>
                           </div>
                         )
@@ -568,7 +569,7 @@ export default function Dashboard() {
                             <span className="font-medium text-sm text-muted-foreground">Membro ({tc.role})</span>
                           </div>
                           <span className="font-bold text-slate-700">
-                             {new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(tc.amount)}
+                             {formatKz(tc.amount)}
                           </span>
                         </div>
                       ))
@@ -605,7 +606,7 @@ export default function Dashboard() {
                             <p className="text-xs text-muted-foreground">Taxa de cont. na célula: {cs.retention}%</p>
                           </div>
                           <span className="font-bold text-blue-700">
-                            {new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(cs.amount)}
+                            {formatKz(cs.amount)}
                           </span>
                         </div>
                       ))

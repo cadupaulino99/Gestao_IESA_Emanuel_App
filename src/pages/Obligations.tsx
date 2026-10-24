@@ -6,6 +6,7 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, where } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { formatKz } from '../lib/money';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -76,7 +77,7 @@ export default function Obligations() {
   };
 
   const formatAOA = (amount: number) => {
-    return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(amount);
+    return formatKz(amount);
   };
 
   return (

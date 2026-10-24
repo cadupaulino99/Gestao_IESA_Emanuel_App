@@ -1,5 +1,6 @@
 import { Tithe } from '../types';
 import { toMonthIdx } from './months';
+import { formatKz } from './money';
 
 /** Data de ENTREGA canónica de um lançamento (legado: cashier → month). */
 export function deliveryOf(t: Tithe): { month: string; year: number } {
@@ -58,5 +59,5 @@ export function classifyTitheDuplicate(
 export function describeTithe(t: Tithe): string {
   const r = referenceOf(t);
   const d = deliveryOf(t);
-  return `ref. ${r.month}/${r.year}, entregue ${d.month}/${d.year}, valor ${(Number(t.amount) || 0).toLocaleString('pt-AO')} Kz, recibo ${t.receiptNumber || 's/ nº'}`;
+  return `ref. ${r.month}/${r.year}, entregue ${d.month}/${d.year}, valor ${formatKz(Number(t.amount) || 0)}, recibo ${t.receiptNumber || 's/ nº'}`;
 }

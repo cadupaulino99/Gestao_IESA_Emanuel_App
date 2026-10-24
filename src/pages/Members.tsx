@@ -61,6 +61,7 @@ const memberSchema = z.object({
 type MemberForm = z.infer<typeof memberSchema>;
 
 import { useAuth } from '../context/AuthContext';
+import { formatKz } from '../lib/money';
 
 export default function Members() {
   const { user, isAdmin } = useAuth();
@@ -966,7 +967,7 @@ export default function Members() {
                                    tickFormatter={(value) => `${value / 1000}k`} 
                                  />
                                  <Tooltip 
-                                   formatter={(value: number) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value)}
+                                   formatter={(value: number) => formatKz(value)}
                                    cursor={{fill: 'transparent'}}
                                  />
                                  <Bar dataKey="valor" fill="#2563eb" radius={[4, 4, 0, 0]} />
@@ -988,7 +989,7 @@ export default function Members() {
                              <TableRow key={t.id}>
                                <TableCell>{t.referenceMonth}/{t.referenceYear || '-'}</TableCell>
                                <TableCell>{t.createdAt ? new Date(t.createdAt).toLocaleDateString('pt-AO') : '-'}</TableCell>
-                               <TableCell>{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(t.amount)}</TableCell>
+                               <TableCell>{formatKz(t.amount)}</TableCell>
                              </TableRow>
                            ))}
                          </TableBody>

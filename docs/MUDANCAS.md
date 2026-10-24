@@ -1,5 +1,26 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.12.0 — Moeda única «Kz» e campos de valor inteligentes
+- **Causa da mistura AOA/Kz**: 135 sítios em 22 ficheiros formatavam dinheiro
+  cada um à sua maneira (49× Intl.NumberFormat AOA, 13× toLocaleString,
+  24× «Kz» fixo, 2× toFixed + formatadores próprios no Worker/PDF).
+- `src/lib/money.ts`: **função única `formatKz()`** + configuração do formato
+  num só sítio (`MONEY_FORMAT`): 1.500,00 Kz, sem depender do idioma do
+  aparelho. «AOA» nunca mais aparece ao utilizador (só interno, na IA de recibos).
+- **Armazenamento em inteiros de cêntimos** (700,00 Kz = 70000): somas exactas
+  (0,10 + 0,20 = 0,30). Regras Firestore exigem `int` nos valores (servidor
+  repete a validação). Orçamento único e contribuições passam a aceitar 2 casas.
+- Campos de valor (`MoneyText`/`MoneyInput`): texto com `inputMode="decimal"`,
+  formatação ao sair do campo, edição sem símbolo, recusas com mensagem
+  («Valor inválido. Exemplo: 1.500,00»), máx. 1.000.000.000,00 Kz, sem negativos.
+  Aceita 700 / 700Kz / kz700 / KZ 700 / 700,5 / 1.500 / AOA 700; recusa 1.50 e 1,2,3.
+- Excel: célula com **número** + formato `#,##0.00 "Kz"` (somas continuam a funcionar).
+- Migração **Admin → «Migração v1.12.0 — dinheiro em cêntimos»**: analisa,
+  lista duvidosos (não os toca), exige cópia de segurança, idempotente
+  (marcador settings/system.moneyCents=2).
+- Worker 2.6.0: lembretes com `fmtKz` (cêntimos).
+- Testes: 86 (7 novos de moeda). Guia: `docs/VERIFICACAO-MOEDA.md`.
+
 ## v1.11.0 (2026-10-24) — Orçamento único, contribuições, notificações e mensagens em massa
 
 - **Orçamento único** por membro/ano (`member_budgets`): inteiros positivos, histórico

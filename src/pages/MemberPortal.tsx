@@ -74,6 +74,7 @@ import {
   CARD_HEADER_DEFAULT,
 } from "../types";
 import { computeStatus } from "../lib/contrib";
+import { formatKz } from '../lib/money';
 
 export default function MemberPortal() {
   const { memberData, signOut } = useAuth();
@@ -263,10 +264,7 @@ export default function MemberPortal() {
     const tableData = tithes.map((t) => [
       `${t.month}/${t.year || "-"}`,
       t.createdAt ? new Date(t.createdAt).toLocaleDateString("pt-AO") : "-",
-      new Intl.NumberFormat("pt-AO", {
-        style: "currency",
-        currency: "AOA",
-      }).format(t.amount),
+      formatKz(t.amount),
     ]);
 
     autoTable(docPdf, {
@@ -514,10 +512,7 @@ export default function MemberPortal() {
                             />
                             <Tooltip
                               formatter={(value: number) =>
-                                new Intl.NumberFormat("pt-AO", {
-                                  style: "currency",
-                                  currency: "AOA",
-                                }).format(value)
+                                formatKz(value)
                               }
                               cursor={{ fill: "transparent" }}
                             />
@@ -559,10 +554,7 @@ export default function MemberPortal() {
                                       : "-"}
                                   </TableCell>
                                   <TableCell>
-                                    {new Intl.NumberFormat("pt-AO", {
-                                      style: "currency",
-                                      currency: "AOA",
-                                    }).format(t.amount)}
+                                    {formatKz(t.amount)}
                                   </TableCell>
                                 </TableRow>
                               ))}
