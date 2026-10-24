@@ -1,5 +1,29 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.12.3 — Rádio: o botão de apagar gravações volta a funcionar
+
+**Sintoma**: no player da Rádio Maranata, tocar no caixote do lixo e confirmar
+não apagava a gravação — «o botão não funciona».
+
+**Causas** (três, empilhadas):
+1. **A palavra de confirmação exigia correspondência EXACTA.** O dialog pedia
+   para escrever «APAGAR» e comparava `inputText !== 'APAGAR'` — nos teclados
+   dos telemóveis sai «Apagar» (capitalização automática) ou «apagar», pelo
+   que o botão «Confirmar» **nunca era ativado** (fica desativado até a palavra
+   bater certo). Comparação agora tolerante a caixa e espaços
+   (`matchesRequired`, `lib/confirm.ts`, testado); o campo pede maiúsculas
+   (`autoCapitalize="characters"`, sem autocorrecção) e o texto do dialog diz
+   que tanto faz.
+2. **`removeRecording` não tinha `try/catch`:** qualquer erro do `Filesystem`
+   morria em silêncio — sem toast, sem actualizar a lista. Agora há erro com
+   mensagem, spinner no botão enquanto apaga e protecção contra duplo toque.
+3. **Duplo toque criava um confirm «zombie»:** o resolver da Promise vivia em
+   state e era substituído pelo segundo dialog — o primeiro `removeRecording`
+   ficava pendurado para sempre. Resolver passa a viver num `ref` e um confirm
+   novo cancela o pendente (resolve `false`).
+- Extra: `deleteRecording` é idempotente — se o ficheiro já não existe, o
+  objetivo está cumprido (a lista é relida e a gravação desaparece).
+
 ## v1.12.2 — O PDF do cartão agora CHEGA ao telemóvel (partilha nativa a sério)
 
 **Sintoma**: ao carregar em «Descarregar PDF»/«Gerar PDF», a app dizia que o
