@@ -116,7 +116,7 @@ service cloud.firestore {
       return isAuthenticated() &&
              request.auth.token.email == resource.data.email &&
              incoming().keys().hasOnly(['lastLoginAt', 'mustChangePassword']) &&
-             (incoming().lastLoginAt is number || incoming().mustChangePassword is boolean);
+             (incoming().lastLoginAt is number || incoming().mustChangePassword is bool);
     }
 
     match /admins/{adminId} {
