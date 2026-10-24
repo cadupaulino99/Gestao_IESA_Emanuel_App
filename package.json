@@ -1,7 +1,7 @@
 {
   "name": "gestao-iesa-emanuel-xangongo",
   "private": true,
-  "version": "1.8.3",
+  "version": "1.9.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -18,7 +18,9 @@
     "deploy:worker:check": "node scripts/deploy-worker-api.mjs --check",
     "deploy:worker:wrangler": "wrangler deploy --config worker/wrangler.toml",
     "worker:health": "node scripts/worker-health.mjs",
-    "test:bi": "node scripts/test-gemini-bi.mjs"
+    "test:bi": "node scripts/test-gemini-bi.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.2",
@@ -69,6 +71,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "vite": "^6.2.3",
+    "vitest": "^2.1.9",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },

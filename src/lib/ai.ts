@@ -1,4 +1,5 @@
 import { auth } from './firebase';
+import { withBackoff, isRetryableError } from './retry';
 
 /**
  * Cliente de IA — fala com o Cloudflare Worker (gratuito, sem cartão).
@@ -15,40 +16,63 @@ async function callWorker<T>(path: string, body: unknown): Promise<T> {
   if (!user) throw new Error('Sessão terminada — entre novamente.');
   const idToken = await user.getIdToken();
 
-  let res: Response;
-  try {
-    res = await fetch(`${WORKER_URL}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new Error('Sem ligação ao servidor de IA. Verifique a internet e tente novamente.');
-  }
+  /* Leitura de documentos pode levar ~10-20 s em rede móvel; o resto é rápido.
+     O timeout existe para a app não ficar «pendurada» para sempre. */
+  const timeoutMs = /extract-(member|receipt)/.test(path) ? 120_000 : 60_000;
 
-  const data = await res.json().catch(() => ({} as any));
-  if (!res.ok) {
-    const d = data as any;
-    let msg = d?.error || `Erro ${res.status} ao contactar a IA.`;
-    /* O Worker devolve `detalhe` com o texto cru da IA quando o JSON falha —
-       mostra-se para permitir diagnostico em vez de um erro vazio. */
-    if (d?.detalhe) msg += `  ·  detalhe: ${String(d.detalhe).slice(0, 200)}`;
-    /* 404 numa rota de visão = Worker publicado é anterior à v1.7.0 */
-    if (res.status === 404 && /extract-(member|receipt)/.test(path)) {
-      msg =
-        'O servidor de IA (Cloudflare Worker) está desatualizado e não tem a rota de leitura de documentos. ' +
-        'Publique novamente o ficheiro worker/ai-worker.js no Worker "iesa-ai" (Cloudflare → Workers → Edit code → colar → Save and Deploy). ' +
-        'Confirme em ' + WORKER_URL + '/__health';
+  return withBackoff(
+    async () => {
+      let res: Response;
+      try {
+        res = await fetch(`${WORKER_URL}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (e: any) {
+        if (e?.name === 'AbortError') {
+          const t = new Error('O servidor de IA demorou demasiado a responder. Tente novamente.') as Error & { status?: number };
+          t.status = 408;
+          throw t;
+        }
+        const n = new Error('Sem ligação ao servidor de IA. Verifique a internet e tente novamente.') as Error & { status?: number };
+        n.status = 0;
+        n.name = 'TypeError';
+        throw n;
+      }
+
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        const d = data as any;
+        let msg = d?.error || `Erro ${res.status} ao contactar a IA.`;
+        /* O Worker devolve `detalhe` com o texto cru da IA quando o JSON falha —
+           mostra-se para permitir diagnostico em vez de um erro vazio. */
+        if (d?.detalhe) msg += `  ·  detalhe: ${String(d.detalhe).slice(0, 200)}`;
+        /* 404 numa rota de visão = Worker publicado é anterior à v1.7.0 */
+        if (res.status === 404 && /extract-(member|receipt)/.test(path)) {
+          msg =
+            'O servidor de IA (Cloudflare Worker) está desatualizado e não tem a rota de leitura de documentos. ' +
+            'Publique novamente o ficheiro worker/ai-worker.js no Worker "iesa-ai" (Cloudflare → Workers → Edit code → colar → Save and Deploy). ' +
+            'Confirme em ' + WORKER_URL + '/__health';
+        }
+        if (res.status === 403 && /liderança/i.test(msg)) {
+          msg += ' O seu utilizador precisa de um registo em Admin → Utilizadores com papel admin/pastor/tesoureiro.';
+        }
+        if (res.status === 429) msg += ' (quota/limite — aguarde uns segundos; o sistema já tentou várias vezes)';
+        const e = new Error(msg) as Error & { status?: number; detail?: string };
+        e.status = res.status;
+        e.detail = d?.detalhe;
+        throw e;
+      }
+      return data as T;
+    },
+    {
+      tries: 3,
+      baseMs: 900,
+      retryable: isRetryableError,
     }
-    if (res.status === 403 && /liderança/i.test(msg)) {
-      msg += ' O seu utilizador precisa de um registo em Admin → Utilizadores com papel admin/pastor/tesoureiro.';
-    }
-    const e = new Error(msg) as Error & { status?: number; detail?: string };
-    e.status = res.status;
-    e.detail = d?.detalhe;
-    throw e;
-  }
-  return data as T;
+  );
 }
 
 export async function aiChat(prompt: string, context?: string): Promise<string> {

@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { Input } from './components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { prefGet } from './lib/prefs';
@@ -18,22 +17,23 @@ import { CommandPaletteProvider } from './context/CommandPaletteContext';
 import CommandPalette from './components/CommandPalette';
 import Layout from './components/Layout';
 import { Button } from './components/ui/button';
+import { Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 
 // Lazy load for simplicity in this file, we will create these components next.
 import Dashboard from './pages/Dashboard';
-import Members from './pages/Members';
-import Finances from './pages/Finances';
-import BuildingFund from './pages/BuildingFund';
-import Assets from './pages/Assets';
-import Budget from './pages/Budget';
-import Reports from './pages/Reports';
-import Settings from './pages/Settings';
-import Admin from './pages/Admin';
-import MemberPortal from './pages/MemberPortal';
-import Obligations from './pages/Obligations';
-import Support from './pages/Support';
-import Radio from './pages/Radio';
+const Members = lazy(() => import('./pages/Members'));
+const Finances = lazy(() => import('./pages/Finances'));
+const BuildingFund = lazy(() => import('./pages/BuildingFund'));
+const Assets = lazy(() => import('./pages/Assets'));
+const Budget = lazy(() => import('./pages/Budget'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Admin = lazy(() => import('./pages/Admin'));
+const MemberPortal = lazy(() => import('./pages/MemberPortal'));
+const Obligations = lazy(() => import('./pages/Obligations'));
+const Support = lazy(() => import('./pages/Support'));
+const Radio = lazy(() => import('./pages/Radio'));
 import { useNotifications } from './hooks/useNotifications';
 
 const queryClient = new QueryClient();
@@ -50,7 +50,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!isAdmin && memberData) {
-    return <MemberPortal />;
+    return (<Suspense fallback={<PageFallback />}><MemberPortal /></Suspense>);
   }
 
   if (!isAdmin) {
@@ -220,6 +220,12 @@ const Login = () => {
   );
 };
 
+const PageFallback = () => (
+  <div className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
+    <Loader2 className="h-5 w-5 animate-spin" /> A carregar…
+  </div>
+);
+
 export default function App() {
   return (
     <ThemeProvider>
@@ -230,6 +236,7 @@ export default function App() {
               <AuthProvider>
                 <BrowserRouter>
                   <CommandPalette />
+                  <Suspense fallback={<PageFallback />}>
                   <Routes>
                     <Route path="/login" element={<Login />} />
                     
@@ -248,6 +255,7 @@ export default function App() {
                       <Route path="settings" element={<Settings />} />
                     </Route>
                   </Routes>
+                  </Suspense>
                 </BrowserRouter>
               </AuthProvider>
             </QueryClientProvider>

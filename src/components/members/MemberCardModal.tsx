@@ -103,7 +103,8 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
       await cycleCommunionMark(
         member.id, comYear, mi,
         data.communions.find((c) => c.year === comYear && c.month === mi),
-        user?.email || ''
+        user?.email || '',
+        member.email || null
       );
       await load(member.id);
     } catch (e: any) {
@@ -124,6 +125,7 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
       await addDoc(collection(db, 'donations'), {
         memberId: member.id,
         memberName: member.name,
+        memberEmail: member.email || null,
         amount,
         date: donDate,
         referenceMonth: donDate.slice(5, 7),
