@@ -15,7 +15,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { ScrollArea } from '../components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Plus, Pencil, Trash2, Download, Upload, Eye, CreditCard, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
@@ -499,7 +498,7 @@ export default function Members() {
                   <DialogTitle>{editingMember ? 'Editar Membro' : 'Novo Membro'}</DialogTitle>
                   <DialogDescription className="sr-only">Preencha os dados do membro</DialogDescription>
                 </DialogHeader>
-                <ScrollArea className="flex-1 px-4 py-2">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-2">
                   <form id="member-form" onSubmit={handleSubmit(handleSave)} className="space-y-4 px-1">
                     <div className="rounded-xl border border-dashed border-gold/60 bg-gold/5 px-3 py-2.5 flex flex-wrap items-center gap-2">
                       <span className="text-xs font-medium text-slate-600 dark:text-slate-300 mr-auto">Preencher com IA a partir de fotografia:</span>
@@ -664,7 +663,7 @@ export default function Members() {
                       </div>
                     </div>
                   </form>
-                </ScrollArea>
+                </div>
                 <div className="pt-4 px-2 border-t mt-auto shrink-0 w-full">
                   <Button type="submit" form="member-form" className="w-full" disabled={mutation.isPending}>
                     {mutation.isPending ? 'A Guardar...' : 'Guardar'}
@@ -830,7 +829,7 @@ export default function Members() {
               </div>
             )}
           </SheetHeader>
-          <ScrollArea className="flex-1 p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6">
             {selectedMember && (
                <div className="space-y-6">
                  <div>
@@ -946,12 +945,12 @@ export default function Members() {
                  </div>
                </div>
             )}
-          </ScrollArea>
+          </div>
         </SheetContent>
       </Sheet>
 
       <Dialog open={mergeOpen} onOpenChange={(o) => !o && setMergeOpen(false)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Fundir registo duplicado</DialogTitle>
             <DialogDescription>
