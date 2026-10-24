@@ -379,14 +379,14 @@ export default function Finances() {
              memberId: tD.memberId,
              amount: parseFloat(tD.amount),
              receiptNumber: tD.receiptNumber,
-             deliveryMonth: tD.deliveryMonth,
-             deliveryYear: parseInt(tD.deliveryYear),
-             month: tD.deliveryMonth,
-             year: parseInt(tD.deliveryYear),
-             cashierMonth: tD.deliveryMonth,
-             cashierYear: parseInt(tD.deliveryYear),
-             referenceMonth: tD.selectedMonths[0] || toMonthIdx(selectedMonth),
-             referenceYear: parseInt(tD.year),
+             deliveryMonth: toMonthIdx(tD.deliveryMonth) || toMonthIdx(selectedMonth),
+             deliveryYear: parseInt(tD.deliveryYear, 10) || parseInt(selectedYear, 10),
+             month: toMonthIdx(tD.deliveryMonth) || toMonthIdx(selectedMonth),
+             year: parseInt(tD.deliveryYear, 10) || parseInt(selectedYear, 10),
+             cashierMonth: toMonthIdx(tD.deliveryMonth) || toMonthIdx(selectedMonth),
+             cashierYear: parseInt(tD.deliveryYear, 10) || parseInt(selectedYear, 10),
+             referenceMonth: toMonthIdx(tD.selectedMonths[0]) || toMonthIdx(selectedMonth),
+             referenceYear: parseInt(tD.year, 10) || parseInt(selectedYear, 10),
              contributionType: tD.contributionType,
              contributionDetail: tD.contributionDetail,
              updatedAt: Date.now()
@@ -397,7 +397,7 @@ export default function Finances() {
            setIsTOpen(false); 
            setEditingTithe(null);
            loadData(false); 
-           setTD({...tD, amount: '', receiptNumber: '', selectedMonths: [toMonthIdx(selectedMonth)], manualSplit: false, manualValues: {}, contributionDetail: '', contributionType: 'Dízimo', deliveryMonth: toMonthIdx(selectedMonth), deliveryYear: selectedYear});
+           resetTD();
       } catch(err) {
            toast.error("Falha ao actualizar.");
            handleFirestoreError(err, OperationType.WRITE, 'tithes');
@@ -438,11 +438,11 @@ export default function Finances() {
           const docYear = d.referenceYear || d.year;
           if (docYear !== refYear) return;
 
-          const matchMonth = (d.referenceMonth && d.referenceMonth === m) || (!d.referenceMonth && d.month === m);
+          const matchMonth = referenceOf(d as any).month === toMonthIdx(m);
           const matchType = (d.contributionType || 'Dízimo') === (tD.contributionType || 'Dízimo');
           if (matchMonth && matchType) {
             duplicatesFound.push({
-              month: m,
+              month: idxToName(m),
               amount: d.amount,
               receipt: d.receiptNumber || 'S/N'
             });
@@ -478,27 +478,42 @@ export default function Finances() {
       console.warn("Aviso ao verificar duplicidade:", checkErr);
     }
 
+    // ── Sanitização canónica (v1.10.2): nunca deixar passar meses em nome nem
+    //    entrega em falta — era isto que fazia o setDoc rejeitar (undefined/nome). ──
+    const pairs = tD.selectedMonths
+      .map((k) => ({ key: k, mi: toMonthIdx(k) }))
+      .filter((pp) => pp.mi);
+    if (pairs.length === 0) {
+      toast.error('Seleccione pelo menos um mês de referência válido.');
+      setIsSubmitting(false);
+      return;
+    }
+    const delMonth = toMonthIdx(tD.deliveryMonth) || toMonthIdx(selectedMonth);
+    const delYear = parseInt(tD.deliveryYear, 10) || parseInt(selectedYear, 10);
+    const refYear = parseInt(tD.year, 10) || parseInt(selectedYear, 10);
+
     // ── Duplicidade (regra 2026-10-24): block se membro+ref+valor+entrega iguais;
     //    warn (com confirmação explícita) se já há lançamento na mesma referência. ──
     try {
       const warns: string[] = [];
-      for (const mi of tD.selectedMonths) {
-        const val = tD.manualSplit ? parseFloat(tD.manualValues[mi] || '0') : totalAmount / tD.selectedMonths.length;
+      for (const pp of pairs) {
+        const mi = pp.mi;
+        const val = tD.manualSplit ? parseFloat(tD.manualValues[pp.key] || '0') : totalAmount / pairs.length;
         const snap = await getDocs(query(collection(db, 'tithes'),
           where('memberId', '==', tD.memberId),
           where('referenceMonth', '==', mi),
           where('referenceYear', '==', parseInt(tD.year))));
         const existing = snap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
         const verdict = classifyTitheDuplicate(existing, {
-          memberId: tD.memberId, referenceMonth: mi, referenceYear: parseInt(tD.year),
-          amount: val, deliveryMonth: tD.deliveryMonth, deliveryYear: parseInt(tD.deliveryYear),
+          memberId: tD.memberId, referenceMonth: mi, referenceYear: refYear,
+          amount: val, deliveryMonth: delMonth, deliveryYear: delYear,
         });
         if (verdict.level === 'block') {
           toast.error(`Registo BLOQUEADO: já existe lançamento exatamente igual (${describeTithe(verdict.conflict!)}).`);
           setIsSubmitting(false);
           return;
         }
-        if (verdict.level === 'warn') warns.push(`• ${idxToName(mi)}/${tD.year}: ${describeTithe(verdict.conflict!)}`);
+        if (verdict.level === 'warn') warns.push(`• ${idxToName(mi)}/${refYear}: ${describeTithe(verdict.conflict!)}`);
       }
       if (warns.length > 0) {
         const okWait = await confirmDialog(
@@ -514,10 +529,10 @@ export default function Finances() {
     const isManual = tD.manualSplit;
     if (isManual) {
       let sum = 0;
-      for (const m of tD.selectedMonths) {
-         const v = parseFloat(tD.manualValues[m] || '0');
+      for (const pp of pairs) {
+         const v = parseFloat(tD.manualValues[pp.key] || '0');
          if (isNaN(v) || v <= 0) {
-           toast.error(`Valor inválido para o mês de ${m}.`);
+           toast.error(`Valor inválido para o mês de ${idxToName(pp.mi)}.`);
            setIsSubmitting(false);
            return;
          }
@@ -537,8 +552,8 @@ export default function Finances() {
       }
     } else {
       const splitAmount = totalAmount / tD.selectedMonths.length;
-      if (tD.selectedMonths.length > 1) {
-        const confirmed = await confirmDialog(`O valor de ${ptAOA(totalAmount)} será dividido igualmente em ${tD.selectedMonths.length} meses (${ptAOA(splitAmount)} cada). Confirma a divisão automática?`);
+      if (pairs.length > 1) {
+        const confirmed = await confirmDialog(`O valor de ${ptAOA(totalAmount)} será dividido igualmente em ${pairs.length} meses (${ptAOA(splitAmount)} cada). Confirma a divisão automática?`);
         if (!confirmed) {
           setIsSubmitting(false);
           return;
@@ -553,7 +568,7 @@ export default function Finances() {
     }
 
     // --- ATUALIZAÇÃO OTIMISTA (OPTIMISTIC UI: 0 SEGUNDOS) ---
-    const splitAmount = totalAmount / tD.selectedMonths.length;
+    const splitAmount = totalAmount / pairs.length;
     const createdRecords: any[] = [];
     const createdDocIds: string[] = [];
 
@@ -561,9 +576,9 @@ export default function Finances() {
     // regras do Firestore permitam leitura apenas ao próprio e à liderança
     const memberEmail = members.find((mm) => mm.id === tD.memberId)?.email || null;
 
-    for (let i = 0; i < tD.selectedMonths.length; i++) {
-      const m = tD.selectedMonths[i];
-      const val = isManual ? parseFloat(tD.manualValues[m]) : splitAmount;
+    for (let i = 0; i < pairs.length; i++) {
+      const m = pairs[i].mi;
+      const val = isManual ? parseFloat(tD.manualValues[pairs[i].key]) : splitAmount;
       const titheDocId = doc(collection(db, 'tithes')).id;
       createdDocIds.push(titheDocId);
       createdRecords.push({
@@ -571,16 +586,16 @@ export default function Finances() {
         memberId: tD.memberId,
         memberEmail,
         amount: val,
-        receiptNumber: `${baseReceipt}${tD.selectedMonths.length > 1 ? `-${i+1}` : ''}`,
+        receiptNumber: `${baseReceipt}${pairs.length > 1 ? `-${i+1}` : ''}`,
         // ENTREGA (contabilidade) e REFERÊNCIA (cartão), canónico '01'..'12'
-        deliveryMonth: tD.deliveryMonth,
-        deliveryYear: parseInt(tD.deliveryYear),
-        month: tD.deliveryMonth,
-        year: parseInt(tD.deliveryYear),
-        cashierMonth: tD.deliveryMonth,
-        cashierYear: parseInt(tD.deliveryYear),
+        deliveryMonth: delMonth,
+        deliveryYear: delYear,
+        month: delMonth,
+        year: delYear,
+        cashierMonth: delMonth,
+        cashierYear: delYear,
         referenceMonth: m,
-        referenceYear: parseInt(tD.year),
+        referenceYear: refYear,
         contributionType: tD.contributionType,
         contributionDetail: tD.contributionDetail,
         adminId: auth.currentUser?.uid,
@@ -591,9 +606,11 @@ export default function Finances() {
     }
 
     // Inserção imediata no estado local da tabela (0ms para o operador)
+    const idxSel = toMonthIdx(selectedMonth);
+    const yrSel = parseInt(selectedYear, 10);
     const recordsInCurrentView = createdRecords.filter(r => 
-      (r.month === selectedMonth && r.year === parseInt(selectedYear)) ||
-      (r.referenceMonth === selectedMonth && r.referenceYear === parseInt(selectedYear))
+      (r.deliveryMonth === idxSel && r.deliveryYear === yrSel) ||
+      (r.referenceMonth === idxSel && r.referenceYear === yrSel)
     );
     if (recordsInCurrentView.length > 0) {
       setTithes(prev => [...recordsInCurrentView, ...prev]);
@@ -631,16 +648,7 @@ export default function Finances() {
     const currentMemberId = tD.memberId;
     const savedReceipt = baseReceipt;
     setIsTOpen(false);
-    setTD({
-      ...tD,
-      amount: '',
-      receiptNumber: '',
-      selectedMonths: [selectedMonth],
-      manualSplit: false,
-      manualValues: {},
-      contributionDetail: '',
-      contributionType: 'Dízimo'
-    });
+    resetTD();
     setIsSubmitting(false);
 
     // Feedback com Toast Acionável contendo botão "Desfazer"
@@ -875,16 +883,40 @@ export default function Finances() {
     }
   };
 
+  /** Estado canónico do formulário: meses sempre '01'..'12' e entrega preenchida.
+   *  (v1.10.2 — um tD stalado com meses em nome ou entrega em falta era a causa
+   *  do «sucesso… e depois erro ao sincronizar»: setDoc rejeita undefined.) */
+  const resetTD = (keepMember = true) => {
+    const mi = toMonthIdx(selectedMonth);
+    setTD(prev => ({
+      ...prev,
+      memberId: keepMember ? prev.memberId : '',
+      amount: '',
+      receiptNumber: '',
+      selectedMonths: [mi],
+      manualSplit: false,
+      manualValues: {},
+      year: selectedYear,
+      deliveryMonth: mi,
+      deliveryYear: selectedYear,
+      contributionType: 'Dízimo',
+      contributionDetail: '',
+    }));
+  };
+
   const openEditTithe = (t: any) => {
     setEditingTithe(t);
+    const r = referenceOf(t); const d = deliveryOf(t);
     setTD({
       memberId: t.memberId,
       amount: t.amount.toString(),
       receiptNumber: t.receiptNumber || '',
-      selectedMonths: [t.referenceMonth || selectedMonth],
+      selectedMonths: [r.month || toMonthIdx(selectedMonth)],
       manualSplit: false,
       manualValues: {},
-      year: (t.referenceYear || selectedYear).toString(),
+      year: String(r.year || selectedYear),
+      deliveryMonth: d.month || toMonthIdx(selectedMonth),
+      deliveryYear: String(d.year || selectedYear),
       contributionType: t.contributionType || 'Dízimo',
       contributionDetail: t.contributionDetail || ''
     });
@@ -1429,7 +1461,7 @@ export default function Finances() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Input placeholder="Pesquisar membro ou recibo..." value={searchTithes} onChange={e => setSearchTithes(e.target.value)} className="w-[200px]" />
-                  <Dialog open={isTOpen} onOpenChange={isClosed ? undefined : setIsTOpen}>
+                  <Dialog open={isTOpen} onOpenChange={isClosed ? undefined : (o) => { setIsTOpen(o); if (o && !editingTithe) resetTD(); }}>
                     <DialogTrigger asChild><Button size="sm" disabled={isClosed}><Plus className="w-4 h-4 mr-2" /> Registar</Button></DialogTrigger>
                   <DialogContent className="max-h-[92dvh] overflow-y-auto">
                     <DialogHeader>
@@ -1637,7 +1669,7 @@ export default function Finances() {
                                   }}
                                 />
                                 <label htmlFor={`month-${m}`} className="text-sm cursor-pointer flex items-center gap-1">
-                                  <span>{m.substring(0, 3)}</span>
+                                  <span>{idxToName(m).substring(0, 3)}</span>
                                   {isPaid && (
                                     <span className="text-[9px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 px-1 py-0.2 rounded font-semibold" title="Já possui contribuição registada neste mês">
                                       Pago
@@ -1689,7 +1721,7 @@ export default function Finances() {
                             <div className="space-y-2">
                               {tD.selectedMonths.map(m => (
                                 <div key={`manual-${m}`} className="flex items-center gap-2">
-                                  <Label className="w-20">{m}</Label>
+                                  <Label className="w-20">{idxToName(m)}</Label>
                                   <Input 
                                     type="number" 
                                     step="0.01" 
