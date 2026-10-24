@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { deliveryOf } from '../lib/tithes';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { useQuery } from '@tanstack/react-query';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -44,14 +45,14 @@ export default function Obligations() {
 
         offeringsSnap.forEach(d => {
           const dt = d.data();
-          const pMonth = dt.month || MONTHS[0];
+          const pMonth = deliveryOf(dt as any).month || '01';
           const val = dt.amount || 0;
           processItem(pMonth, val, dt.type);
         });
 
         tithesSnap.forEach(d => {
           const dt = d.data();
-          const pMonth = dt.referenceMonth || dt.month || MONTHS[0];
+          const pMonth = deliveryOf(dt as any).month || '01';
           const val = dt.amount || 0;
           processItem(pMonth, val, dt.contributionType);
         });

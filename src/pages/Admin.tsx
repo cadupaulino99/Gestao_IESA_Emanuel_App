@@ -19,6 +19,9 @@ import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Badge } from '../components/ui/badge';
 import { restoreFromTrash, moveToTrash } from '../lib/trash';
+import { migrateTitheDoc, codeForSeq } from '../lib/migrate';
+import { maxSeqFromCodes } from '../lib/members';
+import { writeBatch } from 'firebase/firestore';
 import { orderBy } from 'firebase/firestore';
 
 export default function Admin() {
@@ -28,6 +31,8 @@ export default function Admin() {
   const [nonActiveMembers, setNonActiveMembers] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [backupConfirmed, setBackupConfirmed] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRequestsOpen, setIsRequestsOpen] = useState(false);
@@ -292,6 +297,44 @@ export default function Admin() {
     } catch (e) {
       toast.error("Erro ao atualizar estado do membro.");
       handleFirestoreError(e, OperationType.WRITE, `members/${memberId}`);
+    }
+  };
+
+  const runMigration = async () => {
+    if (!backupConfirmed) { toast.error('Confirme primeiro a cópia de segurança.'); return; }
+    const okGo = await confirmDialog('Aplicar a migração v1.9.3 (duas datas nos dízimos + IDs internos)? É idempotente: pode ser repetida sem estragar nada.', 'MIGRAR');
+    if (!okGo) return;
+    setMigrating(true);
+    try {
+      let tithesPatched = 0, membersCoded = 0;
+      const tSnap = await getDocs(collection(db, 'tithes'));
+      for (let i = 0; i < tSnap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        let n = 0;
+        tSnap.docs.slice(i, i + 400).forEach((d) => {
+          const patch = migrateTitheDoc(d.data() as any);
+          if (patch) { batch.update(d.ref, patch); n++; }
+        });
+        if (n) { await batch.commit(); tithesPatched += n; }
+      }
+      const mSnap = await getDocs(collection(db, 'members'));
+      const allMembers = mSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      let seq = maxSeqFromCodes(allMembers as any);
+      const need = allMembers.filter((m: any) => !m.internalCode);
+      for (let i = 0; i < need.length; i += 400) {
+        const batch = writeBatch(db);
+        need.slice(i, i + 400).forEach((m: any) => {
+          seq += 1;
+          batch.update(doc(db, 'members', m.id), { internalCode: codeForSeq(seq) });
+        });
+        await batch.commit();
+        membersCoded += Math.min(400, need.length - i);
+      }
+      toast.success(`Migração concluída: ${tithesPatched} dízimos atualizados, ${membersCoded} membros com ID interno.`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro na migração.');
+    } finally {
+      setMigrating(false);
     }
   };
 
@@ -1112,6 +1155,31 @@ export default function Admin() {
         </TabsContent>
         <TabsContent value="data">
           <div className="space-y-6">
+             <Card className="border shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><Database className="h-5 w-5" /> Migração v1.9.3 — duas datas no dízimo + IDs internos</CardTitle>
+                  <CardDescription>
+                    Os dízimos antigos passam a ter <b>mês de entrega</b> (contabilidade) e <b>mês de referência</b> (cartão),
+                    em formato numérico; os membros sem ID interno recebem um código M-0001….
+                    A operação é <b>idempotente</b> (pode repetir sem estragar) mas faça SEMPRE cópia primeiro.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={handleBackup} className="gap-2">
+                      <Download className="h-4 w-4" /> 1. Descarregar cópia de segurança
+                    </Button>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />
+                      Fiz a cópia de segurança
+                    </label>
+                  </div>
+                  <Button onClick={runMigration} disabled={!backupConfirmed || migrating} className="gap-2">
+                    <Database className="h-4 w-4" /> {migrating ? 'A migrar…' : '2. Executar migração'}
+                  </Button>
+                </CardContent>
+             </Card>
+
              <Card className="border shadow-sm">
                 <CardHeader>
                    <CardTitle className="flex items-center gap-2">

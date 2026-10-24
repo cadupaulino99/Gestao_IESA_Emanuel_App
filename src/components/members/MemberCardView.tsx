@@ -145,7 +145,11 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
           <Field label="Natural de" value={member.placeOfBirth} />
           <Field label="Nascido aos" value={member.birthDate ? fmtDateLong(member.birthDate) : null} />
           <Field label="Residente em" value={member.address} />
-          <Field label="BI nº" value={member.documentNumber} />
+          {member.documentNumber ? (
+            <Field label="BI nº" value={member.documentNumber} />
+          ) : (
+            <Field label="Identificação provisória (ID interno)" value={member.internalCode} />
+          )}
           <Field label="Emitido aos" value={member.issueDate ? fmtDate(member.issueDate) : null} />
           <Field label="Estado Civil" value={member.maritalStatus} />
           <Field label="Baptizado aos" value={member.baptismDate ? fmtDate(member.baptismDate) : null} />

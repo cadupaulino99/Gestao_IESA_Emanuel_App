@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { deliveryOf } from '../lib/tithes';
+import { toMonthIdx } from '../lib/months';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Users, Wallet, TrendingUp, HandHeart, Activity, Cake, AlertTriangle } from 'lucide-react';
@@ -120,7 +122,7 @@ export default function Dashboard() {
           const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
           tithesSnapshot.forEach(doc => {
-            const mText = doc.data().month;
+            const mText = deliveryOf(doc.data() as any).month;
             const m = MONTHS.indexOf(mText);
             if(m !== -1) {
               monthlyData[m].Entradas += doc.data().amount;
@@ -128,7 +130,7 @@ export default function Dashboard() {
             }
           });
           offeringsSnapshot.forEach(doc => {
-            const mText = doc.data().month;
+            const mText = deliveryOf(doc.data() as any).month;
             const m = MONTHS.indexOf(mText);
             if(m !== -1) {
               monthlyData[m].Entradas += doc.data().amount;
@@ -136,7 +138,7 @@ export default function Dashboard() {
             }
           });
           expensesSnapshot.forEach(doc => {
-            const mText = doc.data().month;
+            const mText = deliveryOf(doc.data() as any).month;
             const m = MONTHS.indexOf(mText);
             if(m !== -1) {
               monthlyData[m].Saídas += doc.data().amount;
@@ -261,7 +263,7 @@ export default function Dashboard() {
           const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
           const currMonthText = MONTHS[currentMonth - 1] || 'Janeiro';
           
-          const currentMonthTithes = allTithes.filter((t: any) => t.month === currMonthText && t.year === year);
+          const currentMonthTithes = allTithes.filter((t: any) => { const d = deliveryOf(t); return d.month === toMonthIdx(currMonthText) && d.year === year; });
           const memberTotals: Record<string, number> = {};
           currentMonthTithes.forEach((t: any) => {
             if (t.memberId) memberTotals[t.memberId] = (memberTotals[t.memberId] || 0) + (t.amount || 0);

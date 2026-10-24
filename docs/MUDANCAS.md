@@ -1,5 +1,49 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.9.3 (2026-10-24) — Dízimos com duas datas, duplicidades, identificação de membros
+
+**1. Duas datas por lançamento** (`deliveryMonth/Year` = entrega, usada pela
+contabilidade/relatórios; `referenceMonth/Year` = referência, usada pelo cartão e
+portal). UI de registo com «Mês/Ano de Entrega» (por defeito = mês operativo) e
+«Meses de Referência» multi-selecção (por defeito = entrega; acompanha a entrega
+enquanto não for tocada). Vários meses numa entrega = um lançamento por mês de
+referência, mesma entrega, recibo-base sufixado. Meses passam a canónico
+`'01'..'12'` em todo o lado (`lib/months.ts`), o que também corrige o bug latente
+em que o cartão comparava `'01'` com o legado `'Janeiro'` e mostrava zeros.
+Contabilidade (Finanças vista do mês, Dashboard, YearlyStats, Obrigações,
+Relatórios) agrega por **entrega** (`deliveryOf`); cartão/portal/tracker por
+**referência** (`referenceOf`) — ambos em `lib/tithes.ts`, com fallback ao legado.
+
+**2. Duplicidade** (`classifyTitheDuplicate`, pura e testada): `block` se
+membro+referência+valor+entrega iguais; `warn` com os dados do lançamento
+anterior (`describeTithe`) e confirmação explícita «CONFIRMAR» se só a referência
+coincide (prestações). O gate corre antes do insert optimista, por cada mês do lote.
+
+**3. Membros**: `internalCode` sequencial `M-0001` gerado uma vez por transacção
+(`settings/counters`), mostrado como identificação provisória quando não há BI;
+BI validado (`^\d{9}[A-Z]{2}\d{3}$`, normalizado) e **único** (bloqueia em
+create/edit); nomes iguais/semelhantes (`isSimilarName`: Levenshtein ≤ 2 ou
+Jaccard ≥ 0,8 após normalização) avisam com o registo parecido antes de criar;
+`mergeMembers(origem, destino)` move dízimos/donativos/comunhões/renovações/
+pedidos em lotes de 400, completa lacunas do destino e manda a origem para a
+**lixeira** (decisões do utilizador: divisão igual, M-0001, fusão recuperável).
+
+**Migração** em *Admin → Gestão de Dados*: exige descarregar a cópia e marcar
+«Fiz a cópia» antes de executar; idempotente; dízimos antigos ficam com
+entrega = caixa/ mês antigo e referência = referência/mês antigo, tudo numérico;
+membros sem código recebem `M-00XX` a partir da maior sequência existente.
+`migrateTitheDoc` é pura e testada.
+
+**Regras**: `isValidTitheCreate` passa a exigir `deliveryMonth/Year` +
+`referenceMonth/Year` (tecto de chaves 18).
+
+**Testes**: 53 (antes 33) — dois datas, duplicidade, meses legado→número,
+BI, semelhança, migração idempotente, códigos.
+
+**Verificação manual guiada**: `docs/VERIFICACAO-V1.9.3.md` (os dois exemplos do
+utilizador, multi-mês, bloqueio, prestação, BI, semelhantes, fusão, legado).
+
+
 ## v1.9.2 (2026-10-24) — Varrimento completo: menu a menu, botão a botão
 
 Auditoria manual de todas as rotas, botões e funções, à procura de silently-broken

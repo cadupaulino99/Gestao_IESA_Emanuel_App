@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { MONTHS_IDX, MONTHS_SHORT } from '../../types';
+import { deliveryOf } from '../../lib/tithes';
+import { toMonthIdx } from '../../lib/months';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { collection, query, getDocs, where } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
@@ -23,24 +26,28 @@ export function YearlyStats({ year }: { year: string }) {
         const offeringsSnap = await getDocs(query(collection(db, 'offerings'), where('year', '==', numYear)));
         const expensesSnap = await getDocs(query(collection(db, 'expenses'), where('year', '==', numYear)));
         
-        const monthlyData = MONTHS.reduce((acc, month) => {
-          acc[month] = { name: month.substring(0, 3), Entradas: 0, Saídas: 0 };
+        // chaves canónicas '01'..'12' (v1.9.3); name só para exibição
+        const monthlyData = MONTHS_IDX.reduce((acc, mi) => {
+          acc[mi] = { name: MONTHS_SHORT[MONTHS_IDX.indexOf(mi as any)], Entradas: 0, Saídas: 0 };
           return acc;
         }, {} as Record<string, any>);
 
         tithesSnap.forEach(doc => {
           const d = doc.data();
-          if (monthlyData[d.month]) monthlyData[d.month].Entradas += d.amount;
+          const dm = deliveryOf(d as any).month;
+          if (monthlyData[dm]) monthlyData[dm].Entradas += d.amount;
         });
         offeringsSnap.forEach(doc => {
           const d = doc.data();
-          if (monthlyData[d.month]) monthlyData[d.month].Entradas += d.amount;
+          const dm = toMonthIdx(d.month);
+          if (monthlyData[dm]) monthlyData[dm].Entradas += d.amount;
         });
 
         const categoryMap: Record<string, number> = {};
         expensesSnap.forEach(doc => {
           const d = doc.data();
-          if (monthlyData[d.month]) monthlyData[d.month].Saídas += d.amount;
+          const dm = toMonthIdx(d.month);
+          if (monthlyData[dm]) monthlyData[dm].Saídas += d.amount;
           
           categoryMap[d.category] = (categoryMap[d.category] || 0) + d.amount;
         });

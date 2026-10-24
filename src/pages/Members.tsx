@@ -28,6 +28,7 @@ import { generateMembershipCard, savePdf } from '../lib/pdfUtils';
 import { saveXlsx } from '../lib/download';
 import { MemberTithesTracker } from '../components/members/MemberTithesTracker';
 import MemberCardModal from '../components/members/MemberCardModal';
+import { validateBi, findSimilarMembers, nextInternalCode, mergeMembers } from '../lib/members';
 import CommunionTracker from '../components/members/CommunionTracker';
 import { compressImageFile } from '../lib/ai';
 import { PastoralMessageGeneratorModal } from '../components/members/PastoralMessageGeneratorModal';
@@ -174,6 +175,10 @@ export default function Members() {
   const [aiMessageMember, setAiMessageMember] = useState<Member | null>(null);
   const [docKind, setDocKind] = useState<DocKind | null>(null);
   const [cardMember, setCardMember] = useState<Member | null>(null);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeTarget, setMergeTarget] = useState<Member | null>(null);
+  const [mergeSearch, setMergeSearch] = useState('');
+  const [mergeBusy, setMergeBusy] = useState(false);
   const [memberTithes, setMemberTithes] = useState<any[]>([]);
   const [loadingTithes, setLoadingTithes] = useState(false);
   const confirmDialog = useConfirm();
@@ -285,9 +290,40 @@ export default function Members() {
   });
 
   const handleSave = async (data: any) => {
+    // ── B.I.: formato angolano + unicidade (bloqueia) ──
+    const bi = validateBi(data.documentNumber);
+    if (!bi.ok) {
+      toast.error(bi.error || 'B.I. inválido.');
+      return;
+    }
+    data.documentNumber = bi.normalized || undefined;
+    if (bi.normalized) {
+      const dup = await getDocs(query(collection(db, 'members'), where('documentNumber', '==', bi.normalized)));
+      const other = dup.docs.find((d) => d.id !== editingMember?.id);
+      if (other) {
+        toast.error(`B.I. já cadastrado em «${other.data().name}». Corrija ou funda os registos duplicados.`);
+        return;
+      }
+    }
+
+    // ── Nome igual ou muito semelhante: mostrar o parecido e exigir confirmação ──
+    if (!editingMember) {
+      const all = await getDocs(query(collection(db, 'members'), limit(500)));
+      const sims = findSimilarMembers(data.name, all.docs.map((d) => ({ id: d.id, ...d.data() }) as Member));
+      if (sims.length > 0) {
+        const list = sims.slice(0, 4).map((m2) => `• ${m2.name}${m2.documentNumber ? ` — BI ${m2.documentNumber}` : m2.internalCode ? ` — ID ${m2.internalCode}` : ''}${m2.groupCell ? ` (${m2.groupCell})` : ''}`).join('\n');
+        const okSim = await confirmDialog(`Existe(m) registo(s) muito parecido(s):\n\n${list}\n\nCriar mesmo assim um membro novo?`, 'CRIAR NA MESMA');
+        if (!okSim) return;
+      }
+    }
+
     const confirmed = await confirmDialog("Deseja guardar esta informação?");
     if (confirmed) {
       const cleanData = { ...data };
+      // ID interno sequencial, gerado uma única vez (nunca muda)
+      if (!editingMember && !cleanData.internalCode) {
+        cleanData.internalCode = await nextInternalCode();
+      }
       Object.keys(cleanData).forEach(key => {
         if (cleanData[key] === undefined) delete cleanData[key];
       });
@@ -783,6 +819,11 @@ export default function Members() {
                   <CreditCard className="h-4 w-4 mr-2 text-emerald-600" />
                   Cartão de Membro
                 </Button>
+                {isAdmin && (
+                  <Button variant="ghost" size="sm" onClick={() => { setMergeTarget(null); setMergeSearch(''); setMergeOpen(true); }}>
+                    Fundir duplicado…
+                  </Button>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => generateMembershipCard(selectedMember)} title="Cartão pequeno (CR80)">
                   <Download className="h-4 w-4" />
                 </Button>
@@ -801,7 +842,11 @@ export default function Members() {
                       </div>
                       <div>
                         <span className="text-muted-foreground block">Nº do BI</span>
-                        {selectedMember.documentNumber || '-'}
+                        {selectedMember.documentNumber || (selectedMember.internalCode ? `— (ID provisório ${selectedMember.internalCode})` : '-')}
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">ID interno</span>
+                        {selectedMember.internalCode || '-'}
                       </div>
                       <div>
                         <span className="text-muted-foreground block">Nascimento</span>
@@ -904,6 +949,64 @@ export default function Members() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={mergeOpen} onOpenChange={(o) => !o && setMergeOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Fundir registo duplicado</DialogTitle>
+            <DialogDescription>
+              Os dízimos, donativos, comunhões, renovações e pedidos de <b>{selectedMember?.name}</b>
+              passam para o membro escolhido. O registo de origem vai para a lixeira (recuperável).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="Pesquisar membro de destino…"
+              value={mergeTarget ? mergeTarget.name : mergeSearch}
+              onChange={(e) => { setMergeTarget(null); setMergeSearch(e.target.value); }}
+            />
+            {!mergeTarget && mergeSearch.trim().length >= 2 && (
+              <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                {members
+                  .filter((m2) => m2.id !== selectedMember?.id && m2.name.toLowerCase().includes(mergeSearch.trim().toLowerCase()))
+                  .slice(0, 8)
+                  .map((m2) => (
+                    <Button key={m2.id} type="button" variant="outline" size="sm" onClick={() => { setMergeTarget(m2); setMergeSearch(''); }}>
+                      {m2.name}
+                    </Button>
+                  ))}
+              </div>
+            )}
+            {mergeTarget && (
+              <div className="text-xs rounded-lg border border-emerald-300/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 px-2 py-1.5">
+                Destino: <b>{mergeTarget.name}</b> ({mergeTarget.internalCode || 'sem ID'} )
+              </div>
+            )}
+            <Button
+              className="w-full"
+              disabled={!mergeTarget || mergeBusy}
+              onClick={async () => {
+                if (!selectedMember || !mergeTarget) return;
+                setMergeBusy(true);
+                try {
+                  const r = await mergeMembers(selectedMember, mergeTarget, user?.email || 'unknown');
+                  const tot = Object.values(r.moved).reduce((a, b) => a + b, 0);
+                  toast.success(`Fusão concluída: ${tot} registos movidos; origem na lixeira.${r.filledFields.length ? ` Campos completados: ${r.filledFields.join(', ')}.` : ''}`);
+                  setMergeOpen(false);
+                  setSelectedMember(null);
+                  queryClient.invalidateQueries({ queryKey: ['members'] });
+                } catch (e: any) {
+                  toast.error(e?.message || 'Erro na fusão.');
+                } finally {
+                  setMergeBusy(false);
+                }
+              }}
+            >
+              {mergeBusy ? 'A fundir…' : 'Fundir registos'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <MemberCardModal
         member={cardMember}
