@@ -114,6 +114,8 @@ export const generateMembershipCard = async (member: Member) => {
 /*  página 2 = verso: renovações, foto, assinatura, dízimos, Mal 3:10) */
 /* ------------------------------------------------------------------ */
 import autoTable from 'jspdf-autotable';
+import { aggregateByMonth, sumYear, cardYears } from './finance';
+import { toMonthIdx } from './months';
 import {
   CommunionMark,
   Donation,
@@ -172,12 +174,11 @@ function drawCrossPdf(doc: jsPDF, x: number, y: number) {
 }
 
 function yearsOfPdf(d: MemberCardPdfData): number[] {
-  const ys = new Set<number>();
-  d.communions.forEach((c) => c.year && ys.add(c.year));
-  d.donations.forEach((x) => x.referenceYear && ys.add(x.referenceYear));
-  d.tithes.forEach((t) => t.referenceYear && ys.add(t.referenceYear));
-  if (ys.size === 0) ys.add(new Date().getFullYear());
-  return [...ys].sort((a, b) => a - b).slice(-4);
+  /* cardYears (lib/finance): meses/anos CANÓNICOS — registos legados
+     (month: 'Janeiro' + year, sem referenceYear) também contam. Antes isto
+     lia referenceYear/referenceMonth crus e o PDF ficava sem dízimos antigos
+     que o ecrã mostrava. */
+  return cardYears(d);
 }
 
 export const generateMemberCardPdf = async (
@@ -251,7 +252,7 @@ export const generateMemberCardPdf = async (
     head: [['Mês', ...years.map(String)]],
     body: MONTHS_IDX.map((mi, i) => [
       `${MONTHS_SHORT[i]}.`,
-      ...years.map((yr) => data.communions.find((c) => c.year === yr && c.month === mi)?.mark || ''),
+      ...years.map((yr) => data.communions.find((c) => Number(c.year) === yr && toMonthIdx(c.month) === mi)?.mark || ''),
     ]),
     styles: { fontSize: 7.5, cellPadding: 1.6, halign: 'center' },
     headStyles: { fillColor: [210, 215, 210], textColor: 20, fontStyle: 'bold' },
@@ -271,7 +272,13 @@ export const generateMemberCardPdf = async (
   });
   y = (doc as any).lastAutoTable.finalY + 6;
 
-  /* Donativos voluntários */
+  /* Donativos voluntários (agregação canónica — mesma fonte do ecrã) */
+  const donAgg: Record<number, ReturnType<typeof aggregateByMonth>> = {};
+  const titAgg: Record<number, ReturnType<typeof aggregateByMonth>> = {};
+  years.forEach((yr) => {
+    donAgg[yr] = aggregateByMonth(data.donations, yr);
+    titAgg[yr] = aggregateByMonth(data.tithes, yr);
+  });
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.text('ENTREGA DE DONATIVOS VOLUNTÁRIOS', 12, y);
@@ -283,13 +290,11 @@ export const generateMemberCardPdf = async (
       ...MONTHS_IDX.map((mi, i) => [
         `${MONTHS_SHORT[i]}.`,
         ...years.map((yr) => {
-          const v = data.donations
-            .filter((d) => d.referenceYear === yr && d.referenceMonth === mi)
-            .reduce((a, b) => a + b.amount, 0);
+          const v = donAgg[yr][mi]?.total || 0;
           return v ? pdfMoney(v) : '';
         }),
       ]),
-      ['Total', ...years.map((yr) => pdfMoney(data.donations.filter((d) => d.referenceYear === yr).reduce((a, b) => a + b.amount, 0)))],
+      ['Total', ...years.map((yr) => pdfMoney(sumYear(data.donations, yr)))],
     ],
     styles: { fontSize: 7.5, cellPadding: 1.1, halign: 'center' },
     headStyles: { fillColor: [210, 215, 210], textColor: 20, fontStyle: 'bold' },
@@ -342,7 +347,7 @@ export const generateMemberCardPdf = async (
   doc.setTextColor(70, 70, 70);
   doc.text('Assinatura do Titular', 50, y2 + 34);
 
-  /* Dízimos */
+  /* Dízimos (agregação canónica — mesma fonte do ecrã; legados incluídos) */
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(20, 20, 20);
@@ -356,13 +361,13 @@ export const generateMemberCardPdf = async (
         return [
           `${MONTHS_SHORT[i]}.`,
           ...years.map((yr) => {
-            const rows = data.tithes.filter((t) => t.referenceYear === yr && t.referenceMonth === mi);
-            const total = rows.reduce((a, b) => a + b.amount, 0);
-            return total ? `${pdfMoney(total)}${rows.length > 1 ? ` (${rows.length}×)` : ''}` : '';
+            const a = titAgg[yr][mi];
+            const total = a?.total || 0;
+            return total ? `${pdfMoney(total)}${a && a.count > 1 ? ` (${a.count}×)` : ''}` : '';
           }),
         ];
       }),
-      ['Total', ...years.map((yr) => pdfMoney(data.tithes.filter((t) => t.referenceYear === yr).reduce((a, b) => a + b.amount, 0)))],
+      ['Total', ...years.map((yr) => pdfMoney(sumYear(data.tithes, yr)))],
     ],
     styles: { fontSize: 7.5, cellPadding: 1.1, halign: 'center' },
     headStyles: { fillColor: [210, 215, 210], textColor: 20, fontStyle: 'bold' },

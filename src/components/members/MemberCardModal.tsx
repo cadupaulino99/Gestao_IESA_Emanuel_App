@@ -182,6 +182,8 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
       await deleteDoc(doc(db, 'donations', id));
       toast.success('Donativo removido.');
       await load(member.id);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao remover o donativo.');
     } finally {
       setBusy(false);
     }
