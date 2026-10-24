@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Plus, Trash2, Info, Download, Pencil, FileText, Check, ChevronsUpDown, Printer, MessageCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { saveBlob, dataUrlToBlob, saveXlsx, openExternal } from '../lib/download';
+import { savePdf } from '../lib/pdfUtils';
 import { moveToTrash, restoreFromTrash, isRecordLocked } from '../lib/trash';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
@@ -346,7 +348,7 @@ export default function Finances() {
              label: 'Enviar Manual',
              onClick: () => {
                 const msg = `Olá ${mem.name}, O seu recibo de contribuição (Nº ${receiptNum}) foi registado com o valor de ${amount} Kz. Que Deus o abençoe!`;
-                window.open(`https://wa.me/${mem.phone.replace(/[\s\+]/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                openExternal(`https://wa.me/${mem.phone.replace(/[\s\+]/g, '')}?text=${encodeURIComponent(msg)}`);
              }
            }
          });
@@ -1035,7 +1037,7 @@ export default function Finances() {
   };
 
   const exportFinancesExcel = () => {
-    import('xlsx').then(XLSX => {
+    import('xlsx').then(async XLSX => {
       const tithesRows = tithes.map(t => {
         const member = members.find(m => m.id === t.memberId)?.name || 'Desconhecido';
         return {
@@ -1074,7 +1076,7 @@ export default function Finances() {
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Finanças");
-      XLSX.writeFile(wb, `financas_${selectedMonth}_${selectedYear}.xlsx`);
+      await saveXlsx(XLSX, wb, `financas_${selectedMonth}_${selectedYear}.xlsx`);
       toast.success("Dados financeiros exportados com sucesso.");
     }).catch(err => {
       console.error(err);
@@ -1089,15 +1091,8 @@ export default function Finances() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.base64Data) {
-          const win = window.open();
-          if (win) {
-             win.document.write(`<iframe src="${data.base64Data}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-          } else {
-             const a = document.createElement("a");
-             a.href = data.base64Data;
-             a.download = `Comprovativo_Saida_${expenseId}`;
-             a.click();
-          }
+          // window.open()/anchor são mudos na WebView — partilha/gravação explícita
+          await saveBlob(dataUrlToBlob(data.base64Data), `Comprovativo_Saida_${expenseId}.pdf`);
         } else {
           toast.error("Comprovativo vazio.");
         }
@@ -1185,7 +1180,7 @@ export default function Finances() {
     window.open(url, '_blank');
   };
 
-  const exportReceiptPDF = (t: any) => {
+  const exportReceiptPDF = async (t: any) => {
     const doc = new jsPDF();
     const memberName = members.find(m => m.id === t.memberId)?.name || 'Membro';
     const amount = new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(t.amount);
@@ -1215,11 +1210,11 @@ export default function Finances() {
     
     printReceiptFooter(doc, 130);
     
-    doc.save(`Recibo_${memberName.replace(/\s+/g, '_')}_${t.referenceMonth || selectedMonth}.pdf`);
+    await savePdf(doc, `Recibo_${memberName.replace(/\s+/g, '_')}_${t.referenceMonth || selectedMonth}.pdf`);
     toast.success("Recibo gerado com sucesso.");
   };
 
-  const batchPrintReceipts = () => {
+  const batchPrintReceipts = async () => {
     if (tithes.length === 0) {
       toast.warning("Sem entradas para imprimir.");
       return;
@@ -1267,11 +1262,11 @@ export default function Finances() {
       yOffset += 148; // Move down for the next receipt on the same page
     });
     
-    doc.save(`Recibos_Lote_${selectedMonth}_${selectedYear}.pdf`);
+    await savePdf(doc, `Recibos_Lote_${selectedMonth}_${selectedYear}.pdf`);
     toast.success("Recibos gerados em lote com sucesso.");
   };
 
-  const exportOfferingReceiptPDF = (o: any) => {
+  const exportOfferingReceiptPDF = async (o: any) => {
     const doc = new jsPDF();
     const amount = new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(o.amount);
     
@@ -1300,7 +1295,7 @@ export default function Finances() {
     
     printReceiptFooter(doc, 130);
     
-    doc.save(`Recibo_Oferta_${o.type}_${selectedMonth}.pdf`);
+    await savePdf(doc, `Recibo_Oferta_${o.type}_${selectedMonth}.pdf`);
     toast.success("Recibo gerado com sucesso.");
   };
 

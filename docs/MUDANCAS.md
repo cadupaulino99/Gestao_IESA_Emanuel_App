@@ -1,5 +1,36 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.9.2 (2026-10-24) — Varrimento completo: menu a menu, botão a botão
+
+Auditoria manual de todas as rotas, botões e funções, à procura de silently-broken
+no Android. Achados e correções:
+
+1. **Lixeira sem regras = eliminações falhavam em toda a app.** `moveToTrash`
+   escreve em `trash/…`, mas não existia `match /trash` nas regras (default é
+   `allow read, write: if false`). Adicionado: leitura/criação/eliminação só
+   liderança, com validação de campos. Sem isto, «Eliminar membro» etc. morria
+   com permission-denied.
+2. **Descargas mudas no APK (12 sítios).** Mesma classe do bug do cartão:
+   `jsPDF.save()`, `XLSX.writeFile()` e `<a download>` não fazem nada na WebView.
+   Novo `src/lib/download.ts` (`saveBlob`, `saveXlsx`, `dataUrlToBlob`,
+   `openExternal`): em native → folha de partilha, fallback Documents/Download
+   com toast; na web → comportamento clássico. Aplicado em: Membros (Excel/PDF),
+   Dízimos por membro (Excel), Finanças (Excel do mês, 3 recibos PDF,
+   comprovativo de saída), Relatórios (4 exportações), Admin (backup JSON +
+   Excel de utilizadores), Portal do Membro (extrato PDF).
+3. **`window.open()` mudo no APK** nos botões de WhatsApp (mensagem pastoral e
+   «Enviar Manual» do recibo) → `openExternal()` (Custom Tab via @capacitor/browser).
+   (O updateCheck já fazia isto bem.)
+4. Funções que passaram a `async` para poder aguardar as descargas (exportações
+   e recibos); sem isso o `await` era erro de compilação.
+
+Verificado e **sem problemas**: navegação/rotas/paleta de comandos coerentes;
+Obrigações é só-leitura (calcula de tithes/offerings); o gravador da Rádio capta
+o STREAM por fetch (não usa microfone → não precisa de RECORD_AUDIO); Settings
+(paletas/modo/diagnóstico) e Support (IA/equipa/diagnóstico) ligados; coleções
+usadas no código têm todas `match` nas regras (trash era a única excepção).
+
+
 ## 2026-10-24 — Follow-up da auditoria (revisão externa): os três próximos passos
 
 1. **Bootstrap de email auto-extinguível** (em vez de «remover quando houver

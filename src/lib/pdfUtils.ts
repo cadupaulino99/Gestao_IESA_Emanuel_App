@@ -1,9 +1,8 @@
 import { jsPDF } from 'jspdf';
+import { saveBlob } from './download';
 import { prefGet } from './prefs';
 import { Member } from '../types';
-import { Capacitor } from '@capacitor/core';
-import { Filesystem, Directory } from '@capacitor/filesystem';
-import { toast } from 'sonner';
+
 
 /**
  * Gravar PDF que FUNCIONA no APK: o `doc.save()` do jsPDF usa um <a download>
@@ -13,34 +12,7 @@ import { toast } from 'sonner';
  * houver partilha, grava em Documents/ e diz onde ficou. Na web: save() normal.
  */
 export async function savePdf(docPdf: jsPDF, filename: string): Promise<void> {
-  if (Capacitor.getPlatform() === 'web') {
-    docPdf.save(filename);
-    return;
-  }
-  const blob = docPdf.output('blob');
-  const file = new File([blob], filename, { type: 'application/pdf' });
-  const nav = navigator as any;
-  if (nav.canShare && nav.canShare({ files: [file] })) {
-    try {
-      await nav.share({ files: [file], title: filename });
-      return;
-    } catch {
-      /* utilizador cancelou a partilha → grava em Documents */
-    }
-  }
-  const base64 = await new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onloadend = () => resolve(String(r.result).split(',')[1]);
-    r.onerror = () => reject(new Error('Não foi possível ler o PDF.'));
-    r.readAsDataURL(blob);
-  });
-  await Filesystem.writeFile({
-    path: `Download/${filename}`,
-    data: base64,
-    directory: Directory.Documents,
-    recursive: true,
-  });
-  toast.success(`PDF guardado em Documents/Download/${filename}`);
+  await saveBlob(docPdf.output('blob'), filename);
 }
 
 export const generateMembershipCard = async (member: Member) => {

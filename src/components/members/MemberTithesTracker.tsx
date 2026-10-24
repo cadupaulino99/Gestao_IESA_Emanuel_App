@@ -10,6 +10,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Check, X, Search, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { saveXlsx } from '../../lib/download';
 import * as XLSX from 'xlsx';
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -197,7 +198,7 @@ export function MemberTithesTracker() {
       const dateStr = new Date().toISOString().split('T')[0];
       const fileName = `Dizimos_${selectedYear}_${dateStr}.xlsx`;
       
-      XLSX.writeFile(wb, fileName);
+      await saveXlsx(XLSX, wb, fileName);
       toast.success('Exportação concluída com sucesso!');
     } catch (error) {
       console.error('Erro ao exportar:', error);

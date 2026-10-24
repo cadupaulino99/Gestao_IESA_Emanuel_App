@@ -24,7 +24,8 @@ import { getDoc } from 'firebase/firestore';
 import { Member } from '../types';
 import { useConfirm } from '../context/ConfirmContext';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { generateMembershipCard } from '../lib/pdfUtils';
+import { generateMembershipCard, savePdf } from '../lib/pdfUtils';
+import { saveXlsx } from '../lib/download';
 import { MemberTithesTracker } from '../components/members/MemberTithesTracker';
 import MemberCardModal from '../components/members/MemberCardModal';
 import CommunionTracker from '../components/members/CommunionTracker';
@@ -378,14 +379,14 @@ export default function Members() {
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Membros");
-    XLSX.writeFile(workbook, "membros.xlsx");
+    await saveXlsx(XLSX, workbook, 'membros.xlsx');
     } catch (err) {
       console.error(err);
       toast.error("Erro ao exportar Excel.");
     }
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text("Lista de Membros", 14, 15);
@@ -408,7 +409,7 @@ export default function Members() {
       headStyles: { fillColor: [15, 23, 42] }
     });
 
-    doc.save('membros.pdf');
+    await savePdf(doc, 'membros.pdf');
   };
 
   return (

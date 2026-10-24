@@ -380,6 +380,16 @@ service cloud.firestore {
     }
 
     // --- WhatsApp Outbox Collection ---
+    // Lixeira: moveToTrash/restoreFromTrash (lib/trash.ts). Sem este match,
+    // TODAS as eliminações falhavam com permission-denied (varrimento 2026-10-24).
+    match /trash/{trashId} {
+      allow read, list: if hasFinancialWriteAccess();
+      allow create: if hasFinancialWriteAccess() && isValidId(trashId)
+                    && incoming().keys().hasAll(['collectionName', 'originalId', 'data', 'deletedAt', 'deletedBy']);
+      allow update: if false;
+      allow delete: if hasFinancialWriteAccess();
+    }
+
     match /whatsapp_outbox/{msgId} {
       allow read, list: if isAdmin();
       allow create: if hasFinancialWriteAccess();

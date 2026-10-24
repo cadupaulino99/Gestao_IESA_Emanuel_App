@@ -12,6 +12,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Shield, Plus, Trash2, Download, Upload, Church, Save, Bell, CheckCircle2, XCircle, Database, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { saveBlob, saveXlsx } from '../lib/download';
 import { useConfirm } from '../context/ConfirmContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../context/AuthContext';
@@ -315,13 +316,7 @@ export default function Admin() {
       }
       
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `backup_igreja_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      await saveBlob(blob, `backup_igreja_${new Date().toISOString().split('T')[0]}.json`);
       toast.success("Backup concluído com sucesso!");
     } catch(e) {
       toast.error("Erro ao gerar backup.");
@@ -528,11 +523,11 @@ export default function Admin() {
       'Data de Registo': new Date(u.createdAt).toLocaleDateString('pt-AO')
     }));
     
-    import('xlsx').then(XLSX => {
+    import('xlsx').then(async XLSX => {
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Utilizadores");
-      XLSX.writeFile(wb, `utilizadores_${new Date().toISOString().substring(0, 10)}.xlsx`);
+      await saveXlsx(XLSX, wb, `utilizadores_${new Date().toISOString().substring(0, 10)}.xlsx`);
       toast.success("Ficheiro exportado com sucesso.");
     }).catch(err => {
       console.error(err);

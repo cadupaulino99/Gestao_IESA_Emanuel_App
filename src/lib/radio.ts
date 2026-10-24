@@ -229,15 +229,10 @@ export async function shareRecording(r: Recording): Promise<boolean> {
   }
 }
 
-export function downloadBlob(blob: Blob, name: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+/** Deprecado em native: usar saveBlob de lib/download (partilha/Documents). */
+export async function downloadBlob(blob: Blob, name: string): Promise<void> {
+  const { saveBlob } = await import('./download');
+  await saveBlob(blob, name);
 }
 
 /* ------------------------------------------------------------------ */
