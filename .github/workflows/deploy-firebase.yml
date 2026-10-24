@@ -7,6 +7,10 @@ name: Deploy Firebase (regras, índices e funções)
 on:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   deploy:
     name: firebase deploy
@@ -20,8 +24,7 @@ jobs:
           node-version: 22
 
       - name: Instalar dependências das funções
-        working-directory: functions
-        run: npm install --no-audit --no-fund
+        run: npm --prefix functions ci || npm --prefix functions install
 
       - name: Autenticar com a conta de serviço
         env:
@@ -36,18 +39,22 @@ jobs:
         # Plano Spark (gratuito) nao permite Cloud Functions (exige Blaze).
         # Regras + indices implantam-se normalmente. Quando ativares o Blaze,
         # acrescenta ",functions" ao --only para levar tambem a IA.
-        run: npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ID" 2>&1 | tee /tmp/deploy.log
+        run: |
+          set -o pipefail
+          npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ID" 2>&1 | tee /tmp/deploy.log
 
       - name: Reportar falha em issue (com o log)
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "Deploy Firebase falhou" --json number -q 'length')"
+          EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Deploy Firebase falhou' --json number -q 'length')"
           if [ "$EXISTE" != "0" ]; then echo "ja ha issue de falha aberta"; exit 0; fi
-          BODY="$(tail -60 /tmp/deploy.log | sed 's/`/\`/g')"
-          gh issue create --repo "$GITHUB_REPOSITORY" --title "Deploy Firebase falhou (log anexado)" --body "Ultimas 60 linhas do deploy:
-
-\`\`\`
-$BODY
-\`\`\`" || true
+          {
+            echo 'Ultimas 60 linhas do deploy:'
+            echo ''
+            echo '```'
+            tail -60 /tmp/deploy.log || echo '(sem log)'
+            echo '```'
+          } > /tmp/body.md
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "Deploy Firebase falhou (log anexado)" --body-file /tmp/body.md || true
