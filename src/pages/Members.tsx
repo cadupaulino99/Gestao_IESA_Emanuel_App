@@ -689,7 +689,7 @@ export default function Members() {
                         <TableCell>
                           <div className="flex gap-2">
                             <Button variant="ghost" size="icon" onClick={() => setAiMessageMember(m)} title="Mensagem Pastoral com IA"><Sparkles className="h-4 w-4 text-purple-600" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => generateMembershipCard(m)} title="Gerar Cartão"><CreditCard className="h-4 w-4 text-emerald-600" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => setCardMember(m)} title="Cartão de Membro"><CreditCard className="h-4 w-4 text-emerald-600" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => openProfile(m)} title="Ver Perfil"><Eye className="h-4 w-4 text-blue-500" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => openEdit(m)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                             <Button variant="ghost" size="icon" className="text-destructive" onClick={async () => {
@@ -727,7 +727,7 @@ export default function Members() {
                               </div>
                            </div>
                            <div className="flex flex-col gap-2">
-                              <Button variant="outline" size="icon" onClick={() => generateMembershipCard(m)} title="Gerar Cartão"><CreditCard className="h-4 w-4 text-emerald-600"/></Button>
+                              <Button variant="outline" size="icon" onClick={() => setCardMember(m)} title="Cartão de Membro"><CreditCard className="h-4 w-4 text-emerald-600"/></Button>
                               <Button variant="outline" size="icon" onClick={() => openProfile(m)}><Eye className="h-4 w-4 text-blue-500"/></Button>
                               <Button variant="outline" size="icon" onClick={() => openEdit(m)}><Pencil className="h-4 w-4"/></Button>
                               <Button variant="outline" size="icon" className="text-destructive" onClick={async () => {

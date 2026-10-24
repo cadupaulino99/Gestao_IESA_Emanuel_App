@@ -52,9 +52,11 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
   const [renSign, setRenSign] = useState('');
 
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = async (memberId: string) => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [c, d, t, r] = await Promise.all([
         getDocs(query(collection(db, 'communions'), where('memberId', '==', memberId))),
@@ -68,9 +70,11 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
         tithes: t.docs.map((x) => ({ id: x.id, ...x.data() }) as Tithe),
         renewals: r.docs.map((x) => ({ id: x.id, ...x.data() }) as Renewal),
       });
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast.error('Erro ao carregar o cartão. Verifique as permissões (as coleções novas precisam das regras publicadas).');
+      const msg = e?.message || 'Erro ao carregar o cartão.';
+      setLoadError(msg);
+      toast.error('Erro ao carregar o cartão: ' + msg);
     } finally {
       setLoading(false);
     }
@@ -193,6 +197,18 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-slate-500">
             <Loader2 className="h-5 w-5 animate-spin" /> A carregar o cartão…
+          </div>
+        ) : loadError ? (
+          <div className="space-y-3 rounded-lg border border-amber-300/60 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-900 dark:text-amber-200">
+            <p><b>Não foi possível carregar o cartão.</b></p>
+            <p className="text-xs break-all">{loadError}</p>
+            <p className="text-xs">
+              Causas habituais: (1) as regras do Firestore ainda não foram publicadas —
+              corra o workflow <i>Deploy Firebase</i>; (2) sessão terminada — saia e volte a entrar.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => member && load(member.id)}>
+              Tentar novamente
+            </Button>
           </div>
         ) : (
           <>

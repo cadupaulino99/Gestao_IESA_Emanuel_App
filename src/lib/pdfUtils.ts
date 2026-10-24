@@ -1,6 +1,47 @@
 import { jsPDF } from 'jspdf';
 import { prefGet } from './prefs';
 import { Member } from '../types';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { toast } from 'sonner';
+
+/**
+ * Gravar PDF que FUNCIONA no APK: o `doc.save()` do jsPDF usa um <a download>
+ * que a WebView do Android ignora em silêncio (era por isso que "o cartão não
+ * aparecia" ao clicar). Em native: partilha via folha de partilha do Android
+ * (Guardar em Ficheiros, Drive, imprimir…); se o utilizador cancelar ou não
+ * houver partilha, grava em Documents/ e diz onde ficou. Na web: save() normal.
+ */
+export async function savePdf(docPdf: jsPDF, filename: string): Promise<void> {
+  if (Capacitor.getPlatform() === 'web') {
+    docPdf.save(filename);
+    return;
+  }
+  const blob = docPdf.output('blob');
+  const file = new File([blob], filename, { type: 'application/pdf' });
+  const nav = navigator as any;
+  if (nav.canShare && nav.canShare({ files: [file] })) {
+    try {
+      await nav.share({ files: [file], title: filename });
+      return;
+    } catch {
+      /* utilizador cancelou a partilha → grava em Documents */
+    }
+  }
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onloadend = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = () => reject(new Error('Não foi possível ler o PDF.'));
+    r.readAsDataURL(blob);
+  });
+  await Filesystem.writeFile({
+    path: `Download/${filename}`,
+    data: base64,
+    directory: Directory.Documents,
+    recursive: true,
+  });
+  toast.success(`PDF guardado em Documents/Download/${filename}`);
+}
 
 export const generateMembershipCard = async (member: Member) => {
   const docPdf = new jsPDF({
@@ -91,7 +132,7 @@ export const generateMembershipCard = async (member: Member) => {
   docPdf.text('ID: ' + member.id.substring(0, 8).toUpperCase(), 5, 49);
   docPdf.text('Emitido em: ' + new Date().toLocaleDateString('pt-AO'), 45, 49);
 
-  docPdf.save(`Cartao_Membro_${member.name.replace(/\s+/g,'_')}.pdf`);
+  await savePdf(docPdf, `Cartao_Membro_${member.name.replace(/\s+/g,'_')}.pdf`);
 };
 
 /* ------------------------------------------------------------------ */
@@ -360,5 +401,5 @@ export const generateMemberCardPdf = async (
   doc.setTextColor(70, 70, 70);
   doc.text('“Trazei todos os dízimos à casa do tesouro…”  Mal. 3:10', W / 2, 200, { align: 'center' });
 
-  doc.save(`cartao-membro-${(member.name || 'membro').toLowerCase().replace(/\s+/g, '-')}.pdf`);
+  await savePdf(doc, `cartao-membro-${(member.name || 'membro').toLowerCase().replace(/\s+/g, '-')}.pdf`);
 };
