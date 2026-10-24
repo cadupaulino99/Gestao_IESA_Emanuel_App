@@ -26,3 +26,12 @@ jobs:
         run: npx vitest run
       - name: Sintaxe do Worker
         run: node --check worker/ai-worker.js
+      - name: Worker no ar vs. repo (informativo)
+        continue-on-error: true
+        run: |
+          V_REPO="$(grep -o "WORKER_VERSION = '[^']*'" worker/ai-worker.js | head -1 | cut -d"'" -f2)"
+          V_LIVE="$(curl -fsS https://iesa-ai.cadupaulino99.workers.dev/__health | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).version||"?")}catch{console.log("?")}})' || echo '?')"
+          echo "Worker no repositório: $V_REPO | no ar: $V_LIVE"
+          if [ "$V_REPO" != "$V_LIVE" ]; then
+            echo "::warning::O Worker no ar ($V_LIVE) nao coincide com o repo ($V_REPO). Publique-o (docs/INICIO-RAPIDO.md). O cron diario abre issue se persistir."
+          fi
