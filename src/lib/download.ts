@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { toast } from 'sonner';
 
 /**
@@ -8,8 +9,20 @@ import { toast } from 'sonner';
  * Nem `<a download>` nem `window.open()` trabalham na WebView do Android:
  * o clique é ignorado em silêncio (foi assim que o cartão "não aparecia", e o
  * mesmo acontecia com Excel, recibos, backups e relatórios — varrimento
- * de 2026-10-24). Em native: folha de partilha; se o utilizador cancelar,
- * grava em Documents/Download/ e diz onde ficou. Na web: <a download> normal.
+ * de 2026-10-24).
+ *
+ * v1.12.2 — A Web Share API (`navigator.share`/`canShare`) usada desde a
+ * v1.8.3 TAMBÉM não existe na Android System WebView (só nos browsers):
+ * `canShare` vinha `undefined`, a folha de partilha nunca abria e o recurso
+ * escrevia o ficheiro em `Directory.Documents` — que no Android é a pasta
+ * PRIVADA da app (`Android/data/<appId>/files/Documents/Download/`),
+ * inacessível a gestores de ficheiros desde o Android 11. O utilizador via
+ * "guardado" e nunca recebia ficheiro nenhum.
+ *
+ * Em native agora: grava na cache e abre a folha de partilha NATIVA via
+ * plugin @capacitor/share (Intent.ACTION_SEND + FileProvider) —Guardar em
+ * Ficheiros, Drive, imprimir, WhatsApp… Se a partilha falhar, grava em
+ * Documents/Download/ e diz honestamente onde ficou. Na web: <a download>.
  */
 export async function saveBlob(blob: Blob, filename: string): Promise<void> {
   if (Capacitor.getPlatform() === 'web') {
@@ -23,29 +36,36 @@ export async function saveBlob(blob: Blob, filename: string): Promise<void> {
     setTimeout(() => URL.revokeObjectURL(url), 4000);
     return;
   }
-  const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-  const nav = navigator as any;
-  if (nav.canShare && nav.canShare({ files: [file] })) {
-    try {
-      await nav.share({ files: [file], title: filename });
-      return;
-    } catch {
-      /* cancelou → grava em Documents */
-    }
-  }
   const base64 = await new Promise<string>((resolve, reject) => {
     const r = new FileReader();
     r.onloadend = () => resolve(String(r.result).split(',')[1]);
     r.onerror = () => reject(new Error('Não foi possível ler o ficheiro.'));
     r.readAsDataURL(blob);
   });
+  try {
+    // Ficheiro na CACHE + partilha nativa (padrão oficial do @capacitor/share)
+    const cached = await Filesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: Directory.Cache,
+      recursive: true,
+    });
+    await Share.share({
+      title: filename,
+      files: [cached.uri],
+      dialogTitle: 'Guardar ou abrir o ficheiro',
+    });
+    return;
+  } catch {
+    /* partilha indisponível/falhou → grava em Documents e diz onde ficou */
+  }
   await Filesystem.writeFile({
     path: `Download/${filename}`,
     data: base64,
     directory: Directory.Documents,
     recursive: true,
   });
-  toast.success(`Ficheiro guardado em Documents/Download/${filename}`);
+  toast.success(`Não foi possível partilhar — cópia na pasta da app: Documents/Download/${filename}`);
 }
 
 /** Converte um data-URL (ex.: comprovativos guardados em base64) em Blob. */

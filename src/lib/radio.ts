@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 /**
  * Rádio Maranata 91.9 FM (Lubango, Huíla) — player ao vivo + gravador.
@@ -216,6 +217,19 @@ export async function shareRecording(r: Recording): Promise<boolean> {
   try {
     const { data } = await Filesystem.readFile({ path: `${RADIO.folder}/${r.file}`, directory: Directory.Documents });
     const b64 = typeof data === 'string' ? data : String(data);
+    if (Capacitor.getPlatform() !== 'web') {
+      /* v1.12.2: `navigator.share` não existe na WebView do Android — partilha
+         NATIVA via @capacitor/share, com cópia do ficheiro na cache (padrão
+         oficial do plugin). Antes caía no downloadBlob e "nada acontecia". */
+      const cached = await Filesystem.writeFile({
+        path: r.file,
+        data: b64,
+        directory: Directory.Cache,
+        recursive: true,
+      });
+      await Share.share({ title: r.file, files: [cached.uri], dialogTitle: 'Partilhar a gravação' });
+      return true;
+    }
     const blob = base64ToBlob(b64, 'audio/aac');
     const file = new File([blob], r.file, { type: 'audio/aac' });
     if (navigator.canShare?.({ files: [file] })) {
