@@ -8,6 +8,8 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Download, FileText, User, Sparkles } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { savePdf } from '../lib/pdfUtils';
+import { saveXlsx } from '../lib/download';
 import autoTable from 'jspdf-autotable';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, where } from 'firebase/firestore';
@@ -179,7 +181,7 @@ export default function Reports() {
       const fileName = filterType === 'month' 
         ? `Relatorio_Pastoral_${selectedMonth}_${selectedYear}.pdf`
         : `Relatorio_Pastoral_${startDate}_a_${endDate}.pdf`;
-      docPdf.save(fileName);
+      await savePdf(docPdf, fileName);
       toast.success("Relatório gerado com sucesso!");
 
     } catch(err) {
@@ -240,7 +242,7 @@ export default function Reports() {
       const wsOfferings = XLSX.utils.json_to_sheet(oRows);
       XLSX.utils.book_append_sheet(wb, wsOfferings, "Ofertas");
 
-      XLSX.writeFile(wb, `Declaracao_Entradas_${selectedYear}.xlsx`);
+      await saveXlsx(XLSX, wb, `Declaracao_Entradas_${selectedYear}.xlsx`);
       toast.success("Planilha gerada com sucesso!");
 
     } catch(err) {
@@ -391,7 +393,7 @@ export default function Reports() {
       docPdf.text(treasurerName || '__________________________', 40, footerY + 25, { align: 'center' });
       docPdf.text(assistantName || '__________________________', 170, footerY + 25, { align: 'center' });
 
-      docPdf.save(`Relatorio_Pastoral_Anual_${selectedYear}.pdf`);
+      await savePdf(docPdf, `Relatorio_Pastoral_Anual_${selectedYear}.pdf`);
       toast.success("Relatório anual gerado com sucesso!");
 
     } catch(err) {
@@ -449,7 +451,7 @@ export default function Reports() {
       });
 
       docPdf.text(`Total no Ano: ${ptAOA(totalTithes)}`, 14, (docPdf as any).lastAutoTable.finalY + 10);
-      docPdf.save(`Extrato_${memberName.replace(/\s+/g,'_')}_${selectedYear}.pdf`);
+      await savePdf(docPdf, `Extrato_${memberName.replace(/\s+/g,'_')}_${selectedYear}.pdf`);
       toast.success("Extrato gerado com sucesso!");
     } catch(e) {
       toast.error("Erro ao gerar extrato.");

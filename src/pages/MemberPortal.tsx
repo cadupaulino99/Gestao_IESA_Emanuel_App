@@ -65,7 +65,7 @@ import {
 } from "../components/ui/tabs";
 import { toast } from "sonner";
 import MemberCardView from "../components/members/MemberCardView";
-import { generateMemberCardPdf } from "../lib/pdfUtils";
+import { generateMemberCardPdf, savePdf } from "../lib/pdfUtils";
 import {
   CommunionMark,
   Donation,
@@ -227,7 +227,7 @@ export default function MemberPortal() {
     }
   };
 
-  const handleGenerateExtract = () => {
+  const handleGenerateExtract = async () => {
     if (!tithes.length) return;
 
     const docPdf = new jsPDF();
@@ -262,7 +262,7 @@ export default function MemberPortal() {
       body: tableData,
     });
 
-    docPdf.save(`Extrato_${memberData.name.replace(/\s+/g, "_")}.pdf`);
+    await savePdf(docPdf, `Extrato_${memberData.name.replace(/\s+/g, "_")}.pdf`);
   };
 
   const currentMonth = new Date().getMonth();

@@ -7,6 +7,7 @@ import { Member } from '../../types';
 import { Sparkles, MessageCircle, Copy, Check, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { aiDraftMessage } from '../../lib/ai';
+import { openExternal } from '../../lib/download';
 
 interface PastoralMessageGeneratorModalProps {
   member: Member | null;
@@ -48,14 +49,14 @@ export function PastoralMessageGeneratorModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSendWhatsApp = () => {
+  const handleSendWhatsApp = async () => {
     if (!generatedMessage) return;
     let phone = member.phone?.replace(/\D/g, '') || '';
     if (phone && !phone.startsWith('244') && phone.length === 9) {
       phone = '244' + phone;
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(generatedMessage)}`;
-    window.open(url, '_blank');
+    await openExternal(url);
   };
 
   return (
