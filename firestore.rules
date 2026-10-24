@@ -165,8 +165,9 @@ service cloud.firestore {
 
     // --- Tithe Collection ---
     function isValidTitheCreate(data) {
-      return data.keys().hasAll(['memberId', 'month', 'year', 'amount', 'receiptNumber', 'adminId', 'createdAt', 'updatedAt']) &&
-             data.keys().size() <= 14 &&
+      return data.keys().hasAll(['memberId', 'month', 'year', 'amount', 'receiptNumber', 'adminId', 'createdAt', 'updatedAt',
+                                 'deliveryMonth', 'deliveryYear', 'referenceMonth', 'referenceYear']) &&
+             data.keys().size() <= 18 &&
              data.memberId is string && data.memberId.size() > 0 &&
              data.month is string && data.month.size() > 0 &&
              data.year is number &&
@@ -174,6 +175,8 @@ service cloud.firestore {
              data.receiptNumber is string &&
              (data.get('referenceMonth', '') is string) &&
              (data.get('referenceYear', 0) is number) &&
+             (data.get('deliveryMonth', '') is string) &&
+             (data.get('deliveryYear', 0) is number) &&
              (data.get('cashierMonth', '') is string) &&
              (data.get('cashierYear', 0) is number) &&
              (data.get('contributionType', '') is string) &&

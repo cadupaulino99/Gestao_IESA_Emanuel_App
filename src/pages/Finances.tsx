@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Plus, Trash2, Info, Download, Pencil, FileText, Check, ChevronsUpDown, Printer, MessageCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { toMonthIdx, idxToName } from '../lib/months';
+import { classifyTitheDuplicate, deliveryOf, referenceOf, describeTithe } from '../lib/tithes';
 import { saveBlob, dataUrlToBlob, saveXlsx, openExternal } from '../lib/download';
 import { savePdf } from '../lib/pdfUtils';
 import { moveToTrash, restoreFromTrash, isRecordLocked } from '../lib/trash';
@@ -61,20 +63,24 @@ export default function Finances() {
     memberId: string, 
     amount: string, 
     receiptNumber: string, 
-    selectedMonths: string[], 
+    selectedMonths: string[],   // meses de REFERÊNCIA canónico '01'..'12'
     manualSplit: boolean, 
     manualValues: Record<string, string>,
-    year: string,
+    year: string,               // ano de REFERÊNCIA
+    deliveryMonth: string,      // mês de ENTREGA '01'..'12' (contabilidade)
+    deliveryYear: string,       // ano de ENTREGA
     contributionType: string,
     contributionDetail: string
   }>({
     memberId: '',
     amount: '',
     receiptNumber: '',
-    selectedMonths: [MONTHS[new Date().getMonth()]],
+    selectedMonths: [String(new Date().getMonth() + 1).padStart(2, '0')],
     manualSplit: false,
     manualValues: {},
     year: selectedYear,
+    deliveryMonth: String(new Date().getMonth() + 1).padStart(2, '0'),
+    deliveryYear: selectedYear,
     contributionType: 'Dízimo',
     contributionDetail: ''
   });
@@ -164,8 +170,10 @@ export default function Finances() {
 
       const fmQuery = query(collection(db, 'financialMonths'), where('month', '==', selectedMonth), where('year', '==', parseInt(selectedYear)));
       const fyQuery = query(collection(db, 'financialYears'), where('year', '==', parseInt(selectedYear)));
-      const tQuery1 = query(collection(db, 'tithes'), where('month', '==', selectedMonth), where('year', '==', parseInt(selectedYear)));
-      const tQuery2 = query(collection(db, 'tithes'), where('referenceMonth', '==', selectedMonth), where('referenceYear', '==', parseInt(selectedYear)));
+      // CONTABILIDADE = data de ENTREGA (v1.9.3+ deliveryMonth numérico).
+      // A 2ª query apanha o legado pré-migração (month em nome).
+      const tQuery1 = query(collection(db, 'tithes'), where('deliveryMonth', '==', toMonthIdx(selectedMonth)), where('deliveryYear', '==', parseInt(selectedYear)));
+      const tQuery2 = query(collection(db, 'tithes'), where('month', '==', selectedMonth), where('year', '==', parseInt(selectedYear)));
       const oQuery = query(collection(db, 'offerings'), where('month', '==', selectedMonth), where('year', '==', parseInt(selectedYear)));
       const eQuery = query(collection(db, 'expenses'), where('month', '==', selectedMonth), where('year', '==', parseInt(selectedYear)));
 
@@ -371,7 +379,13 @@ export default function Finances() {
              memberId: tD.memberId,
              amount: parseFloat(tD.amount),
              receiptNumber: tD.receiptNumber,
-             referenceMonth: tD.selectedMonths[0] || selectedMonth,
+             deliveryMonth: tD.deliveryMonth,
+             deliveryYear: parseInt(tD.deliveryYear),
+             month: tD.deliveryMonth,
+             year: parseInt(tD.deliveryYear),
+             cashierMonth: tD.deliveryMonth,
+             cashierYear: parseInt(tD.deliveryYear),
+             referenceMonth: tD.selectedMonths[0] || toMonthIdx(selectedMonth),
              referenceYear: parseInt(tD.year),
              contributionType: tD.contributionType,
              contributionDetail: tD.contributionDetail,
@@ -383,7 +397,7 @@ export default function Finances() {
            setIsTOpen(false); 
            setEditingTithe(null);
            loadData(false); 
-           setTD({...tD, amount: '', receiptNumber: '', selectedMonths: [selectedMonth], manualSplit: false, manualValues: {}, contributionDetail: '', contributionType: 'Dízimo'});
+           setTD({...tD, amount: '', receiptNumber: '', selectedMonths: [toMonthIdx(selectedMonth)], manualSplit: false, manualValues: {}, contributionDetail: '', contributionType: 'Dízimo', deliveryMonth: toMonthIdx(selectedMonth), deliveryYear: selectedYear});
       } catch(err) {
            toast.error("Falha ao actualizar.");
            handleFirestoreError(err, OperationType.WRITE, 'tithes');
@@ -464,6 +478,39 @@ export default function Finances() {
       console.warn("Aviso ao verificar duplicidade:", checkErr);
     }
 
+    // ── Duplicidade (regra 2026-10-24): block se membro+ref+valor+entrega iguais;
+    //    warn (com confirmação explícita) se já há lançamento na mesma referência. ──
+    try {
+      const warns: string[] = [];
+      for (const mi of tD.selectedMonths) {
+        const val = tD.manualSplit ? parseFloat(tD.manualValues[mi] || '0') : totalAmount / tD.selectedMonths.length;
+        const snap = await getDocs(query(collection(db, 'tithes'),
+          where('memberId', '==', tD.memberId),
+          where('referenceMonth', '==', mi),
+          where('referenceYear', '==', parseInt(tD.year))));
+        const existing = snap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
+        const verdict = classifyTitheDuplicate(existing, {
+          memberId: tD.memberId, referenceMonth: mi, referenceYear: parseInt(tD.year),
+          amount: val, deliveryMonth: tD.deliveryMonth, deliveryYear: parseInt(tD.deliveryYear),
+        });
+        if (verdict.level === 'block') {
+          toast.error(`Registo BLOQUEADO: já existe lançamento exatamente igual (${describeTithe(verdict.conflict!)}).`);
+          setIsSubmitting(false);
+          return;
+        }
+        if (verdict.level === 'warn') warns.push(`• ${idxToName(mi)}/${tD.year}: ${describeTithe(verdict.conflict!)}`);
+      }
+      if (warns.length > 0) {
+        const okWait = await confirmDialog(
+          `Já existem lançamentos para este(s) mês(es) de referência:\n\n${warns.join('\n')}\n\nO membro pode estar a pagar em prestações. Confirma o novo lançamento?`,
+          'CONFIRMAR'
+        );
+        if (!okWait) { setIsSubmitting(false); return; }
+      }
+    } catch (checkErr) {
+      console.warn('Falha ao verificar duplicidade (a continuar):', checkErr);
+    }
+
     const isManual = tD.manualSplit;
     if (isManual) {
       let sum = 0;
@@ -525,10 +572,13 @@ export default function Finances() {
         memberEmail,
         amount: val,
         receiptNumber: `${baseReceipt}${tD.selectedMonths.length > 1 ? `-${i+1}` : ''}`,
-        month: m,
-        year: parseInt(tD.year),
-        cashierMonth: selectedMonth,
-        cashierYear: parseInt(selectedYear),
+        // ENTREGA (contabilidade) e REFERÊNCIA (cartão), canónico '01'..'12'
+        deliveryMonth: tD.deliveryMonth,
+        deliveryYear: parseInt(tD.deliveryYear),
+        month: tD.deliveryMonth,
+        year: parseInt(tD.deliveryYear),
+        cashierMonth: tD.deliveryMonth,
+        cashierYear: parseInt(tD.deliveryYear),
         referenceMonth: m,
         referenceYear: parseInt(tD.year),
         contributionType: tD.contributionType,
@@ -1520,6 +1570,38 @@ export default function Finances() {
                       </div>
 
                       <div className="p-3 bg-muted/30 rounded-md border space-y-4">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-2">
+                            <Label>Mês de Entrega (contabilidade)</Label>
+                            <Select value={tD.deliveryMonth} onValueChange={v => setTD(prev => ({
+                              ...prev,
+                              deliveryMonth: v,
+                              // por defeito a referência = entrega, até o utilizador a escolher
+                              selectedMonths: prev.selectedMonths.length === 1 && prev.selectedMonths[0] === prev.deliveryMonth ? [v] : prev.selectedMonths,
+                            }))}>
+                              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {MONTHS.map((nm, i2) => <SelectItem key={nm} value={String(i2 + 1).padStart(2, '0')}>{nm}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Ano de Entrega</Label>
+                            <Select value={tD.deliveryYear} onValueChange={v => setTD(prev => ({
+                              ...prev,
+                              deliveryYear: v,
+                              year: prev.year === prev.deliveryYear ? v : prev.year,
+                            }))}>
+                              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {['2024', '2025', '2026', '2027'].map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground -mt-2">
+                          A contabilidade e os relatórios usam a entrega; o cartão do membro usa a referência.
+                        </p>
                         <div className="flex flex-col space-y-2">
                           <Label>Ano de Referência</Label>
                           <Select value={tD.year} onValueChange={v => setTD({...tD, year: v})}>
@@ -1532,9 +1614,10 @@ export default function Finances() {
 
                         <Label>Meses de Referência</Label>
                         <div className="grid grid-cols-3 gap-2">
-                          {MONTHS.map((m) => {
+                          {MONTHS.map((nm, i2) => {
+                            const m = String(i2 + 1).padStart(2, '0');
                             const isPaid = memberRegisteredTithes.some(item => {
-                              const matchMonth = (item.referenceMonth && item.referenceMonth === m) || (!item.referenceMonth && item.month === m);
+                              const matchMonth = referenceOf(item).month === m;
                               const matchType = (item.contributionType || 'Dízimo') === (tD.contributionType || 'Dízimo');
                               return matchMonth && matchType;
                             });
@@ -1568,9 +1651,8 @@ export default function Finances() {
 
                         {(() => {
                           const matchingDups = memberRegisteredTithes.filter(item => {
-                            const itemMonth = item.referenceMonth || item.month;
                             const matchType = (item.contributionType || 'Dízimo') === (tD.contributionType || 'Dízimo');
-                            return tD.selectedMonths.includes(itemMonth) && matchType;
+                            return tD.selectedMonths.includes(referenceOf(item).month) && matchType;
                           });
 
                           if (matchingDups.length === 0) return null;
@@ -1584,7 +1666,7 @@ export default function Finances() {
                               <div className="space-y-1">
                                 <p className="font-semibold">Aviso de Registo Prévio:</p>
                                 <p>
-                                  O membro já tem {tD.contributionType || 'Dízimo'} em: {matchingDups.map(d => `${d.referenceMonth || d.month} (${ptAOA(d.amount)})`).join(', ')}.
+                                  O membro já tem {tD.contributionType || 'Dízimo'} em: {matchingDups.map(d => `${idxToName(referenceOf(d).month)} (${ptAOA(d.amount)})`).join(', ')}.
                                 </p>
                                 {hasIdenticalAmount && (
                                   <p className="font-bold text-red-600 dark:text-red-400">

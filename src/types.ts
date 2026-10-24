@@ -9,6 +9,9 @@ export interface Member {
   issueDate?: string;
   /** Nº do cartão de membro (o que está impresso no cartão de papel). */
   memberNumber?: string;
+  /** ID interno sequencial (M-0001…), gerado uma vez, nunca muda.
+   *  Identificação provisória para quem não tem B.I. */
+  internalCode?: string;
   /** Nome do pai («Filho de …»). */
   fatherName?: string;
   /** Nome da mãe («… e de …»). */
@@ -39,12 +42,28 @@ export interface Tithe {
   id: string;
   memberId: string;
   memberName: string;
+  memberEmail?: string | null;
   amount: number;
   date: string; // ISO date string or formatted date depending on what's used
+  /** LEGADO pré-v1.9.3: mês em nome ('Janeiro'); espelho da entrega. Usar deliveryOf(). */
   month: string;
   year?: number;
+  /** DATA DE ENTREGA (v1.9.3+): mês canónico '01'..'12' em que o dinheiro foi recebido.
+   *  É ESTA que a contabilidade e os relatórios usam. */
+  deliveryMonth?: string;
+  deliveryYear?: number;
+  /** LEGADO: mês da operação de caixa (nome). */
+  cashierMonth?: string;
+  cashierYear?: number;
+  /** MÊS DE REFERÊNCIA (v1.9.3+ numérico): o mês a que o dízimo pertence.
+   *  É ESTE que o cartão do membro usa. */
   referenceMonth?: string;
   referenceYear?: number;
+  contributionType?: string;
+  contributionDetail?: string;
+  receiptNumber?: string;
+  adminId?: string;
+  updatedAt?: number;
   createdAt?: number;
   financialMonthId?: string;
 }

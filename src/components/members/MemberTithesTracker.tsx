@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { referenceOf } from '../../lib/tithes';
+import { toMonthIdx } from '../../lib/months';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { collection, query, getDocs, where, orderBy } from 'firebase/firestore';
 import { useQuery } from '@tanstack/react-query';
@@ -57,12 +59,12 @@ export function MemberTithesTracker() {
           const data = doc.data();
           // referenceMonth is like 'Janeiro', 'Fevereiro', etc.
           const MONTHS_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-          const refMonth = data.referenceMonth || data.month;
+          const refMonth = referenceOf({ ...data } as any).month;
           return {
             id: doc.id,
             memberId: data.memberId,
             month: MONTHS_PT.indexOf(refMonth), // 0-11
-            refYear: data.referenceYear || data.year,
+            refYear: referenceOf({ ...data } as any).year,
           };
         }).filter(t => t.refYear === selectedYear);
       } catch (error) {
@@ -87,10 +89,11 @@ export function MemberTithesTracker() {
     });
 
     tithes.forEach(t => {
-      if (statsMap.has(t.memberId) && t.month >= 0 && t.month < 12) {
+      if (statsMap.has(t.memberId) && Number(referenceOf(t as any).month) >= 1 && Number(referenceOf(t as any).month) <= 12) {
         const memberStat = statsMap.get(t.memberId)!;
-        if (!memberStat.months[t.month]) {
-          memberStat.months[t.month] = true;
+        const _ri = Number(referenceOf(t as any).month) - 1;
+          if (!memberStat.months[_ri]) {
+          memberStat.months[_ri] = true;
           memberStat.total++;
         }
       }
@@ -116,7 +119,7 @@ export function MemberTithesTracker() {
   const currentMonthTithedCount = useMemo(() => {
     let count = 0;
     tithes.forEach(t => {
-      if (t.month === currentMonthIdx) {
+      if (Number(referenceOf(t as any).month) - 1 === currentMonthIdx) {
         // Count unique members who tithed this month
         count++;
       }
@@ -125,7 +128,7 @@ export function MemberTithesTracker() {
     // Let's do it safer:
     const tithedThisMonth = new Set<string>();
     tithes.forEach(t => {
-      if (t.month === currentMonthIdx) {
+      if (Number(referenceOf(t as any).month) - 1 === currentMonthIdx) {
         tithedThisMonth.add(t.memberId);
       }
     });

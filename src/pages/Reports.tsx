@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { deliveryOf, referenceOf } from '../lib/tithes';
+import { idxToName } from '../lib/months';
 import { prefGet } from '../lib/prefs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -212,7 +214,7 @@ export default function Reports() {
           'Nome do Membro': membersMap[data.memberId] || 'Desconhecido',
           'Tipo de Contribuição': data.contributionType || 'Dízimo',
           'Detalhes': data.contributionDetail || '-',
-          'Mês': data.month,
+          'Mês': idxToName(deliveryOf(data as any).month),
           'Ano': data.year,
           'Valor (AOA)': data.amount,
           'Recibo': data.receiptNumber || '-'
@@ -227,7 +229,7 @@ export default function Reports() {
         oRows.push({
           'Descrição': data.description,
           'Tipo': data.type,
-          'Mês': data.month,
+          'Mês': idxToName(deliveryOf(data as any).month),
           'Ano': data.year,
           'Valor (AOA)': data.amount,
         });
@@ -274,7 +276,7 @@ export default function Reports() {
         const data = d.data();
         totalExpenses += Number(data.amount) || 0;
         expensesList.push([
-          data.date ? new Date(data.date).toLocaleDateString('pt-AO') : (data.month + '/' + data.year),
+          data.date ? new Date(data.date).toLocaleDateString('pt-AO') : (idxToName(deliveryOf(data as any).month) + '/' + (deliveryOf(data as any).year || data.year)),
           data.description,
           data.category,
           data.responsible || '-',
@@ -422,7 +424,7 @@ export default function Reports() {
       tithesSnap.forEach(doc => {
          const d = doc.data();
          totalTithes += d.amount;
-         const refDate = d.referenceMonth ? `${d.referenceMonth.substring(0,3)}/${d.referenceYear}` : '-';
+         const _r = referenceOf(d as any); const refDate = _r.month ? `${_r.month}/${_r.year}` : '-';
          historyList.push([d.contributionType || 'Dízimo', d.month, refDate, d.receiptNumber || '-', ptAOA(d.amount)]);
       });
 
