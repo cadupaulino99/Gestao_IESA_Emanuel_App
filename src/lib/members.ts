@@ -10,13 +10,36 @@ import { moveToTrash } from './trash';
 /* ------------------------------------------------------------------ */
 export const BI_REGEX = /^\d{9}[A-Z]{2}\d{3}$/;
 
+/** Limpeza canónica: maiúsculas, só letras/dígitos, máx. 14 (9+2+3). */
+export function cleanBi(value: string): string {
+  return String(value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 14);
+}
+
 export function validateBi(value: string | null | undefined): { ok: boolean; normalized: string; error?: string } {
-  const raw = String(value ?? '').replace(/[\s.-]/g, '').toUpperCase();
+  const raw = cleanBi(String(value ?? ''));
   if (!raw) return { ok: true, normalized: '' }; // opcional
   if (!BI_REGEX.test(raw)) {
-    return { ok: false, normalized: raw, error: 'Formato do B.I. inválido: o formato angolano é 9 dígitos + 2 letras + 3 dígitos (ex.: 004578123LA040).' };
+    return {
+      ok: false,
+      normalized: raw,
+      error: 'B.I. inválido: o formato angolano é 9 dígitos + 2 letras + 3 dígitos (ex.: 123456789LA012). O que escreveu foi mantido no campo — corrija e grave de novo.',
+    };
   }
   return { ok: true, normalized: raw };
+}
+
+/**
+ * Transformação de escrita no campo: maiúsculas + limpeza + limite,
+ * PRESERVANDO a posição do cursor (conta quantos caracteres válidos havia
+ * antes do cursor no texto anterior). Funciona em digitação, colagem e
+ * preenchimento programático (todos passam por onChange ou por cleanBi).
+ */
+export function editBi(value: string, cursor: number | null): { value: string; cursor: number } {
+  const cleaned = cleanBi(value);
+  if (cursor === null) return { value: cleaned, cursor: cleaned.length };
+  const before = value.slice(0, cursor);
+  const pos = cleanBi(before).length;
+  return { value: cleaned, cursor: pos };
 }
 
 /* ------------------------------------------------------------------ */

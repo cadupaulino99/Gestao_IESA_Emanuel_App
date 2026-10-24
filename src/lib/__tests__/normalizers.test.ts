@@ -54,10 +54,15 @@ describe('normalizePhone', () => {
   });
 });
 
-describe('normalizeDocumentNumber', () => {
-  it('remove separadores', () => {
-    expect(normalizeDocumentNumber('004 578 123 LA 040')).toBe('004578123040');
-    expect(normalizeDocumentNumber('004578123LA040')).toBe('004578123040');
+describe('normalizeDocumentNumber (OCR → valor canónico)', () => {
+  it('maiúsculas, sem separadores, mantém letras', () => {
+    expect(normalizeDocumentNumber('004 578 123 la 040')).toBe('004578123LA040');
+    expect(normalizeDocumentNumber('004578123LA040')).toBe('004578123LA040');
+    expect(normalizeDocumentNumber('123456789-la-012')).toBe('123456789LA012');
+  });
+  it('limita a 14 e devolve null para vazio', () => {
+    expect(normalizeDocumentNumber('123456789LA0129999')).toBe('123456789LA012');
+    expect(normalizeDocumentNumber('   ')).toBeNull();
   });
 });
 
@@ -74,7 +79,7 @@ describe('normalizeMemberFields (fluxo completo do OCR)', () => {
     });
     expect(out).toEqual({
       name: 'MANUEL KAPENDE',
-      documentNumber: '004578123040',
+      documentNumber: '004578123LA040',
       birthDate: '1990-03-07',
       issueDate: '2021-06-15',
       gender: 'Masculino',

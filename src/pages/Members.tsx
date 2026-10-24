@@ -27,7 +27,7 @@ import { generateMembershipCard, savePdf } from '../lib/pdfUtils';
 import { saveXlsx } from '../lib/download';
 import { MemberTithesTracker } from '../components/members/MemberTithesTracker';
 import MemberCardModal from '../components/members/MemberCardModal';
-import { validateBi, findSimilarMembers, nextInternalCode, mergeMembers } from '../lib/members';
+import { validateBi, findSimilarMembers, nextInternalCode, mergeMembers, editBi } from '../lib/members';
 import CommunionTracker from '../components/members/CommunionTracker';
 import { compressImageFile } from '../lib/ai';
 import { PastoralMessageGeneratorModal } from '../components/members/PastoralMessageGeneratorModal';
@@ -188,6 +188,8 @@ export default function Members() {
     resolver: zodResolver(memberSchema),
     defaultValues: { status: 'Activo' }
   });
+  // registo avulso para o onChange transformador do campo B.I.
+  const biReg = register('documentNumber');
 
   const {
     data,
@@ -236,8 +238,12 @@ export default function Members() {
   }, [data]);
 
   const filteredMembers = React.useMemo(() => {
-    return members.filter(m => 
-      m.name.toLowerCase().includes(searchTerm.toLowerCase()) || m.phone?.includes(searchTerm)
+    const t = searchTerm.toLowerCase();
+    const tBi = searchTerm.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    return members.filter(m =>
+      m.name.toLowerCase().includes(t) ||
+      m.phone?.includes(searchTerm) ||
+      (tBi.length >= 3 && (m.documentNumber || '').toUpperCase().includes(tBi))
     );
   }, [members, searchTerm]);
 
@@ -595,7 +601,28 @@ export default function Members() {
 
                       <div className="space-y-2 md:col-span-2">
                         <Label>Nº do Bilhete de Identidade</Label>
-                        <Input {...register("documentNumber")} placeholder="Ex.: 004578123LA040" inputMode="numeric" />
+                        <Input
+                          {...register("documentNumber")}
+                          onChange={(e) => {
+                            const el = e.target as HTMLInputElement;
+                            const before = el.value;
+                            const start = el.selectionStart;
+                            const r = editBi(before, start);
+                            if (r.value !== before) {
+                              el.value = r.value;
+                              try { el.setSelectionRange(r.cursor, r.cursor); } catch { /* inputtype number não deixa; não é o caso */ }
+                            }
+                            biReg.onChange(e); // o RHF lê o valor já transformado
+                          }}
+                          type="text"
+                          inputMode="text"
+                          autoCapitalize="characters"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          maxLength={14}
+                          placeholder="Ex.: 123456789LA012"
+                        />
                         <span className="text-[11px] text-muted-foreground">Preenchido automaticamente ao ler a foto do BI com IA.</span>
                       </div>
                       

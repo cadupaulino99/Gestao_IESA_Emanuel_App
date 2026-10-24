@@ -1,5 +1,31 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.10.1 (2026-10-24) — Campo do B.I.: teclado certo, maiúsculas com cursor, migração segura
+
+Queixa: no telemóvel o campo «Nº do B.I.» abria o teclado só numérico — não dava
+para escrever as letras do formato angolano (9 dígitos + 2 letras + 3 dígitos).
+
+- **Causa:** `inputMode="numeric"` no campo (`Members.tsx`). Agora:
+  `type="text" inputMode="text" autoCapitalize="characters" autoComplete="off"
+  autoCorrect="off" spellCheck="false" maxLength="14"`.
+- **Maiúsculas no valor, não só no CSS:** `editBi()` em `lib/members.ts` converte
+  em cada evento de escrita, limpa tudo o que não for letra/dígito, limita a 14 e
+  **repõe o cursor** (conta os caracteres válidos antes dele) — corrigir uma letra
+  a meio não salta para o fim. Cobre digitação, colagem e o preenchimento pela IA
+  (`normalizeDocumentNumber` em `lib/ai.ts` deixou de comer as letras).
+- **Servidor/app antes de gravar:** `validateBi()` normaliza (maiúsculas + só
+  alfanuméricos) em create, edit e import; a unicidade compara o valor
+  normalizado; mensagem de formato clara **sem apagar** o que foi escrito.
+- **Pesquisa por B.I.:** a pesquisa de Membros passa a apanhar o B.I.
+  normalizado (mín. 3 caracteres), além de nome e telefone.
+- **Migração dos B.I. existentes:** Admin → Gestão de Dados → «Migração de B.I.»:
+  1) *Analisar* lista o que mudaria e as **colisões** (B.I. que passariam a ficar
+  iguais); 2) exige cópia de segurança confirmada; 3) *Aplicar* normaliza só os
+  não-colidentes — colisões ficam listadas para decisão manual, **sem fusões
+  automáticas**.
+- Testes: 68 (cleanBi/editBi/cursor/colagem, validateBi, normalizeDocumentNumber).
+
+
 ## v1.10.0 (2026-10-24) — Gestão de administradores com palavras-passe de uso único
 
 **Como as palavras-passe vivem (auditoria pedida pelo utilizador):** no **Firebase

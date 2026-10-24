@@ -22,6 +22,7 @@ import { Navigate } from 'react-router-dom';
 import { Badge } from '../components/ui/badge';
 import { restoreFromTrash, moveToTrash } from '../lib/trash';
 import { migrateTitheDoc, codeForSeq } from '../lib/migrate';
+import { cleanBi } from '../lib/members';
 import { maxSeqFromCodes } from '../lib/members';
 import { writeBatch } from 'firebase/firestore';
 import { orderBy } from 'firebase/firestore';
@@ -35,6 +36,12 @@ export default function Admin() {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [migrating, setMigrating] = useState(false);
+  const [biPlan, setBiPlan] = useState<{
+    changes: { id: string; name: string; old: string; neu: string }[];
+    collisions: { neu: string; membros: { id: string; name: string; old: string }[] }[];
+    analyzed: boolean;
+  }>({ changes: [], collisions: [], analyzed: false });
+  const [biApplying, setBiApplying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRequestsOpen, setIsRequestsOpen] = useState(false);
@@ -302,6 +309,57 @@ export default function Admin() {
     } catch (e) {
       toast.error("Erro ao atualizar estado do membro.");
       handleFirestoreError(e, OperationType.WRITE, `members/${memberId}`);
+    }
+  };
+
+  const analyzeBi = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'members'));
+      const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const withBi = rows.filter((r) => typeof r.documentNumber === 'string' && r.documentNumber.trim() !== '');
+      const changes: { id: string; name: string; old: string; neu: string }[] = [];
+      const byNorm = new Map<string, { id: string; name: string; old: string; neu: string }[]>();
+      for (const r of withBi) {
+        const neu = cleanBi(r.documentNumber);
+        const row = { id: r.id, name: r.name, old: r.documentNumber, neu };
+        const arr = byNorm.get(neu) || [];
+        arr.push(row);
+        byNorm.set(neu, arr);
+        if (neu !== r.documentNumber) changes.push(row);
+      }
+      const collisions = [...byNorm.entries()]
+        .filter(([, arr]) => arr.length > 1)
+        .map(([neu, membros]) => ({ neu, membros }));
+      setBiPlan({ changes, collisions, analyzed: true });
+      toast.success(`Análise concluída: ${changes.length} B.I. a normalizar, ${collisions.length} colisão(ões).`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao analisar os B.I.');
+    }
+  };
+
+  const applyBiMigration = async () => {
+    if (!backupConfirmed) { toast.error('Confirme primeiro a cópia de segurança.'); return; }
+    if (!biPlan.analyzed) { toast.error('Corra primeiro a análise.'); return; }
+    const blocked = new Set(biPlan.collisions.flatMap((c) => c.membros.map((m) => m.id)));
+    const todo = biPlan.changes.filter((c) => !blocked.has(c.id));
+    const ok = await confirmDialog(
+      `Normalizar ${todo.length} B.I. (maiúsculas, sem espaços)? ${biPlan.collisions.length ? `${biPlan.collisions.length} colisão(ões) NÃO serão tocadas — edite-as à mão.` : ''}`,
+      'APLICAR'
+    );
+    if (!ok) return;
+    setBiApplying(true);
+    try {
+      for (let i = 0; i < todo.length; i += 400) {
+        const batch = writeBatch(db);
+        todo.slice(i, i + 400).forEach((c) => batch.update(doc(db, 'members', c.id), { documentNumber: c.neu }));
+        await batch.commit();
+      }
+      toast.success(`B.I. normalizados: ${todo.length}. Colisões intocadas: ${biPlan.collisions.length}.`);
+      setBiPlan({ changes: [], collisions: [], analyzed: false });
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao aplicar a migração de B.I.');
+    } finally {
+      setBiApplying(false);
     }
   };
 
@@ -937,6 +995,54 @@ export default function Admin() {
                 </div>
                 <Button onClick={runAdminMigration} disabled={!backupConfirmed || migrating}>
                   {migrating ? 'A migrar…' : '2. Executar migração de admins'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="border shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base">Migração de B.I. — maiúsculas e sem espaços</CardTitle>
+                <CardDescription>
+                  Analisa os B.I. guardados, mostra o que mudaria e quais passariam a ficar
+                  iguais entre si (colisões). As colisões NÃO são fundidas nem tocadas:
+                  ficam listadas para decisão manual.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Button variant="outline" onClick={analyzeBi}>1. Analisar B.I. existentes</Button>
+                {biPlan.analyzed && (
+                  <div className="space-y-2 text-xs">
+                    <div>
+                      <b>{biPlan.changes.length}</b> B.I. seriam normalizados:
+                      {biPlan.changes.length === 0 ? ' nenhum.' : ''}
+                    </div>
+                    {biPlan.changes.length > 0 && (
+                      <div className="max-h-28 overflow-y-auto rounded border p-2 space-y-0.5 bg-slate-50 dark:bg-slate-900/60">
+                        {biPlan.changes.slice(0, 50).map((c) => (
+                          <div key={c.id}><code>{c.old}</code> → <code className="text-emerald-700 dark:text-emerald-400">{c.neu}</code> · {c.name}</div>
+                        ))}
+                      </div>
+                    )}
+                    {biPlan.collisions.length > 0 && (
+                      <div className="rounded border border-amber-300/60 bg-amber-50 dark:bg-amber-950/40 p-2 space-y-1 text-amber-900 dark:text-amber-200">
+                        <b>Colisões (não serão tocadas — decida manualmente):</b>
+                        {biPlan.collisions.map((c) => (
+                          <div key={c.neu}>
+                            <code>{c.neu}</code>: {c.membros.map((m) => `${m.name} («${m.old}»)`).join('  vs  ')}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />
+                    Fiz a cópia de segurança (botão acima)
+                  </label>
+                </div>
+                <Button onClick={applyBiMigration} disabled={!biPlan.analyzed || !backupConfirmed || biApplying}>
+                  {biApplying ? 'A normalizar…' : '2. Aplicar normalização'}
                 </Button>
               </CardContent>
             </Card>

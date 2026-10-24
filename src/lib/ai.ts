@@ -401,13 +401,12 @@ export function normalizePhone(value: unknown): string | null {
   return String(value).trim();
 }
 
-/** Nº do BI: só dígitos (o modelo angolano tem 8 dígitos + dígito de controlo). */
+/** Nº do BI: maiúsculas, só letras/dígitos, máx. 14 (9+2+3) — o OCR lê coisas
+ *  como «123456789la012» ou «123 456 789 LA 012» e tudo isso é o mesmo BI. */
 export function normalizeDocumentNumber(value: unknown): string | null {
   if (value === null || value === undefined) return null;
-  const s = String(value).trim();
-  if (!s) return null;
-  const digits = s.replace(/[^\d]/g, '');
-  return digits || s;
+  const cleaned = String(value).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 14);
+  return cleaned || null;
 }
 
 /** Aplica normalização a todos os campos devolvidos pela IA. */
