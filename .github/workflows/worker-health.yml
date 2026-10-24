@@ -66,8 +66,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label worker-drift --json number -q 'length')"
+          EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "Worker publicado desatualizado" --json number -q 'length')"
           if [ "$EXISTE" != "0" ]; then echo "Ja ha issue aberta de worker-drift; nao duplico."; exit 0; fi
           TITLE="Worker publicado desatualizado (repo ${{ steps.exp.outputs.expected }} vs. ar ${{ steps.live.outputs.live }})"
           BODY="O /__health devolve uma versao diferente da que esta no repositorio. O Worker e um servidor a parte: publicar o APK nao o atualiza. Corrigir com a Via A (colar worker/ai-worker.js no editor da Cloudflare, ver docs/INICIO-RAPIDO.md) ou com npm run deploy:worker com os segredos no ambiente. Detetado automaticamente pelo workflow worker-health."
-          gh issue create --repo "$GITHUB_REPOSITORY" --label worker-drift --title "$TITLE" --body "$BODY"
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
