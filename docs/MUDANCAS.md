@@ -1,5 +1,84 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.13.0 — «Avisos, Agenda e Eventos»: membros consultam, liderança publica
+
+Módulo novo (decisões da liderança de 2026-10-25: publicação por TODA a
+liderança — admin/pastor/tesoureiro; a aba «Mural de Avisos» do Portal é
+SUBSTITUÍDA, não duplicada). Fonte única: a Administração cria/edita/apaga;
+o Portal do Membro só LÊ as mesmas colecções — sem cópias.
+
+**Três tipos de conteúdo**
+- **Avisos** (`announcements`, estendida — legados tolerados): título, texto
+  FORMATADO (editor novo com allowlist), data, «visível até» (opcional),
+  nível (Normal/Urgente) e fixar no topo. Rascunhos; expirados vão para o
+  ARQUIVO da Administração com «Republicar» — nada é apagado automaticamente.
+- **Agenda** (`agenda_items`, NOVA): programação semanal (dia da semana,
+  início, fim opcional, local, responsável, observações). Suspender uma
+  ocorrência = data em `cancelledDates` (os membros vêem-na riscada com
+  «Cancelado») sem apagar a programação.
+- **Eventos** (`events`, estendida — legados tolerados; espelhos
+  `date`/`time`/`description` mantidos para o Dashboard não mudar):
+  descrição formatada, início/fim, local, responsável, CARTAZ (ficheiro no
+  Storage — 1600 px/q80 + miniatura, JPG/PNG/WEBP, ≤10 MB, nunca base64),
+  estado (Marcado/Adiado/Cancelado/Realizado), rascunho e lembrete 1 dia
+  antes. Histórico com apagar DEFINITIVO (confirmação digitada).
+- Auditoria em tudo: `createdBy`, `updatedBy`, `createdAt`, `updatedAt`.
+
+**Portal do Membro** (aba «Avisos, Agenda e Eventos», só leitura, mobile-first
+360 px): Avisos (fixados+urgentes no topo, urgente com destaque, «Ver mais»),
+Agenda (semana seg–dom com navegação, «HOJE», canceladas riscadas), Eventos
+(Próximos com «Hoje/Amanhã/Faltam N dias», filtro Passados, adiado/cancelado
+em destaque, detalhe completo + cartaz em ecrã inteiro).
+
+**Editor de texto formatado + filtro de segurança** — a página «Postes» NÃO
+existia (verificado): editor (`RichTextEditor`) e sanitizador
+(`lib/richtext.ts`, allowlist p/br/b/i/u/listas/blockquote/a[href http|https|
+mailto]; sem scripts, sem estilos, sem handlers) nascem aqui, prontos a
+reaproveitar. Três camadas: editor saneia ao escrever → apresentação re-saneia
+(`RichTextView`) → **servidor recusa** (`isSafeRichText` nas firestore.rules
+com regex RE2: `<script`, `<iframe`, `<style`, `javascript:`, `on*=`…).
+
+**Segurança (servidor, não só botões escondidos)**: `announcements`, `events`,
+`agenda_items` — leitura autenticada; create/update/delete só
+`hasFinancialWriteAccess()` (liderança) + validadores de campos (enums, datas
+`AAAA-MM-DD`, horas `HH:MM`, tamanhos, caminhos `posters/…`). Pedido directo
+de um membro → PERMISSION_DENIED. `storage.rules` NOVO: imagens só com sessão
+iniciada, ≤10 MB, JPG/PNG/WEBP, só `posters/**`.
+
+**Datas/horas de Luanda (UTC+1)** — `lib/luanda.ts`: datas guardadas como
+strings locais ('AAAA-MM-DD'/'HH:MM'), NUNCA epoch/ISO com fuso ⇒ um evento
+às 23:30 não muda de dia noutro aparelho. «Hoje/Amanhã/Faltam N dias»,
+dd/mm/aaaa e 24 h calculados pelo dia de LUANDA (mesmo critério de
+`notify.ts`/Worker).
+
+**Notificações** — ligadas ao sistema existente:
+- Publicar aviso, publicar evento, alterar data/estado/local de evento →
+  notificação no sistema (sino) para membros com conta, em DIGEST: máx.
+  1/dia/membro (`notifications/board-<dia>-<membro>`, ID determinístico;
+  várias publicações fundem-se em «3 novidades em Avisos e Eventos»;
+  espelho em `board_notify_log/<dia>`).
+- «Enviar também por SMS/WhatsApp»: opção por publicação (desligada por
+  defeito) → fila `message_outbox` existente (janela de 10 min, modo
+  manual/fornecedores, máx. 1/dia/membro via `dedupeDay`+log).
+- Lembrete de evento 1 dia antes (opcional por evento, só no sistema):
+  **Worker 2.7.0** (`processEventReminders` no cron, funde no digest do dia,
+  idempotente via `reminderSentDay`).
+
+**Ficheiros** — novos: `lib/{luanda,richtext,agenda,board,posters}.ts`
+(+4 testes: 133 no total), `components/richtext/{RichTextEditor,RichTextView}`,
+`components/admin/{AnnouncementsAdmin,AgendaAdmin,EventsAdmin}`,
+`components/portal/MemberBoard`, `storage.rules`,
+`docs/VERIFICACAO-AVISOS-AGENDA-EVENTOS.md`. Alterados: `types.ts`,
+`Admin.tsx` (aba «mural» substituída pelos 3 componentes; −106 linhas de
+código velho), `MemberPortal.tsx` (aba substituída), `firestore.rules`,
+`firebase.json` (+storage), `deploy-firebase.yml` (+storage no --only),
+`worker/ai-worker.js` (2.7.0), `package.json` (1.13.0 + @capacitor/share já
+vinha da 1.12.2).
+
+**Fora desta versão** (combinado): confirmação de presença, exportar .ics,
+comentários, grupos de destinatários, repetições não-semanais, partilha para
+fora da app.
+
 ## v1.12.3 — Rádio: o botão de apagar gravações volta a funcionar
 
 **Sintoma**: no player da Rádio Maranata, tocar no caixote do lixo e confirmar

@@ -64,6 +64,7 @@ import {
   TabsTrigger,
 } from "../components/ui/tabs";
 import { toast } from "sonner";
+import MemberBoard from "../components/portal/MemberBoard";
 import MemberCardView from "../components/members/MemberCardView";
 import UpdateBanner from "../components/UpdateBanner";
 import { generateMemberCardPdf, savePdf } from "../lib/pdfUtils";
@@ -89,7 +90,6 @@ export default function MemberPortal() {
     estadoCivil: "",
   });
   const [submittingUpdate, setSubmittingUpdate] = useState(false);
-  const [announcements, setAnnouncements] = useState<any[]>([]);
   const [cardData, setCardData] = useState<{
     communions: CommunionMark[];
     donations: Donation[];
@@ -127,23 +127,6 @@ export default function MemberPortal() {
       }
     };
 
-    const fetchAnnouncements = async () => {
-      try {
-        const q = query(
-          collection(db, "announcements"),
-          where("active", "==", true),
-        );
-        const snap = await getDocs(q);
-        setAnnouncements(
-          snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .sort((a: any, b: any) => b.createdAt - a.createdAt),
-        );
-      } catch (error) {
-        console.log(error);
-      }
-    };
-
     const fetchCard = async () => {
       try {
         const [c, d, r, b, co, pa] = await Promise.all([
@@ -174,7 +157,6 @@ export default function MemberPortal() {
     };
 
     fetchTithes();
-    fetchAnnouncements();
     fetchCard();
   }, [memberData]);
 
@@ -315,7 +297,7 @@ export default function MemberPortal() {
         <Tabs defaultValue="dados" className="w-full">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-3">
             <TabsTrigger value="dados">Geral & Finanças</TabsTrigger>
-            <TabsTrigger value="mural">Mural de Avisos</TabsTrigger>
+            <TabsTrigger value="mural">Avisos, Agenda e Eventos</TabsTrigger>
             <TabsTrigger value="cartao" className="gap-1.5">
               <CreditCard className="h-4 w-4" /> O meu cartão
             </TabsTrigger>
@@ -570,29 +552,14 @@ export default function MemberPortal() {
           </TabsContent>
 
           <TabsContent value="mural" className="pt-4">
-            <div className="flex flex-col gap-4">
-              <h2 className="text-xl font-bold">Mural de Avisos</h2>
-              <p className="text-muted-foreground">
-                Fique atualizado com os anúncios e informações da igreja.
-              </p>
-              {announcements.length === 0 && !loading && (
-                <div className="text-center py-12 text-muted-foreground border rounded-lg bg-white/50 border-dashed">
-                  Não há avisos no momento.
-                </div>
-              )}
-              {announcements.map((ann) => (
-                <Card key={ann.id}>
-                  <CardHeader className="pb-2">
-                    <CardTitle>{ann.title}</CardTitle>
-                    <CardDescription>
-                      {new Date(ann.createdAt).toLocaleDateString("pt-AO")}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="whitespace-pre-wrap">
-                    {ann.content}
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="flex flex-col gap-3">
+              <div>
+                <h2 className="text-xl font-bold">Avisos, Agenda e Eventos</h2>
+                <p className="text-sm text-muted-foreground">
+                  O que a liderança publica para a igreja — só leitura.
+                </p>
+              </div>
+              <MemberBoard />
             </div>
           </TabsContent>
 

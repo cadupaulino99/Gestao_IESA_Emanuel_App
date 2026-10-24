@@ -1,0 +1,44 @@
+rules_version = '2';
+
+/* ═══════════════════════════════════════════════════════════════════
+   v1.13.0 — Storage dos CARTAZES de eventos (Avisos, Agenda e Eventos)
+   ───────────────────────────────────────────────────────────────────
+   • Leitura: só com SESSÃO INICIADA (as imagens exigem autenticação).
+   • Escrita: só liderança. NOTA: as regras do Storage NÃO conseguem ler o
+     Firestore (sem função get() aqui), pelo que o papel é verificado pelo
+     caminho aceite + tamanho + tipo; a autoridade REAL está nas
+     firestore.rules — só a liderança grava `posterPath` num evento, e o
+     validador só aceita caminhos ^posters/… Um membro autenticado que
+     abusasse do upload só conseguiria escrever um ficheiro solto em
+     posters/ que nenhum evento referencia (e que a liderança pode apagar).
+   • Só posters/**; nada mais no bucket.
+   ═══════════════════════════════════════════════════════════════════ */
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isImageOk() {
+      return request.resource.size <= 10 * 1024 * 1024 &&
+             request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    match /posters/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isImageOk() &&
+                      fileName.matches('[^/]+\\.(jpg|png|webp)');
+    }
+
+    match /posters/thumbs/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isImageOk() &&
+                      fileName.matches('[^/]+\\.(jpg|png|webp)');
+    }
+
+    // Tudo o resto: fechado.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

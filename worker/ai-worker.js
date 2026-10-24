@@ -42,7 +42,7 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.6.0';
+const WORKER_VERSION = '2.7.0';
 const WORKER_BUILD = '2026-10-24 (cron: fila de mensagens, lembretes, estados; IA de modelos)';
 
 const CORS = {
@@ -654,6 +654,117 @@ async function fsAdd(env, col, obj) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 4b. v1.13.0 — Avisos, Agenda e Eventos: LEMBRETES DE EVENTO         */
+/*     (1 dia antes, só no sistema), fundidos no digest diário do      */
+/*     módulo — máx. 1 notificação/dia/membro, mesmo critério e mesmo  */
+/*     formato de documento que src/lib/board.ts (ID determinístico    */
+/*     notifications/board-<diaLuanda>-<memberId>).                    */
+/* ------------------------------------------------------------------ */
+async function fsGetDoc(env, col, id) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const r = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/${col}/${encodeURIComponent(id)}`,
+    { headers: { Authorization: `Bearer ${tok}` } }
+  );
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('GET ' + col + '/' + id + ': ' + r.status);
+  const j = await r.json();
+  return j.fields || {};
+}
+
+/** Lista uma colecção inteira (sem filtros) — para membros do digest. */
+async function fsList(env, col, limit = 1000) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const r = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents:runQuery`,
+    { method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: col }], limit } }) }
+  );
+  if (!r.ok) throw new Error('LIST ' + col + ': ' + r.status);
+  const rows = await r.json();
+  return (rows || []).filter((x) => x.document)
+    .map((x) => ({ id: (x.document.name.split('/documents/')[1] || '').split('/').pop(), fields: x.document.fields || {} }));
+}
+
+/** PATCH com values Firestore já construídos (arrays/objects — fsPatch não cobre). */
+async function fsPatchRaw(env, col, id, fields, maskPaths) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const masks = maskPaths.map((k) => `updateMask.fieldPaths=${k}`).join('&');
+  const r = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/${col}/${encodeURIComponent(id)}?${masks}`,
+    { method: 'PATCH', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) }
+  );
+  if (!r.ok) throw new Error('PATCHRAW ' + col + '/' + id + ': ' + r.status);
+}
+
+const fvStr = (v) => (v && v.stringValue) || '';
+const fvInt = (v) => Number((v && (v.integerValue || v.doubleValue)) || 0);
+
+/** Funde um item no digest do dia e actualiza a notificação de cada membro. */
+async function mergeBoardDigest(env, dayKey, item) {
+  const prevFields = await fsGetDoc(env, 'board_notify_log', dayKey);
+  const prevItems = (prevFields && prevFields.items && prevFields.items.arrayValue && prevFields.items.arrayValue.values) || [];
+  const items = [...prevItems, { mapValue: { fields: {
+    kind: { stringValue: item.kind },
+    refId: item.refId ? { stringValue: item.refId } : { nullValue: null },
+    label: { stringValue: item.label },
+    at: { integerValue: String(item.at) },
+  } } }];
+  const count = items.length;
+  const firstAt = (prevFields && fvInt(prevFields.firstAt)) || item.at;
+  await fsPatchRaw(env, 'board_notify_log', dayKey, {
+    dayKey: { stringValue: dayKey },
+    items: { arrayValue: { values: items } },
+    count: { integerValue: String(count) },
+    firstAt: { integerValue: String(firstAt) },
+    updatedAt: { integerValue: String(item.at) },
+  }, ['dayKey', 'items', 'count', 'firstAt', 'updatedAt']);
+
+  const title = count <= 1 ? 'Novidade em Avisos e Eventos' : `${count} novidades em Avisos e Eventos`;
+  const body = items
+    .map((iv) => '• ' + fvStr(iv.mapValue && iv.mapValue.fields && iv.mapValue.fields.label))
+    .join('\n');
+  const members = await fsList(env, 'members', 1000);
+  let notified = 0;
+  for (const m of members) {
+    const email = fvStr(m.fields.email);
+    if (!email || fvStr(m.fields.status) === 'Falecido') continue;
+    await fsPatch(env, 'notifications', `board-${dayKey}-${m.id}`, {
+      userEmail: email, kind: 'board', title, body,
+      read: false, createdAt: firstAt, updatedAt: item.at,
+      refId: item.refId, byEmail: 'worker@lembrete-evento',
+    });
+    notified++;
+  }
+  return notified;
+}
+
+/** Eventos de AMANHÃ (Luanda) com reminder1d → lembrete no digest (idempotente). */
+async function processEventReminders(env, now) {
+  const today = luandaNow(now).dayKey;
+  const tomorrow = luandaNow(now + 86400000).dayKey;
+  const rows = await fsRunQuery(env, 'events', [eq('date', tomorrow), eq('reminder1d', true)], 100);
+  let sent = 0;
+  for (const row of rows) {
+    const f = row.fields;
+    if (fvStr(f.publishStatus) === 'rascunho') continue;          // rascunhos nunca
+    const st = fvStr(f.status) || 'marcado';
+    if (st === 'cancelado' || st === 'realizado') continue;         // sem lembrete
+    if (fvStr(f.reminderSentDay) === today) continue;               // já lembrou hoje
+    const time = fvStr(f.time);
+    const label = `Lembrete: «${fvStr(f.title)}» é amanhã${time ? ` às ${time}` : ''}`;
+    try {
+      await mergeBoardDigest(env, today, { kind: 'lembrete', refId: row.id, label, at: now });
+      await fsPatch(env, 'events', row.id, { reminderSentDay: today });
+      sent++;
+    } catch (e) {
+      console.error('lembrete de evento falhou ' + row.id + ':', (e && e.message) || e);
+    }
+  }
+  return sent;
+}
+
+/* ------------------------------------------------------------------ */
 /* 5. Adaptadores de canal (config em providers.config.js)             */
 /*    'manual' → a mensagem fica em manual_hold para o operador enviar  */
 /*    pelos botões wa.me / sms: da fila. Chaves vivem nos segredos.     */
@@ -866,7 +977,8 @@ export default {
       const q = await processOutbox(env, now);
       const c = await recomputeContributions(env, now);
       const r = await runReminders(env, now);
-      console.log(`cron: outbox=${q} contribs=${c} lembretes=${r}`);
+      const b = await processEventReminders(env, now);
+      console.log(`cron: outbox=${q} contribs=${c} lembretes=${r} eventos=${b}`);
     } catch (e) {
       console.error('cron falhou:', e?.message || e);
     }
