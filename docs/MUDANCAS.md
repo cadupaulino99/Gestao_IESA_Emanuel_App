@@ -1,5 +1,30 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.10.2 (2026-10-24) — «Sucesso… e depois erro ao sincronizar» ao lançar dízimo
+
+Causa (cadeia de três defeitos no estado do formulário `tD`, `Finances.tsx`):
+1. `openEditTithe` preenchia o formulário **sem** `deliveryMonth/deliveryYear` e com
+   `selectedMonths` em **nome** legado («Janeiro»);
+2. o diálogo «Registar» **não repunha** o estado ao abrir (DialogTrigger sem reset);
+3. o reset pós-gravação repunha `selectedMonths` em **nome** e não repunha a entrega.
+   Resultado: após abrir uma edição (ou após certos resets), o lançamento seguinte
+   enviava `deliveryMonth: undefined` / meses em nome — e o Firestore **rejeita
+   `undefined`** no setDoc de fundo: o toast de sucesso saía (UI optimista) e depois
+   vinha «Erro ao sincronizar… revertido».
+
+Correção:
+- `resetTD()` canónico (meses `'01'..'12'`, entrega = mês operativo) chamado ao
+  abrir o diálogo para novo e após gravar (criação e edição);
+- `openEditTithe` preenche entrega/referência via `deliveryOf()/referenceOf()`;
+- `handleAddTithe` **sanitiza tudo antes de gravar** (`pairs`, `delMonth/delYear/
+  refYear`) — mesmo com estado stalado, nunca sai `undefined` nem nome;
+- vista actual e verificações de duplicados antigas normalizadas (`referenceOf`,
+  `toMonthIdx`); labels de meses passam a nomes legíveis (checkboxes e divisão
+  manual mostravam «01», «02»).
+
+Nada mudou nas regras nem no Worker; só o cliente. Testes: 68.
+
+
 ## v1.10.1 (2026-10-24) — Campo do B.I.: teclado certo, maiúsculas com cursor, migração segura
 
 Queixa: no telemóvel o campo «Nº do B.I.» abria o teclado só numérico — não dava
