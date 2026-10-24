@@ -18,11 +18,13 @@ export async function cycleCommunionMark(
   year: number,
   month: string,
   existing: CommunionMark | undefined,
-  email: string
+  email: string,
+  memberEmail?: string | null
 ): Promise<void> {
   if (!existing) {
     await addDoc(collection(db, 'communions'), {
-      memberId, year, month, mark: 'present', recordedBy: email || 'unknown', createdAt: Date.now(),
+      memberId, year, month, mark: 'present', recordedBy: email || 'unknown',
+      memberEmail: memberEmail || null, createdAt: Date.now(),
     });
   } else if (existing.mark === 'present') {
     await updateDoc(doc(db, 'communions', existing.id), { mark: 'absent', recordedBy: email || 'unknown' });

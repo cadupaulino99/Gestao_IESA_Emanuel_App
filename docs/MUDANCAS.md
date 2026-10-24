@@ -1,5 +1,56 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.9.0 (2026-10-24) — Auditoria: docs, segurança, testes, resiliência da IA, performance
+
+Resposta point-by-point à auditoria externa:
+
+**Documentação**
+- `README.md` novo: descrição, stack, pré-requisitos, configuração local com o
+  passo-a-passo das credenciais do Firebase, tabela de scripts, estrutura de
+  pastas, resumo de segurança e testes.
+- `CONTRIBUTING.md` novo: fluxo de PRs, convenção de commits e as seis
+  «regras de ouro» nascidas de incidentes reais (wrangler apaga segredos;
+  jsPDF.save() é mudo no Android; medir modelos antes de trocar; etc.).
+
+**Segurança**
+- `.env*` já estava no `.gitignore` (confirmado); não há segredos no repo — as
+  chaves `AIza…` em `firebase-applet-config.json`/`google-services.json` são a
+  config PÚBLICA do Firebase (por desenho); o sensível vive cifrado na Cloudflare.
+- Auditoria das regras Firestore: finanças da igreja (offerings, expenses,
+  buildingFunds, assets, budgets, financialMonths/Years, expense_receipts)
+  passam a **leitura só da liderança**; documentos por membro (tithes,
+  communions, donations) passam a ler-se **pelo próprio** (`memberEmail` == email
+  do token) ou liderança; documentos antigos sem `memberEmail` (ou com null)
+  mantêm leitura autenticada para não partir o portal de ninguém — migração
+  natural, cada novo registo já leva `memberEmail` (gravado em Finances,
+  MemberCardModal e lib/communion).
+- Firebase Storage: **não é utilizado** (getStorage inicializado mas sem usos);
+  documentado no README com a recomendação de regras restritas se vier a ativar-se.
+
+**Testes + CI**
+- Vitest: `src/lib/__tests__/` com normalizadores do OCR (datas PT→ISO, sexo,
+  telefones +244, nº BI), agregações financeiras (`lib/finance.ts` nova, usada
+  pelo cartão) e retries/backoff. `npm test` / `npm run test:watch`.
+- `lib/finance.ts` novo: aggregateByMonth/sumYear/yearsPresent — fonte única dos
+  totais do cartão (MemberCardView já usa).
+- `.github/workflows/ci.yml`: em cada PR e push → `tsc --noEmit` + `vitest run` +
+  `node --check worker/ai-worker.js`. Sem segredos, corre em forks.
+
+**Resiliência da IA**
+- Cliente (`lib/ai.ts → callWorker`): timeout por operação (120 s visão, 60 s
+  resto) + `withBackoff` (3 tentativas, backoff exponencial c/ jitter) em erros
+  transitórios (408/429/5xx/rede); 400/401/403/404 não repetem.
+- `lib/retry.ts` novo (`withBackoff`, `isRetryableError`), testado.
+- Worker: em 429/503 repete o MESMO modelo 1× com backoff ~1,2 s antes de mudar
+  de modelo (pico de procura transitório não salta logo para o fallback).
+
+**Performance**
+- Rotas com code splitting: `React.lazy` + `Suspense` para as 12 páginas
+  (Members, Finances, Reports, Admin, Radio, MemberPortal, …); login e fallback
+  de carregamento ficam eager. O bundle inicial deixa de incluir páginas que o
+  utilizador pode nunca abrir naquela sessão.
+
+
 ## v1.8.2 (2026-10-23) — Comunhão ✓/✗ por clique, credenciais por membro, membro edita os seus dados
 
 - **Comunhão como a liderança decidiu:** as casas do papel levavam a *assinatura do

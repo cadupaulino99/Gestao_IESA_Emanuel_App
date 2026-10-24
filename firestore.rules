@@ -39,6 +39,27 @@ service cloud.firestore {
       return id is string && id.size() > 0;
     }
 
+    // --- Auditoria de segurança 2026-10-24 ---
+    // Leituras de documentos POR MEMBRO: o próprio (comparando memberEmail com o
+    // email do token) ou a liderança. Documentos ANTIGOS (sem memberEmail,
+    // gravados antes desta auditoria) mantêm a leitura autenticada para não
+    // partir o portal de ninguém — migração natural: cada novo registo já leva
+    // memberEmail.
+    function isOwnMemberDoc() {
+      return isAuthenticated()
+        && resource.data.keys().hasAll(['memberEmail'])
+        && resource.data.memberEmail == request.auth.token.email;
+    }
+    function isLegacyMemberDoc() {
+      return isAuthenticated() && (
+        !resource.data.keys().hasAll(['memberEmail']) ||
+        resource.data.memberEmail == null
+      );
+    }
+    function canReadMemberDoc() {
+      return hasFinancialWriteAccess() || isOwnMemberDoc() || isLegacyMemberDoc();
+    }
+
     // Edição dos próprios dados pelo membro: só um subconjunto de campos de
     // contacto/estado, todos strings, + updatedAt. Nome, BI, estado de membro,
     // dízimos etc. continuam reservados à liderança.
@@ -90,14 +111,14 @@ service cloud.firestore {
     // Leitura: qualquer sessão (o portal do membro filtra pelo próprio memberId
     // no cliente, tal como já faz com `tithes`). Escrita: só liderança.
     match /communions/{docId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if canReadMemberDoc();
       allow create: if hasFinancialWriteAccess() && isValidId(docId)
                     && incoming().keys().hasAll(['memberId', 'year', 'month', 'mark']);
       allow update, delete: if hasFinancialWriteAccess();
     }
 
     match /donations/{docId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if canReadMemberDoc();
       allow create: if hasFinancialWriteAccess() && isValidId(docId)
                     && incoming().keys().hasAll(['memberId', 'amount', 'date'])
                     && incoming().amount is number && incoming().amount > 0;
@@ -162,7 +183,7 @@ service cloud.firestore {
     }
 
     match /tithes/{titheId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if canReadMemberDoc();
       allow create: if hasFinancialWriteAccess() && isValidId(titheId) &&
                     isValidTitheCreate(incoming()) &&
                     exists(/databases/$(database)/documents/members/$(incoming().memberId));
@@ -194,7 +215,7 @@ service cloud.firestore {
     }
 
     match /offerings/{offeringId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if hasFinancialWriteAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(offeringId) && isValidOfferingCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(offeringId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -222,7 +243,7 @@ service cloud.firestore {
     }
 
     match /expenses/{expenseId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if hasFinancialWriteAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(expenseId) && isValidExpenseCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(expenseId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -246,7 +267,7 @@ service cloud.firestore {
     }
 
     match /buildingFunds/{fundId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if hasFinancialWriteAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(fundId) && isValidBuildingFundCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(fundId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -272,7 +293,7 @@ service cloud.firestore {
     }
 
     match /assets/{assetId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if hasFinancialWriteAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(assetId) && isValidAssetCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(assetId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -298,7 +319,7 @@ service cloud.firestore {
     }
 
     match /financialMonths/{monthId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if hasFinancialWriteAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(monthId) && isValidFinancialMonthCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(monthId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -311,18 +332,18 @@ service cloud.firestore {
     }
     // --- Financial Year Collection ---
     match /financialYears/{yearId} {
-      allow read, list: if isAuthenticated();
+      allow read, list: if hasFinancialWriteAccess();
       allow create, update: if hasFinancialWriteAccess();
       allow delete: if isAdmin();
     }
     // --- Budget Collection ---
     match /budgets/{budgetId} {
-      allow read: if isAuthenticated();
+      allow read: if hasFinancialWriteAccess();
       allow create, update: if hasFinancialWriteAccess();
       allow delete: if isAdmin();
     }
     match /expense_receipts/{receiptId} {
-      allow read: if isAuthenticated();
+      allow read: if hasFinancialWriteAccess();
       allow create, update: if hasFinancialWriteAccess();
       allow delete: if isAdmin();
     }

@@ -1,0 +1,28 @@
+name: ci
+
+# Testes + typecheck em cada pull request e em cada push para main.
+# Não precisa de segredos: corre só código público.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: typecheck + testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit
+      - name: Testes unitários (vitest)
+        run: npx vitest run
+      - name: Sintaxe do Worker
+        run: node --check worker/ai-worker.js

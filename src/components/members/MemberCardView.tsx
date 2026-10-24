@@ -1,4 +1,5 @@
 import { Check, X } from 'lucide-react';
+import { aggregateByMonth, sumYear } from '../../lib/finance';
 import {
   Member,
   CommunionMark,
@@ -106,13 +107,12 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
       return <X className="h-3.5 w-3.5 text-red-500 dark:text-red-400 inline" aria-label="não participou" />;
     return <>{mark}</>;
   };
-  const donOf = (y: number, mi: string) =>
-    data.donations
-      .filter((d) => d.referenceYear === y && d.referenceMonth === mi)
-      .reduce((a, b) => a + (b.amount || 0), 0);
+  const donByYear = (y: number) => aggregateByMonth(data.donations, y);
+  const titByYear = (y: number) => aggregateByMonth(data.tithes, y);
+  const donOf = (y: number, mi: string) => donByYear(y)[mi]?.total || 0;
   const titOf = (y: number, mi: string) => {
-    const rows = data.tithes.filter((t) => t.referenceYear === y && t.referenceMonth === mi);
-    return { total: rows.reduce((a, b) => a + (b.amount || 0), 0), n: rows.length };
+    const a = titByYear(y)[mi];
+    return { total: a?.total || 0, n: a?.count || 0 };
   };
 
   const face = `${compact ? '' : 'shadow-md '}rounded-lg border border-slate-300 dark:border-slate-700 bg-[#eef5ee] dark:bg-slate-900 p-4 space-y-3`;
@@ -220,7 +220,7 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
                   <td className={head}>Total</td>
                   {years.map((y) => (
                     <td key={y} className={cell + ' font-bold'}>
-                      {money(data.donations.filter((d) => d.referenceYear === y).reduce((a, b) => a + b.amount, 0))}
+                      {money(sumYear(data.donations, y))}
                     </td>
                   ))}
                 </tr>
@@ -315,7 +315,7 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
                     <td className={head}>Total</td>
                     {years.map((y) => (
                       <td key={y} className={cell + ' font-bold'}>
-                        {money(data.tithes.filter((t) => t.referenceYear === y).reduce((a, b) => a + b.amount, 0))}
+                        {money(sumYear(data.tithes, y))}
                       </td>
                     ))}
                   </tr>

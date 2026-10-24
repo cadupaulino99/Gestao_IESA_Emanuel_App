@@ -65,7 +65,7 @@ export default function CommunionTracker() {
     if (!selected) return;
     setBusy(true);
     try {
-      await cycleCommunionMark(selected.id, year, mi, marks.find((c) => c.year === year && c.month === mi), user?.email || '');
+      await cycleCommunionMark(selected.id, year, mi, marks.find((c) => c.year === year && c.month === mi), user?.email || '', (selected as any).email || null);
       setMarks(await fetchCommunion(selected.id));
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao registar. Verifique se as regras do Firestore foram publicadas.');

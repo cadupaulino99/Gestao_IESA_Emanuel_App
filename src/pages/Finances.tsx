@@ -37,7 +37,7 @@ export default function Finances() {
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[d.getMonth()]);
   const [selectedYear, setSelectedYear] = useState(d.getFullYear().toString());
   
-  const [members, setMembers] = useState<{id: string, name: string}[]>([]);
+  const [members, setMembers] = useState<{id: string, name: string, email?: string}[]>([]);
   const [memberLookup, setMemberLookup] = useState<Record<string, string>>({});
   const [lastMemberDoc, setLastMemberDoc] = useState<any>(null);
   const [hasMoreMembers, setHasMoreMembers] = useState(false);
@@ -142,7 +142,7 @@ export default function Finances() {
         try {
           const mQuery = query(collection(db, 'members'), orderBy('name', 'asc'), limit(40));
           const mSnap = await getDocs(mQuery);
-          const loadedMembers = mSnap.docs.map(d => ({ id: d.id, name: d.data().name }));
+          const loadedMembers = mSnap.docs.map(d => ({ id: d.id, name: d.data().name, email: d.data().email || null }));
           setMembers(loadedMembers);
           setLastMemberDoc(mSnap.docs[mSnap.docs.length - 1] || null);
           setHasMoreMembers(mSnap.docs.length === 40);
@@ -238,7 +238,7 @@ export default function Finances() {
         limit(40)
       );
       const mSnap = await getDocs(nextQuery);
-      const newMembers = mSnap.docs.map(d => ({ id: d.id, name: d.data().name }));
+      const newMembers = mSnap.docs.map(d => ({ id: d.id, name: d.data().name, email: d.data().email || null }));
       setMembers(prev => {
         const existingIds = new Set(prev.map(m => m.id));
         return [...prev, ...newMembers.filter(m => !existingIds.has(m.id))];
@@ -508,6 +508,10 @@ export default function Finances() {
     const createdRecords: any[] = [];
     const createdDocIds: string[] = [];
 
+    // auditoria 2026-10-24: cada dízimo novo leva o email do membro para que as
+    // regras do Firestore permitam leitura apenas ao próprio e à liderança
+    const memberEmail = members.find((mm) => mm.id === tD.memberId)?.email || null;
+
     for (let i = 0; i < tD.selectedMonths.length; i++) {
       const m = tD.selectedMonths[i];
       const val = isManual ? parseFloat(tD.manualValues[m]) : splitAmount;
@@ -516,6 +520,7 @@ export default function Finances() {
       createdRecords.push({
         id: titheDocId,
         memberId: tD.memberId,
+        memberEmail,
         amount: val,
         receiptNumber: `${baseReceipt}${tD.selectedMonths.length > 1 ? `-${i+1}` : ''}`,
         month: m,

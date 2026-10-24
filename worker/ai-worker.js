@@ -283,7 +283,12 @@ const GEMINI_MODELS = [
 const GEMINI_TIMEOUT_MS = 45_000;
 
 /* Le a chave do header `x-goog-api-key` (v1beta), com timeout explicito. */
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
 async function geminiPost(env, model, body, timeoutMs = GEMINI_TIMEOUT_MS) {
+  /* Em 429/503 (quota/pico de procura) tenta o MESMO modelo uma segunda vez
+     com backoff de ~1,2 s antes de declarar falha e mudar de modelo. */
+  for (let attempt = 0; ; attempt++) {
   let r;
   try {
     r = await fetch(
@@ -309,12 +314,17 @@ async function geminiPost(env, model, body, timeoutMs = GEMINI_TIMEOUT_MS) {
   try { j = txt ? JSON.parse(txt) : null; } catch { /* HTML/pagina de erro */ }
   if (!r.ok) {
     const msg = j?.error?.message || txt.slice(0, 300) || `erro Gemini ${r.status}`;
+    if ((r.status === 429 || r.status === 503) && attempt === 0) {
+      await sleep(1200 + Math.random() * 800);
+      continue;
+    }
     const e = new Error(msg);
     e.status = r.status;
     e.model = model;
     throw e;
   }
   return j;
+  }
 }
 
 /* Tenta os modelos por ordem. Faz fallback para: modelo inexistente/config
