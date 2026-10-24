@@ -1,5 +1,40 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.10.0 (2026-10-24) — Gestão de administradores com palavras-passe de uso único
+
+**Como as palavras-passe vivem (auditoria pedida pelo utilizador):** no **Firebase
+Auth**, que guarda apenas o *hash* (scrypt gerido pela Google). Nem Firestore, nem
+Worker, nem APK guardam palavras-passe em texto legível; a temporária existe só em
+memória, viaja uma vez por HTTPS e mostra-se uma vez no ecrã de partilha.
+**Não foi precisa migração para hash** — já era hash. O que faltava era o ciclo de
+vida: troca obrigatória, expiração, desativação, super admin e auditoria.
+
+- **Super admin** = documento `admins/<email>` com `isSuper: true` (migração cria-a
+  no email fundador). Restrição **no servidor**: regras do Firestore (list/read de
+  terceiros, create/update/delete só super; o próprio só toca `lastLoginAt` e
+  `mustChangePassword`) e Worker v2.4.0 (rotas `/admin/*` exigem super).
+- **Criação**: membro cadastrado → nome/telefone/email/papel → Worker cria a conta
+  Auth com password temporária gerada no cliente (`genTempPassword`, 12 chars sem
+  0/O/1/l) → documento admins com `mustChangePassword: true` + `tempPasswordIssuedAt`.
+- **Ecrã de credenciais de USO ÚNICO** (`OneTimeCredentials`): copiar mensagem,
+  WhatsApp (wa.me), SMS (sms:), email (mailto:) — links nativos via `openExternal`.
+  Fechar descarta a password do estado; aviso de confirmação ao fechar.
+- **Primeiro acesso**: `ForcePasswordChangeModal` bloqueia a app até trocar
+  (`updatePassword` + update do próprio doc); temporária **expira aos 7 dias**
+  (`isTempExpired`); Worker devolve 403 `PASSWORD_CHANGE_REQUIRED` enquanto não trocar.
+- **Repor/desativar**: rotas novas do Worker `/admin/reset-temp-password` e
+  `/admin/set-account-disabled` (Identity Toolkit: password nova / `disableUser`),
+  com PATCH cirúrgico no documento admins; a conta super é intocável por aqui.
+- **Auditoria**: `audit_logs` com `admin.created/password-reset/disabled/enabled/
+  password-changed`, quem/quando/alvo — nunca palavras-passe.
+- **Último acesso**: `lastLoginAt` escrito pelo próprio no login (regra limitada).
+- **Migração de contas antigas**: Admin → Administradores → cartão de migração
+  (backup obrigatório primeiro; idempotente).
+- Menu móvel (v1.9.8, incluída): «Terminar Sessão» em rodapé fixo do sheet.
+- Testes: 63 (alfabeto/aleatoriedade da temporária, mensagem e links de partilha,
+  expiração 7 dias). Guia: `docs/VERIFICACAO-ADMIN.md`.
+
+
 ## v1.9.7 (2026-10-24) — Menu móvel: «Terminar Sessão» inacessível; scroll por toque endurecido
 
 Queixa com captura: no menu inferior (bottom-sheet), o botão Terminar Sessão fica
