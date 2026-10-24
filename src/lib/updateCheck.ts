@@ -36,12 +36,28 @@ export interface UpdateInfo {
 
 const LS_LAST = 'update-last-check';
 const LS_TAG = 'update-latest-tag';
+const THROTTLE = 15 * 60 * 1000; // 15 min (era 1 h: atrasava demasiado o aviso)
 
-export async function checkForUpdate(): Promise<UpdateInfo | null> {
+/** Última release vista neste dispositivo (para diagnóstico nas Definições). */
+export function lastKnownTag(): string | null {
+  try { return localStorage.getItem(LS_TAG); } catch { return null; }
+}
+
+let retryScheduled = false;
+function scheduleRetry(): void {
+  if (retryScheduled) return;
+  retryScheduled = true;
+  setTimeout(() => {
+    retryScheduled = false;
+    window.dispatchEvent(new CustomEvent('iesa:update-retry'));
+  }, 60_000);
+}
+
+export async function checkForUpdate(force = false): Promise<UpdateInfo | null> {
   try {
-    // no máximo 1 consulta por hora por dispositivo (rate limit da API pública)
+    // no máximo 1 consulta por 15 min por dispositivo (rate limit da API pública)
     const last = Number(localStorage.getItem(LS_LAST) || 0);
-    if (Date.now() - last < 60 * 60 * 1000) {
+    if (!force && Date.now() - last < THROTTLE) {
       const tag = localStorage.getItem(LS_TAG);
       if (!tag) return null;
       return compareVersions(currentVersion(), tag) > 0 ? infoFor(tag) : null;
@@ -54,7 +70,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
       headers: { Accept: 'application/vnd.github+json' },
     });
     clearTimeout(t);
-    if (!res.ok) return null;
+    if (!res.ok) { scheduleRetry(); return null; }
     const j = await res.json();
     const tag: string = j?.tag_name || '';
     if (!tag) return null;
@@ -62,7 +78,9 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     if (compareVersions(currentVersion(), tag) > 0) return infoFor(tag);
     return null;
   } catch {
-    return null; // sem internet / sem quota: silêncio, nunca bloqueia a app
+    // sem internet / timeout: nunca bloqueia a app, mas tenta de novo daqui a 60 s
+    scheduleRetry();
+    return null;
   }
 }
 

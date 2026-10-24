@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { ArrowDownToLine, X, Rocket } from 'lucide-react';
 import { Button } from './ui/button';
-import { checkForUpdate, openUpdate, type UpdateInfo } from '../lib/updateCheck';
+import { checkForUpdate, openUpdate, currentVersion, type UpdateInfo } from '../lib/updateCheck';
 import { prefGet, prefSet } from '../lib/prefs';
 
 const DISMISS_KEY = 'update-dismissed-tag';
@@ -15,14 +16,28 @@ export default function UpdateBanner() {
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const u = await checkForUpdate();
-      if (!alive || !u) return;
+    const run = async (force = false, silent = true) => {
+      const u = await checkForUpdate(force);
+      if (!alive) return;
+      if (!u) {
+        if (force && silent) toast.info(`Sem atualizações: está na versão ${currentVersion()}.`);
+        return;
+      }
       if (prefGet(DISMISS_KEY) === u.tag) return;
       setInfo(u);
-    })();
+    };
+    run();
+    const onRetry = () => run(true, false);
+    const onManual = () => run(true, true);
+    const onVisible = () => { if (document.visibilityState === 'visible') run(false, false); };
+    window.addEventListener('iesa:update-retry', onRetry);
+    window.addEventListener('iesa:check-update', onManual);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       alive = false;
+      window.removeEventListener('iesa:update-retry', onRetry);
+      window.removeEventListener('iesa:check-update', onManual);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 

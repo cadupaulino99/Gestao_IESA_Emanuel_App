@@ -6,6 +6,9 @@ import { useSettings } from '../context/SettingsContext';
 import { Settings as SettingsIcon, Monitor, Moon, Sun, Smartphone, Globe, Bell, AppWindow, Palette, EyeOff, LayoutTemplate, Languages, ShieldCheck } from 'lucide-react';
 import { useDevice } from '../hooks/useDevice';
 import { Switch } from '../components/ui/switch';
+import { Button } from '../components/ui/button';
+import { currentVersion, lastKnownTag } from '../lib/updateCheck';
+import { ArrowDownToLine } from 'lucide-react';
 
 export default function Settings() {
   const { mode, setMode, palette, setPalette } = useTheme();
@@ -182,8 +185,21 @@ export default function Settings() {
                     <span className="text-xs font-semibold text-foreground font-sans">Orientação Atual</span>
                     <span>{deviceInfo.isPortrait ? 'Retrato (Vertical)' : 'Paisagem (Horizontal)'}</span>
                   </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold text-foreground font-sans">Versão instalada</span>
+                    <span>{currentVersion()}</span>
+                    <span className="text-[10px]">última release vista: {lastKnownTag() || '—'}</span>
+                  </div>
                </div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 gap-2"
+              onClick={() => window.dispatchEvent(new CustomEvent('iesa:check-update'))}
+            >
+              <ArrowDownToLine className="h-4 w-4" /> Verificar atualizações
+            </Button>
           </CardContent>
         </Card>
       </div>

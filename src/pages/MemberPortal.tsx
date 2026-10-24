@@ -65,6 +65,7 @@ import {
 } from "../components/ui/tabs";
 import { toast } from "sonner";
 import MemberCardView from "../components/members/MemberCardView";
+import UpdateBanner from "../components/UpdateBanner";
 import { generateMemberCardPdf, savePdf } from "../lib/pdfUtils";
 import {
   CommunionMark,
@@ -287,6 +288,7 @@ export default function MemberPortal() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-background p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
+        <UpdateBanner />
         <div className="flex justify-between items-center bg-white dark:bg-card p-4 rounded-xl border shadow-sm">
           <div>
             <h1 className="text-2xl font-bold">Portal do Membro</h1>
