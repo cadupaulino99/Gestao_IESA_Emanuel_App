@@ -7,7 +7,7 @@ name: worker-health
 #    repo, servidor antigo), abre uma issue automaticamente.
 on:
   schedule:
-    - cron: '17 6 * * *'   # 06:17 UTC, todos os dias
+    - cron: '17 6 * * *' # 06:17 UTC, todos os dias
   workflow_dispatch:
 
 permissions:
@@ -47,16 +47,17 @@ jobs:
           EXP="${{ steps.exp.outputs.expected }}"
           LIVE="${{ steps.live.outputs.live }}"
           VIS="${{ steps.live.outputs.vision }}"
-          echo "repo=$EXP  ar=$LIVE  vision=$VIS"
+          echo "repo=$EXP ar=$LIVE vision=$VIS"
           if [ -z "$LIVE" ]; then
             echo "::error::O Worker nao respondeu ao /__health (em baixo ou demasiado antigo)."
-            echo "drift=true" >> "$GITHUB_OUTPUT"; exit 0
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if [ "$EXP" != "$LIVE" ] || [ "$VIS" != "true" ]; then
             echo "::error::DRIFT: repo=$EXP mas no ar=$LIVE (vision=$VIS). Publique o Worker: docs/INICIO-RAPIDO.md (Via A) ou npm run deploy:worker."
             echo "drift=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Sem drift: o Worker no ar e o do repositório coincidem."
+            echo "Sem drift: o Worker no ar e o do repositorio coincidem."
             echo "drift=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -65,19 +66,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          EXP="${{ steps.exp.outputs.expected }}"
-          LIVE="${{ steps.live.outputs.live }}"
           EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label worker-drift --json number -q 'length')"
-          if [ "$EXISTE" != "0" ]; then
-            echo "Ja ha issue aberta de worker-drift; nao duplico."
-            exit 0
-          fi
-          gh issue create --repo "$GITHUB_REPOSITORY" --label worker-drift \
-            --title "Worker publicado desatualizado (repo $EXP vs. ar $LIVE)" \
-            --body "O /__health devolve a versao **$LIVE** mas o repositório ja vai em **$EXP**.
-
-O Worker e um servidor a parte: publicar o APK nao o atualiza. Corrigir com:
-- Via A (3 min): colar \`worker/ai-worker.js\` no editor da Cloudflare (docs/INICIO-RAPIDO.md); ou
-- \`npm run deploy:worker\` com os segredos no ambiente.
-
-Detetado automaticamente pelo workflow \`worker-health\`."
+          if [ "$EXISTE" != "0" ]; then echo "Ja ha issue aberta de worker-drift; nao duplico."; exit 0; fi
+          TITLE="Worker publicado desatualizado (repo ${{ steps.exp.outputs.expected }} vs. ar ${{ steps.live.outputs.live }})"
+          BODY="O /__health devolve uma versao diferente da que esta no repositorio. O Worker e um servidor a parte: publicar o APK nao o atualiza. Corrigir com a Via A (colar worker/ai-worker.js no editor da Cloudflare, ver docs/INICIO-RAPIDO.md) ou com npm run deploy:worker com os segredos no ambiente. Detetado automaticamente pelo workflow worker-health."
+          gh issue create --repo "$GITHUB_REPOSITORY" --label worker-drift --title "$TITLE" --body "$BODY"
