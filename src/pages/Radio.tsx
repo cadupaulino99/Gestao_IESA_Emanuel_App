@@ -15,6 +15,7 @@ import {
   ExternalLink,
   RefreshCw,
   Volume2,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -46,6 +47,7 @@ export default function Radio() {
   const [now, setNow] = useState<NowPlaying | null>(null);
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [playingRec, setPlayingRec] = useState<string | null>(null);
+  const [deletingFile, setDeletingFile] = useState<string | null>(null);
   const [tick, setTick] = useState(0); // relógio do gravador
   const recAudioRef = useRef<HTMLAudioElement | null>(null);
   const { confirm } = useConfirm();
@@ -140,11 +142,21 @@ export default function Radio() {
   };
 
   const removeRecording = async (r: Recording) => {
+    if (deletingFile) return; // evita entradas duplas (duplo toque)
     const ok = await confirm(`Apagar "${r.file}" do telemóvel? Esta ação não pode ser anulada.`, 'APAGAR');
     if (!ok) return;
-    await deleteRecording(r);
-    setRecordings(await listRecordings());
-    toast.success('Gravação apagada.');
+    setDeletingFile(r.file);
+    try {
+      await deleteRecording(r);
+      setRecordings(await listRecordings());
+      toast.success('Gravação apagada.');
+    } catch (e: any) {
+      /* Antes sem catch: qualquer erro do Filesystem morria em silêncio e
+         parecia que «o botão de apagar não funciona». */
+      toast.error('Não foi possível apagar: ' + (e?.message || 'erro desconhecido'));
+    } finally {
+      setDeletingFile(null);
+    }
   };
 
   const exportRecording = async (r: Recording) => {
@@ -349,8 +361,8 @@ export default function Radio() {
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={() => exportRecording(r)} title="Partilhar / exportar">
                       {isNative() ? <Share2 className="h-4 w-4" /> : <Download className="h-4 w-4" />}
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-red-600" onClick={() => removeRecording(r)} title="Apagar">
-                      <Trash2 className="h-4 w-4" />
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-red-600" onClick={() => removeRecording(r)} disabled={deletingFile !== null} title="Apagar">
+                      {deletingFile === r.file ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                     </Button>
                   </li>
                 ))}

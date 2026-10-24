@@ -210,7 +210,15 @@ export async function saveRecording(blob: Blob, name: string): Promise<Recording
 }
 
 export async function deleteRecording(r: Recording): Promise<void> {
-  await Filesystem.deleteFile({ path: `${RADIO.folder}/${r.file}`, directory: Directory.Documents });
+  try {
+    await Filesystem.deleteFile({ path: `${RADIO.folder}/${r.file}`, directory: Directory.Documents });
+  } catch (e: any) {
+    const msg = String(e?.message ?? e ?? '');
+    /* Já não existe = objetivo cumprido (idempotente): a lista é relida a
+       seguir e o ficheiro desaparece na mesma. */
+    if (/not exist|no such file|does not exist|não existe/i.test(msg)) return;
+    throw new Error(msg || 'Falha ao apagar o ficheiro.');
+  }
 }
 
 export async function shareRecording(r: Recording): Promise<boolean> {
