@@ -29,6 +29,9 @@ import { selfRegister, compressImageFile } from '../lib/ai';
 export default function SelfRegister() {
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
+  /* v1.14.2: erro EM BANNER DENTRO DA PÁGINA — os toasts não apareciam neste
+     ecrã (estava fora do Layout) e o cadastro falhava em silêncio. */
+  const [formError, setFormError] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
 
@@ -55,14 +58,25 @@ export default function SelfRegister() {
 
   const onSubmit = async (data: SignupForm) => {
     setBusy(true);
+    setFormError(null);
     try {
       await selfRegister(signupPayload(data));
       setDone(true);
     } catch (e: any) {
-      toast.error(e?.message || 'Não foi possível enviar o cadastro.');
+      const msg = e?.message || 'Não foi possível enviar o cadastro.';
+      setFormError(msg + (e?.status ? ` (código ${e.status})` : ''));
+      toast.error(msg);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setBusy(false);
     }
+  };
+
+  /* Campos inválidos: dizê-lo claramente (antes só havia textos pequenos
+     debaixo de cada campo, fáceis de não ver no telemóvel). */
+  const onInvalid = () => {
+    setFormError('Há campos por corrigir — veja as mensagens a vermelho no formulário.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const err = (k: string) => (errors as any)[k]?.message as string | undefined;
@@ -109,7 +123,12 @@ export default function SelfRegister() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
+            {formError && (
+              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive font-medium">
+                {formError}
+              </p>
+            )}
             {/* ── conta ── */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1 sm:col-span-2">

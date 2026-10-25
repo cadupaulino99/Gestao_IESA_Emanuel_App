@@ -11,7 +11,6 @@ import { Button } from './ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from './ui/sheet';
 import { useState, useEffect } from 'react';
-import { Toaster } from './ui/sonner';
 import { useCommandPalette } from '../context/CommandPaletteContext';
 import { Search } from 'lucide-react';
 import { livePlayer } from '../lib/radio';
@@ -345,7 +344,7 @@ export default function Layout() {
           </div>
         </nav>
       </main>
-      <Toaster position="top-right" />
+      {/* Toaster movido para a raiz do App (v1.14.2) — global, cobre login/registro/portal */}
     </div>
   );
 }

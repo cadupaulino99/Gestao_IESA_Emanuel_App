@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { CheckCircle2, ChevronDown, ChevronUp, Loader2, UserPlus, UserX, Inbox } from 'lucide-react';
 import { toast } from 'sonner';
-import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { nextInternalCode } from '../../lib/members';
@@ -42,6 +42,7 @@ export default function PendingSignups() {
   const confirmDialog = useConfirm();
   const [list, setList] = useState<MemberSignup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'pendente' | 'rejeitado' | 'aprovado'>('pendente');
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -49,12 +50,22 @@ export default function PendingSignups() {
   const [reason, setReason] = useState('');
 
   const load = async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const snap = await getDocs(collection(db, 'member_signups'));
       setList(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MemberSignup)
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
-    } catch (e) {
-      handleFirestoreError(e, OperationType.LIST, 'member_signups');
+    } catch (e: any) {
+      /* v1.14.2: erro VISÍVEL — antes o handleFirestoreError só relançava um
+         JSON para a consola e a lista ficava vazia sem explicação
+         («não apareceu nada»). */
+      const msg = String(e?.message || 'Erro ao carregar.');
+      const denied = /permission-denied|Missing or insufficient/i.test(String(e?.code || '') + msg);
+      setLoadError(denied
+        ? 'PERMISSION_DENIED ao ler member_signups — as regras do Firestore da v1.14+ não estão publicadas neste projecto. Corra o workflow «Deploy Firebase» (GitHub → Actions) e toque em «Tentar novamente».'
+        : msg);
+      console.error('PendingSignups load:', e);
     } finally {
       setLoading(false);
     }
@@ -109,7 +120,8 @@ export default function PendingSignups() {
       toast.success(`«${s.name}» aprovado — entrou na lista oficial de membros.`);
       await load();
     } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, 'members');
+      toast.error('Falha ao aprovar: ' + (e?.message || 'erro desconhecido'));
+      console.error('approve signup:', e);
     } finally {
       setBusyId(null);
     }
@@ -135,7 +147,8 @@ export default function PendingSignups() {
       setRejecting(null); setReason('');
       await load();
     } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, `member_signups/${s.id}`);
+      toast.error('Falha ao rejeitar: ' + (e?.message || 'erro desconhecido'));
+      console.error('reject signup:', e);
     } finally {
       setBusyId(null);
     }
@@ -174,6 +187,12 @@ export default function PendingSignups() {
 
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> A carregar…</div>
+        ) : loadError ? (
+          <div className="space-y-3 rounded-lg border border-amber-300/60 bg-amber-50 dark:bg-amber-950/40 p-4 text-sm text-amber-900 dark:text-amber-200">
+            <p><b>Não foi possível carregar os cadastros.</b></p>
+            <p className="text-xs break-all">{loadError}</p>
+            <Button size="sm" variant="outline" onClick={() => void load()}>Tentar novamente</Button>
+          </div>
         ) : shown.length === 0 ? (
           <div className="flex flex-col items-center gap-2 border border-dashed rounded-xl py-8 text-center">
             <Inbox className="h-7 w-7 text-slate-300 dark:text-slate-600" />
