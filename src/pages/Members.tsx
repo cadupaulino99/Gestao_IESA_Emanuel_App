@@ -5,7 +5,6 @@ import { collection, query, getDocs, addDoc, doc, updateDoc, deleteDoc, limit, s
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -36,29 +35,10 @@ import { PastoralMessageGeneratorModal } from '../components/members/PastoralMes
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-const memberSchema = z.object({
-  name: z.string().min(2, "O nome deve ter pelo menos 2 caracteres"),
-  documentNumber: z.string().optional(),
-  memberNumber: z.string().optional(),
-  fatherName: z.string().optional(),
-  motherName: z.string().optional(),
-  placeOfBirth: z.string().optional(),
-  photoBase64: z.string().optional(),
-  acceptsMessages: z.boolean().optional(),
-  phone: z.string().optional(),
-  birthDate: z.string().optional(),
-  baptismDate: z.string().optional(),
-  gender: z.string().optional(),
-  maritalStatus: z.string().optional(),
-  spouseName: z.string().optional(),
-  education: z.string().optional(),
-  profession: z.string().optional(),
-  address: z.string().optional(),
-  groupCell: z.string().optional(),
-  status: z.string().default("Activo"),
-});
-
-type MemberForm = z.infer<typeof memberSchema>;
+/* v1.14.0: esquema partilhado com o auto-cadastro (lib/memberSchema.ts) —
+   as regras do formulário são UMA só fonte, usada pela Administração e pelo
+   ecrã «Cadastrar-me». */
+import { memberSchema, type MemberForm } from '../lib/memberSchema';
 
 import { useAuth } from '../context/AuthContext';
 import { formatKz } from '../lib/money';

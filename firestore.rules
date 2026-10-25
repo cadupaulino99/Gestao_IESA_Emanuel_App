@@ -82,6 +82,15 @@ service cloud.firestore {
     function isSelf() {
       return isAuthenticated() && resource.data.email == request.auth.token.email;
     }
+    // v1.14: o membro só desliga a própria marca de troca obrigatória de
+    // palavra-passe (depois de definir a definitiva no 1.º login). Só para
+    // `false` — reactivar a marca é coisa da liderança.
+    function isSelfFlagClear() {
+      return isSelf() &&
+        incoming().diff(resource.data).affectedKeys().hasOnly(['mustChangePassword', 'updatedAt']) &&
+        incoming().mustChangePassword == false;
+    }
+
     function isSelfEdit() {
       return isSelf() &&
         incoming().keys().hasOnly(['phone', 'address', 'maritalStatus', 'education', 'profession', 'spouseName', 'updatedAt']) &&
@@ -249,7 +258,7 @@ service cloud.firestore {
       allow create: if hasFinancialWriteAccess() && isValidId(memberId);
       // O próprio membro (conta com o mesmo email) pode editar um subconjunto
       // seguro dos seus dados — sugestão da liderança (2026-10-23).
-      allow update: if (hasFinancialWriteAccess() && isValidId(memberId)) || isSelfEdit();
+      allow update: if (hasFinancialWriteAccess() && isValidId(memberId)) || isSelfEdit() || isSelfFlagClear();
       allow delete: if hasFinancialWriteAccess() && isValidId(memberId);
     }
 
@@ -531,6 +540,22 @@ service cloud.firestore {
       allow update: if canPublishBoard() && isValidAgendaItemDoc(incoming());
       allow delete: if canPublishBoard();
     }
+    // --- v1.14.0: Auto-cadastro de membros (member_signups) --------------
+    // Criado APENAS pelo Worker (conta de serviço — bypass de regras); nenhum
+    // cliente cria pedidos directamente. O próprio lê o estado (ecrã de
+    // pendente/rejeitado no login); a liderança gere; APROVAR/REJEITAR é só
+    // do perfil 'admin' — verificado no SERVIDOR, não só no UI.
+    match /member_signups/{signupId} {
+      allow read, list: if isAuthenticated() &&
+        (hasFinancialWriteAccess() || resource.data.email == request.auth.token.email);
+      allow create: if false;
+      allow update: if isAdmin() &&
+        incoming().diff(resource.data).affectedKeys().hasOnly(
+          ['statusSignup', 'reason', 'approvedBy', 'approvedAt', 'memberId', 'rejectedBy', 'rejectedAt']) &&
+        incoming().statusSignup in ['pendente', 'aprovado', 'rejeitado'];
+      allow delete: if isAdmin();
+    }
+
     // Controlo do digest diário de notificações do módulo (só liderança).
     match /board_notify_log/{dayKey} {
       allow read, list: if canPublishBoard();

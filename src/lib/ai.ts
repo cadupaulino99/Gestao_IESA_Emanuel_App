@@ -114,6 +114,42 @@ export async function setAccountDisabled(input: { email: string; disabled: boole
 }
 
 /* ------------------------------------------------------------------ */
+/* v1.14.0 — Auto-cadastro de membros (rota PÚBLICA do Worker)         */
+/* ------------------------------------------------------------------ */
+
+/** Chamada ao Worker SEM sessão (o auto-cadastro acontece antes de haver conta). */
+async function callWorkerPublic<T>(path: string, body: unknown): Promise<T> {
+  if (!WORKER_URL) throw new Error('Servidor não configurado neste build.');
+  let res: Response;
+  try {
+    res = await fetch(`${WORKER_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000),
+    });
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw new Error('O servidor demorou demasiado a responder. Tente novamente.');
+    throw new Error('Sem ligação ao servidor. Verifique a internet e tente novamente.');
+  }
+  const data = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    const err = new Error((data as any)?.error || `Erro ${res.status} no servidor.`) as Error & { status?: number; code?: string };
+    err.status = res.status;
+    err.code = (data as any)?.code;
+    throw err;
+  }
+  return data as T;
+}
+
+/** Auto-cadastro: cria conta Auth (pendente de aprovação do administrador).
+ *  A palavra-passe viaja UMA vez (HTTPS → Firebase Auth); nunca é guardada
+ *  localmente nem no Firestore. */
+export async function selfRegister(payload: Record<string, unknown>): Promise<{ ok: boolean; status: string }> {
+  return callWorkerPublic<{ ok: boolean; status: string }>('/auth/self-register', payload);
+}
+
+/* ------------------------------------------------------------------ */
 /* v1.7.0 — Visão: ler documentos com IA                               */
 /* ------------------------------------------------------------------ */
 

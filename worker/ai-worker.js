@@ -42,8 +42,8 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.7.0';
-const WORKER_BUILD = '2026-10-24 (cron: fila de mensagens, lembretes, estados; IA de modelos)';
+const WORKER_VERSION = '2.8.0';
+const WORKER_BUILD = '2026-10-25 (v2.8.0: auto-cadastro de membros /auth/self-register; v2.7.0: lembretes de eventos)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -222,6 +222,80 @@ async function saAccessToken(saJson) {
 
 let roleCache = { ts: 0, map: {} };
 const ROLE_TTL = 5 * 60 * 1000;
+
+/* ─────────────────────────────────────────────────────────────────────────
+   v1.14.0 — AUTO-CADASTRO de membros (rota PÚBLICA /auth/self-register)
+   Rate limit próprio por IP (mais apertado que o da IA: 5 pedidos/10 min)
+   e validação SERVIDOR completa: allowlist de campos, política de
+   palavra-passe (8+), email normalizado, telefone/BI angolanos, tamanhos.
+   A palavra-passe segue APENAS para o Firebase Auth (hash scrypt da Google)
+   — nunca é gravada no Firestore nem escrita em logs.
+   ───────────────────────────────────────────────────────────────────────── */
+const signupBuckets = new Map();
+const SIGNUP_RATE_LIMIT = 5;
+function signupRateOk(ip) {
+  const now = Date.now();
+  const b = signupBuckets.get(ip);
+  if (!b || now - b.start > RATE_WINDOW) {
+    signupBuckets.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  b.count += 1;
+  return b.count <= SIGNUP_RATE_LIMIT;
+}
+
+const SIGNUP_STR_FIELDS = {
+  memberNumber: 40, fatherName: 140, motherName: 140, placeOfBirth: 140,
+  gender: 20, maritalStatus: 30, spouseName: 140, education: 80,
+  profession: 80, address: 200, groupCell: 80, documentNumber: 20,
+};
+
+function validateSignup(body) {
+  if (!body || typeof body !== 'object') return { ok: false, error: 'Pedido inválido.' };
+  const name = String(body.name || '').trim();
+  if (name.length < 2 || name.length > 140) return { ok: false, error: 'O nome deve ter entre 2 e 140 caracteres.' };
+  if (/[<>]/.test(name)) return { ok: false, error: 'Caracteres não permitidos no nome.' };
+  const email = String(body.email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 180) return { ok: false, error: 'Email inválido. Ex.: nome@email.com' };
+  const password = String(body.password || '');
+  if (password.length < 8 || password.length > 200) return { ok: false, error: 'A palavra-passe precisa de pelo menos 8 caracteres.' };
+  const clean = { name, email, password };
+  for (const [k, max] of Object.entries(SIGNUP_STR_FIELDS)) {
+    const v = body[k];
+    if (v === undefined || v === null || v === '') continue;
+    if (typeof v !== 'string') return { ok: false, error: 'Campo inválido: ' + k + '.' };
+    if (v.length > max) return { ok: false, error: 'Campo demasiado longo: ' + k + '.' };
+    if (/[<>]/.test(v)) return { ok: false, error: 'Caracteres não permitidos no campo ' + k + '.' };
+    clean[k] = v.trim();
+  }
+  if (clean.phone !== undefined) {
+    const d = String(clean.phone).replace(/\D/g, '').replace(/^244/, '');
+    if (d.length !== 9 || d[0] !== '9') return { ok: false, error: 'Telefone angolano inválido: use +244 e 9 dígitos (ex.: +244 923 000 000).' };
+    clean.phone = '+244' + d;
+  } else if (body.phone !== undefined && body.phone !== null && body.phone !== '') {
+    const d = String(body.phone).replace(/\D/g, '').replace(/^244/, '');
+    if (d.length !== 9 || d[0] !== '9') return { ok: false, error: 'Telefone angolano inválido: use +244 e 9 dígitos (ex.: +244 923 000 000).' };
+    clean.phone = '+244' + d;
+  }
+  if (clean.documentNumber !== undefined) {
+    const bi = String(clean.documentNumber).replace(/[\s.|-]/g, '').toUpperCase();
+    if (!/^\d{9}[A-Z]{2}\d{3}$/.test(bi)) return { ok: false, error: 'B.I. inválido: 9 dígitos + 2 letras + 3 dígitos (ex.: 004516745LA041).' };
+    clean.documentNumber = bi;
+  }
+  for (const k of ['birthDate', 'baptismDate']) {
+    const v = body[k];
+    if (v === undefined || v === null || v === '') continue;
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return { ok: false, error: 'Data inválida: ' + k + ' (use AAAA-MM-DD).' };
+    clean[k] = v;
+  }
+  if (body.photoBase64 !== undefined && body.photoBase64 !== null && body.photoBase64 !== '') {
+    if (typeof body.photoBase64 !== 'string' || body.photoBase64.length > 900000) return { ok: false, error: 'Fotografia demasiado grande (máx. ~600 KB depois de comprimida).' };
+    if (!/^[A-Za-z0-9+/=\s]+$/.test(body.photoBase64)) return { ok: false, error: 'Fotografia inválida.' };
+    clean.photoBase64 = body.photoBase64.replace(/\s/g, '');
+  }
+  if (body.acceptsMessages !== undefined) clean.acceptsMessages = body.acceptsMessages !== false;
+  return { ok: true, clean };
+}
 
 /* Rate limit simples por utilizador (por isolate): 60 pedidos de IA / 10 min.
    Nao e a prova de bala (isolates sao independentes), mas trava utilizacao descontrolada. */
@@ -1009,6 +1083,7 @@ export default {
           '/admin/create-auth-account',
           '/admin/reset-temp-password',
           '/admin/set-account-disabled',
+          '/auth/self-register (público)',
         ],
         models: GEMINI_MODELS,
         config: {
@@ -1021,6 +1096,78 @@ export default {
     }
 
     try {
+      /* --- v1.14.0: AUTO-CADASTRO (público — ainda não tem conta/sessão) ---
+         Cria a conta Auth (palavra-passe cifrada pelo Firebase) e o registo
+         'pendente' em member_signups/<email>. O membro NÃO entra na app até
+         um administrador aprovar (Admin → «Cadastros pendentes»). */
+      if (path === '/auth/self-register') {
+        if (request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405);
+        const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+        if (!signupRateOk(ip)) {
+          return json({ error: 'Demasiadas tentativas a partir desta ligação. Aguarde uns minutos e tente novamente.' }, 429);
+        }
+        let body;
+        try { body = await request.json(); } catch { return json({ error: 'Pedido inválido.' }, 400); }
+        const v = validateSignup(body);
+        if (!v.ok) return json({ error: v.error }, 400);
+        const s = v.clean;
+
+        /* Duplicados (servidor é a autoridade): email, BI e telefone contra a
+           lista oficial; pedidos anteriores pelo mesmo email. Decisão: NÃO
+           ligar automaticamente a registos existentes — é o administrador
+           que decide (emitir credenciais do membro existente). */
+        const byEmail = await fsRunQuery(env, 'members', [eq('email', s.email)], 3);
+        if (byEmail.length) return json({ error: 'Já existe uma conta com este email. Tente entrar ou contacte o administrador.', code: 'EMAIL_EXISTS' }, 409);
+        if (s.documentNumber) {
+          const byBi = await fsRunQuery(env, 'members', [eq('documentNumber', s.documentNumber)], 3);
+          if (byBi.length) return json({ error: 'Este B.I. já está cadastrado na igreja. Contacte o administrador — não crie um registo duplicado.', code: 'BI_EXISTS' }, 409);
+        }
+        if (s.phone) {
+          const byPhone = await fsRunQuery(env, 'members', [eq('phone', s.phone)], 3);
+          if (byPhone.length) return json({ error: 'Este telefone já está associado a um membro. Contacte o administrador para ligar a sua conta ao registo existente.', code: 'PHONE_EXISTS' }, 409);
+        }
+        const prev = await fsGetDoc(env, 'member_signups', s.email);
+        if (prev) {
+          const st = fvStr(prev.statusSignup);
+          if (st === 'pendente') return json({ error: 'Já existe um pedido pendente com este email. Aguarde a decisão do administrador.', code: 'SIGNUP_PENDING' }, 409);
+          if (st === 'aprovado') return json({ error: 'Este email já está registado. Inicie sessão ou contacte o administrador.', code: 'SIGNUP_APPROVED' }, 409);
+          if (st === 'rejeitado') {
+            const why = fvStr(prev.reason);
+            return json({ error: 'O seu cadastro foi rejeitado' + (why ? ': ' + why : '') + '. Contacte o administrador.', code: 'SIGNUP_REJECTED' }, 409);
+          }
+        }
+
+        /* 1) conta Auth (o Firebase cifra a palavra-passe; unicidade do email
+              é garantida por ele — EMAIL_EXISTS) */
+        const saTok = await saAccessToken(env.FIREBASE_SA_JSON);
+        const r = await fetch('https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + saTok },
+          body: JSON.stringify({ email: s.email, password: s.password, displayName: s.name, returnSecureToken: false }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          const msg = (j.error && j.error.message) || '';
+          if (msg.includes('EMAIL_EXISTS')) return json({ error: 'Já existe uma conta com este email. Tente entrar ou contacte o administrador.', code: 'EMAIL_EXISTS' }, 409);
+          if (msg.includes('WEAK_PASSWORD')) return json({ error: 'Palavra-passe demasiado fraca. Use pelo menos 8 caracteres.' }, 400);
+          if (msg.includes('INVALID_EMAIL')) return json({ error: 'Email inválido.' }, 400);
+          console.error('self-register signupNewUser:', msg || r.status);  /* nunca logar a palavra-passe */
+          return json({ error: 'Não foi possível criar a conta agora. Tente novamente daqui a pouco.' }, 500);
+        }
+
+        /* 2) registo PENDENTE (id determinístico = email; sem palavra-passe) */
+        const { password: _pw, ...docFields } = s;
+        void _pw;
+        await fsPatch(env, 'member_signups', s.email, {
+          ...docFields,
+          statusSignup: 'pendente',
+          createdAt: Date.now(),
+          authUid: (j && j.localId) || null,
+          reason: null,
+        });
+        return json({ ok: true, status: 'pendente' });
+      }
+
       /* --- auth comum --- */
       const authHeader = request.headers.get('Authorization') || '';
       const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';

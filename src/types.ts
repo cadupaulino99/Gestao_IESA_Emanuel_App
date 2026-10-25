@@ -36,8 +36,48 @@ export interface Member {
   profession?: string;
   groupCell?: string;
   notes?: string;
+  /** Email da conta de autenticação LIGADA a este membro (regras isOwnMemberDoc). */
+  memberEmail?: string | null;
+  /** v1.14: true = no próximo login tem de definir a palavra-passe definitiva
+   *  (auto-cadastro aprovado). Espelho do mustChangePassword dos admins. */
+  mustChangePassword?: boolean;
   createdAt?: number;
   updatedAt?: number;
+}
+
+/** v1.14.0 — Pedido de AUTO-CADASTRO (colecção `member_signups`,
+ *  id determinístico = email normalizado; criada só pelo Worker). */
+export interface MemberSignup {
+  id: string;                 // = email normalizado
+  email: string;
+  name: string;
+  statusSignup: 'pendente' | 'aprovado' | 'rejeitado';
+  reason?: string | null;     // motivo da rejeição (opcional)
+  /** Campos do formulário de membro (allowlist validada no Worker). */
+  documentNumber?: string;
+  phone?: string;
+  birthDate?: string;
+  baptismDate?: string;
+  gender?: string;
+  maritalStatus?: string;
+  spouseName?: string;
+  fatherName?: string;
+  motherName?: string;
+  placeOfBirth?: string;
+  address?: string;
+  education?: string;
+  profession?: string;
+  groupCell?: string;
+  memberNumber?: string;
+  photoBase64?: string;
+  acceptsMessages?: boolean;
+  authUid?: string | null;    // localId da conta Firebase Auth criada
+  createdAt: number;
+  approvedBy?: string;
+  approvedAt?: number;
+  memberId?: string | null;   // documento em members criado na aprovação
+  rejectedBy?: string;
+  rejectedAt?: number;
 }
 
 export interface Tithe {

@@ -1,5 +1,67 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.0 — Auto-cadastro do membro com aprovação do administrador
+
+**Problema**: depois de instalar o APK, o membro só via o ecrã de login — não
+havia forma de criar conta sem a liderança. Agora o login tem «Criar conta /
+Cadastrar-me»; o pedido fica PENDENTE até um administrador aprovar.
+
+**Fluxo**
+1. `/register` (público): os MESMOS campos e validações do cadastro que a
+   Administração faz — o esquema zod foi EXTRAÍDO de `Members.tsx` para
+   `lib/memberSchema.ts` (fonte única; Members.tsx passa a importá-lo, zero
+   alteração de regras) + email (obrigatório, único, normalizado
+   minúsculas/sem espaços) + palavra-passe com confirmação (mín. 8).
+2. Submeter → Worker `POST /auth/self-register` (rota PÚBLICA, v2.8.0):
+   rate limit por IP (5/10 min), allowlist de campos, política de
+   palavra-passe repetida no servidor, BI/telefone angolanos validados,
+   duplicados bloqueados (email/BI/telefone contra `members`; pedidos
+   anteriores contra `member_signups`). Cria a conta no **Firebase Auth**
+   (`signupNewUser` — a palavra-passe fica SÓ lá, com hash forte da Google;
+   nunca no Firestore, nunca em logs) e o documento
+   `member_signups/<email>` com `statusSignup: 'pendente'`.
+3. O membro NÃO entra: no login, o AuthContext lê `member_signups/<email>`
+   (ID determinístico, sem query) e mostra o ecrã de estado —
+   «aguarda aprovação» ou «rejeitado + motivo» — com Terminar sessão.
+4. Admin → Administração → **«Cadastros pendentes»** (só perfil `admin` vê a
+   aba; o SERVIDOR confirma: writes de `member_signups` só `isAdmin()`):
+   ver todos os dados, **Aprovar** (cria o membro `Activo` na lista oficial
+   com `internalCode` sequencial, `memberEmail`, `mustChangePassword: true`
+   e notificação no sino) ou **Rejeitar** (motivo opcional, que o membro
+   vê ao tentar entrar; a conta Auth fica desativada? NÃO — fica activa mas
+   barrada, para a mensagem de estado poder ser mostrada).
+5. 1.º login após aprovação: `MemberForcePasswordChange` bloqueia TUDO até
+   definir a palavra-passe definitiva (reautentica com a actual, exige
+   nova diferente, 8+, confirmação; desliga a marca — regra própria:
+   o membro só escreve `mustChangePassword:false` no próprio documento).
+
+**Decisões documentadas** (o utilizador pediu para assinalar):
+- Pedidos vivem em `member_signups` (colecção nova), NÃO como estado em
+  `members` — a lista oficial e as queries existentes não são poluídas.
+- Duplicados (email/BI/telefone de membro existente): **bloquear e mandar
+  contactar o administrador** — ligar automaticamente o pedido a um registo
+  existente daria acesso a dados de outra pessoa a quem soubesse o telefone/BI.
+- Rejeitados: o email NÃO fica livre para novo auto-cadastro («contacte o
+  administrador»); o admin pode reaprovar um rejeitado directamente na lista.
+- `memberNumber` e `status` ficam fora do formulário público (são atribuídos
+  pela liderança); o resto dos campos é igual ao do administrador.
+- Sem migração de dados: `mustChangePassword` é opcional — os membros já
+  cadastrados pela liderança continuam a entrar exactamente como antes.
+
+**Ficheiros** — novos: `lib/memberSchema.ts` (+testes), `pages/SelfRegister.tsx`,
+`components/members/MemberForcePasswordChange.tsx`,
+`components/admin/PendingSignups.tsx`, `docs/VERIFICACAO-AUTO-CADASTRO.md`.
+Alterados: `worker/ai-worker.js` (**2.8.0**: rota pública + validação
+servidor + rate limit IP), `lib/ai.ts` (`selfRegister`/`callWorkerPublic`),
+`types.ts` (`MemberSignup`, `Member.memberEmail/mustChangePassword`),
+`context/AuthContext.tsx` (`signupMeta`), `App.tsx` (link no login, rota
+`/register`, gates de estado e de troca obrigatória), `pages/Members.tsx`
+(importa o esquema partilhado), `firestore.rules` (`member_signups`;
+`isSelfFlagClear`), `package.json` (1.14.0).
+
+**Publicação**: regras (workflow Deploy Firebase) + **Worker 2.8.0** (Via A
+ou secrets da Cloudflare) + APK v1.14.0. Guia: `docs/VERIFICACAO-AUTO-CADASTRO.md`.
+
 ## v1.13.0 — «Avisos, Agenda e Eventos»: membros consultam, liderança publica
 
 Módulo novo (decisões da liderança de 2026-10-25: publicação por TODA a
