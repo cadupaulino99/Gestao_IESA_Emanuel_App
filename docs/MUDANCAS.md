@@ -1,5 +1,34 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.1 — Revisão total: dead-ends, mensagens silenciosas e diagnóstico
+
+Sintomas reportados: «gravações impossíveis de apagar», «administradores não
+conseguem aceder», «cadastros não chegam ao administrador». Revisão do main
+(142 testes, tsc limpo, regras publicadas, Worker 2.8.0 no ar): o código
+actual está correcto nos três fluxos — apagar gravações foi corrigido na
+v1.12.3 e a aba «Cadastros Pendentes» só existe desde a v1.14.0 (publicada
+hoje às 07:47). Forte indicação de APARELHOS COM APK ANTIGO. Prova viva:
+dois cadastros de teste criados pela rota pública («TESTE APAGAR», domínio
+.invalid) devem aparecer em Cadastros Pendentes; duplicado de email devolveu
+409. A versão instalada passa a ver-se no rodapé do LOGIN.
+
+Bugs reais corrigidos nesta revisão:
+- **«Acesso Restrito» era um dead-end**: sem botão de terminar sessão — quem
+  caía ali ficava preso (não conseguia sequer trocar de conta). Botão
+  «Terminar sessão» + link «Criar conta».
+- **Conta desativada saía em SILÊNCIO** para o login (sem mensagem) — parecia
+  «não consigo aceder». Agora: toast «A sua conta foi desativada. Contacte o
+  super administrador.»
+- **Conta de admin órfã** (Auth criada, documento admins/ em falta — criação
+  falhou a meio) era irrecuperável: utilizador em «Acesso Restrito» e o super
+  com 404 do Worker ao repor a temporária. Agora o EMAIL_EXISTS sem documento
+  dispara a recuperação (recria o documento + nova temporária mostrada 1 vez).
+- **«Esqueci-me da palavra-passe» revelava se o email existe** (user-not-found
+  → «Email ou palavra-passe incorretos»). Mensagem agora é sempre a mesma
+  (anti-enumeração de contas).
+- **Cadastros Pendentes vazio** explica de onde vêm os pedidos e como
+  confirmar as versões (app ≥ 1.14.0; /__health ≥ 2.8.0).
+
 ## v1.14.0 — Auto-cadastro do membro com aprovação do administrador
 
 **Problema**: depois de instalar o APK, o membro só via o ecrã de login — não

@@ -180,6 +180,15 @@ export default function PendingSignups() {
             <p className="text-sm text-muted-foreground">
               {filter === 'pendente' ? 'Nenhum cadastro pendente.' : `Nenhum cadastro ${filter}.`}
             </p>
+            {filter === 'pendente' && (
+              <p className="max-w-md text-[11px] text-slate-400 leading-relaxed">
+                Os cadastros feitos na app («Criar conta / Cadastrar-me») aparecem aqui
+                imediatamente. Se um membro diz que se cadastrou e aqui não aparece:
+                confirme a versão da app nos dois aparelhos (Definições → Versão; a dos
+                cadastros é a 1.14.0 ou superior) e o servidor em
+                iesa-ai.cadupaulino99.workers.dev/__health (versão 2.8.0 ou superior).
+              </p>
+            )}
           </div>
         ) : (
           shown.map((s) => (

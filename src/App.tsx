@@ -17,7 +17,7 @@ import { CommandPaletteProvider } from './context/CommandPaletteContext';
 import CommandPalette from './components/CommandPalette';
 import Layout from './components/Layout';
 import { Button } from './components/ui/button';
-import { Loader2, Hourglass, XCircle } from 'lucide-react';
+import { Loader2, Hourglass, XCircle, LogOut } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 
 // Lazy load for simplicity in this file, we will create these components next.
@@ -38,6 +38,7 @@ const Contributions = lazy(() => import('./pages/Contributions'));
 const SelfRegister = lazy(() => import('./pages/SelfRegister'));
 const MemberForcePasswordChange = lazy(() => import('./components/members/MemberForcePasswordChange'));
 import { useNotifications } from './hooks/useNotifications';
+import { currentVersion } from './lib/updateCheck';
 
 const queryClient = new QueryClient();
 
@@ -115,8 +116,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
               A sua conta não tem permissões de administrador. Solicite o acesso a um administrador do sistema.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-2">
             <Button className="w-full" onClick={() => window.location.reload()}>Recarregar Página</Button>
+            {/* v1.14.1: sem este botão o utilizador ficava PRESO neste ecrã —
+                nem terminar sessão conseguia (dead-end reportado: «admins que
+                não conseguem aceder»). */}
+            <Button variant="outline" className="w-full gap-1.5" onClick={() => { void (async () => { await signOut(); window.location.href = '/login'; })(); }}>
+              <LogOut className="h-4 w-4" /> Terminar sessão
+            </Button>
+            <Link to="/register" className="block text-center text-xs text-muted-foreground hover:underline">
+              Ainda não tem conta? Criar conta / Cadastrar-me
+            </Link>
           </CardContent>
         </Card>
       </div>
@@ -192,9 +202,17 @@ const Login = () => {
     setError(null); setBusy(true);
     try {
       await resetPassword(email);
-      setInfo('Enviámos um email para repor a palavra-passe. Verifique a caixa de entrada.');
-    } catch (err) {
-      setError(friendlyError(err));
+      setInfo('Se existir uma conta com este email, enviámos um link de reposição. Verifique a caixa de entrada (e o spam).');
+    } catch (err: any) {
+      /* v1.14.1: email inexistente NÃO revela — mesma mensagem genérica
+         (evita enumeração de contas e confusão). Só erros reais de rede
+         mostram erro. */
+      const code = err?.code || '';
+      if (code === 'auth/user-not-found' || code === 'auth/invalid-email') {
+        setInfo('Se existir uma conta com este email, enviámos um link de reposição. Verifique a caixa de entrada (e o spam).');
+      } else {
+        setError(friendlyError(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -274,6 +292,9 @@ const Login = () => {
             </Link>
             <p className="text-[11px] text-muted-foreground">
               O acesso é concedido pelo administrador da igreja.
+            </p>
+            <p className="text-[10px] text-center text-slate-400" title="Versão instalada neste aparelho">
+              v{currentVersion()}
             </p>
           </div>
         </CardContent>

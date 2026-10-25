@@ -516,7 +516,33 @@ export default function Admin() {
     } catch (err: any) {
       const msg = err?.message || '';
       if (/EMAIL_EXISTS|Já existe/.test(msg)) {
-        toast.error('Já existe conta com este email. Use «Gerar nova palavra-passe temporária» na lista.');
+        /* v1.14.1 — RECUPERAÇÃO DE CONTA ÓRFÃ: se a conta Auth existe mas o
+           documento admins/ não (criação anterior falhou a meio), o utilizador
+           ficava PRESO («Acesso Restrito») e o super não conseguia repor a
+           palavra-passe (o Worker exige o documento). Recria-se o documento e
+           emite-se nova temporária. */
+        try {
+          const admRef = doc(db, 'admins', targetEmail);
+          const admSnap = await getDoc(admRef);
+          if (!admSnap.exists()) {
+            await setDoc(admRef, {
+              email: targetEmail, role, createdAt: Date.now(),
+              name: targetName, phone: targetPhone,
+              disabled: false, mustChangePassword: true,
+              tempPasswordIssuedAt: Date.now(), isSuper: false,
+            });
+            const tempPassword = genTempPassword();
+            await resetTempPassword({ email: targetEmail, tempPassword });
+            await audit('admin.doc-repaired', targetEmail);
+            setCreds({ appName: 'Gestão IESA Emanuel', name: targetName, email: targetEmail, phone: targetPhone, tempPassword });
+            await reloadUsers();
+            toast.success('A conta de autenticação já existia sem documento de administrador — foi recuperada. Partilhe as novas credenciais (mostram-se uma vez).');
+          } else {
+            toast.error('Já existe conta com este email. Use «Gerar nova palavra-passe temporária» na lista.');
+          }
+        } catch (e2: any) {
+          toast.error(e2?.message || 'Já existe conta com este email e a recuperação falhou.');
+        }
       } else if (/super administrador/.test(msg)) {
         toast.error('Apenas o super administrador pode criar contas.');
       } else {
