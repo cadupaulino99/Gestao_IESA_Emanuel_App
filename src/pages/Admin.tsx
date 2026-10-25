@@ -4,6 +4,7 @@ import { createAuthAccount, resetTempPassword, setAccountDisabled } from '../lib
 import { genTempPassword, type ShareCtx } from '../lib/admins';
 import OneTimeCredentials from '../components/admin/OneTimeCredentials';
 import AnnouncementsAdmin from '../components/admin/AnnouncementsAdmin';
+import PendingSignups from '../components/admin/PendingSignups';
 import AgendaAdmin from '../components/admin/AgendaAdmin';
 import EventsAdmin from '../components/admin/EventsAdmin';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -15,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Shield, Plus, Trash2, Download, Upload, Church, Save, Bell, CheckCircle2, XCircle, Database, AlertTriangle, KeyRound } from 'lucide-react';
+import { Shield, Plus, Trash2, Download, Upload, Church, Save, Bell, CheckCircle2, XCircle, Database, AlertTriangle, KeyRound, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveBlob, saveXlsx } from '../lib/download';
 import { useConfirm } from '../context/ConfirmContext';
@@ -778,6 +779,8 @@ export default function Admin() {
       <Tabs defaultValue={isSuperAdmin ? "users" : "members"} className="w-full">
         <TabsList className="mb-4 flex-wrap">
           {isSuperAdmin && (<TabsTrigger value="users"><Shield className="h-4 w-4 mr-2" /> Administradores</TabsTrigger>)}
+          {/* v1.14: auto-cadastro — só perfil admin vê; o servidor (rules) confirma nas escritas */}
+          {userRole === 'admin' && (<TabsTrigger value="signups"><UserPlus className="h-4 w-4 mr-2" /> Cadastros Pendentes</TabsTrigger>)}
           <TabsTrigger value="members"><Shield className="h-4 w-4 mr-2" /> Membros Inativos</TabsTrigger>
           <TabsTrigger value="mural"><Bell className="h-4 w-4 mr-2" /> Avisos, Agenda e Eventos</TabsTrigger>
           <TabsTrigger value="church"><Church className="h-4 w-4 mr-2" /> Dados da Instituição</TabsTrigger>
@@ -1088,6 +1091,10 @@ export default function Admin() {
             </Card>
           </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="signups">
+          <PendingSignups />
         </TabsContent>
 
         <TabsContent value="members">

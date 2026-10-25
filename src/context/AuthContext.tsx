@@ -21,6 +21,8 @@ interface AuthContextType {
   isAdmin: boolean; // Means "is authenticated to use admin/treasury app"
   userRole: string | null;
   memberData: any | null; // Added to store member info if logged in as simple member
+  /** v1.14: estado do auto-cadastro quando (ainda) não é membro activo. */
+  signupMeta: { statusSignup: 'pendente' | 'rejeitado' | 'aprovado'; reason?: string | null } | null;
   isNative: boolean;
   signIn: () => Promise<void>; // Google (nativo no Android, popup na web)
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -34,6 +36,7 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   userRole: null,
   memberData: null,
+  signupMeta: null,
   isNative: false,
   signIn: async () => {},
   signInWithEmail: async () => {},
@@ -46,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [memberData, setMemberData] = useState<any | null>(null);
+  const [signupMeta, setSignupMeta] = useState<{ statusSignup: 'pendente' | 'rejeitado' | 'aprovado'; reason?: string | null } | null>(null);
   const [adminMeta, setAdminMeta] = useState<{ isSuper: boolean; disabled: boolean; mustChangePassword: boolean; tempPasswordIssuedAt: number | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const isNative = Capacitor.isNativePlatform();
@@ -95,8 +99,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const first = firstMemberOrNone(memSnap.docs);
             if (first) {
               setMemberData({ id: first.id, ...first.data() });
+              setSignupMeta(null);
             } else {
               setMemberData(null);
+              /* v1.14: auto-cadastro pendente/rejeitado? O documento vive em
+                 member_signups/<email-normalizado> (leitura: só o próprio ou a
+                 liderança — regras). Sem query: o ID É o email. */
+              if (!hasAdminAccess) {
+                try {
+                  const sSnap = await getDoc(doc(db, 'member_signups', currentUser.email.toLowerCase()));
+                  if (sSnap.exists()) {
+                    const sd = sSnap.data() as any;
+                    setSignupMeta({ statusSignup: sd.statusSignup, reason: sd.reason || null });
+                  } else {
+                    setSignupMeta(null);
+                  }
+                } catch {
+                  setSignupMeta(null); // sem regras publicadas ainda: não bloqueia o ecrã antigo
+                }
+              } else {
+                setSignupMeta(null);
+              }
             }
           }
         } catch (error) {
@@ -104,11 +127,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAdmin(false);
           setUserRole(null);
           setMemberData(null);
+          setSignupMeta(null);
         }
       } else {
         setIsAdmin(false);
         setUserRole(null);
         setMemberData(null);
+        setSignupMeta(null);
         setAdminMeta(null);
       }
       setLoading(false);
@@ -156,6 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin,
         userRole,
         memberData,
+        signupMeta,
         adminMeta,
         isSuperAdmin: !!adminMeta?.isSuper,
         mustChangePassword: !!adminMeta?.mustChangePassword,

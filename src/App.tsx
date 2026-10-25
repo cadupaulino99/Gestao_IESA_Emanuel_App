@@ -7,7 +7,7 @@ import React, { lazy, Suspense, useState } from 'react';
 import { Input } from './components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { prefGet } from './lib/prefs';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -17,7 +17,7 @@ import { CommandPaletteProvider } from './context/CommandPaletteContext';
 import CommandPalette from './components/CommandPalette';
 import Layout from './components/Layout';
 import { Button } from './components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Hourglass, XCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 
 // Lazy load for simplicity in this file, we will create these components next.
@@ -35,12 +35,52 @@ const Obligations = lazy(() => import('./pages/Obligations'));
 const Support = lazy(() => import('./pages/Support'));
 const Radio = lazy(() => import('./pages/Radio'));
 const Contributions = lazy(() => import('./pages/Contributions'));
+const SelfRegister = lazy(() => import('./pages/SelfRegister'));
+const MemberForcePasswordChange = lazy(() => import('./components/members/MemberForcePasswordChange'));
 import { useNotifications } from './hooks/useNotifications';
 
 const queryClient = new QueryClient();
 
+/* v1.14.0 — Ecrã de estado do auto-cadastro (pendente/rejeitado): o membro
+   vê a mensagem correspondente ao estado e NÃO entra (requisito 5). */
+const SignupStatusScreen = ({ meta, onSignOut }: { meta: { statusSignup: string; reason?: string | null }; onSignOut: () => Promise<void> }) => {
+  const pending = meta.statusSignup === 'pendente';
+  return (
+    <div className="h-screen w-screen flex flex-col items-center justify-center p-4 bg-muted/30">
+      <Card className="max-w-md w-full text-center">
+        <CardHeader>
+          <div className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-2xl ${pending ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/40' : 'bg-red-100 text-red-600 dark:bg-red-900/40'}`}>
+            {pending ? <Hourglass className="h-7 w-7" /> : <XCircle className="h-7 w-7" />}
+          </div>
+          <CardTitle>{pending ? 'Cadastro aguarda aprovação' : 'Cadastro rejeitado'}</CardTitle>
+          <CardDescription className="leading-relaxed">
+            {pending
+              ? 'Recebemos o seu cadastro — foi registado como PENDENTE e aguarda autorização do administrador da igreja. Assim que for aprovado, entre com o seu email e palavra-passe; ser-lhe-á pedido que defina a palavra-passe definitiva.'
+              : 'O administrador rejeitou o seu cadastro. Para mais informações, contacte a secretaria da igreja.'}
+          </CardDescription>
+          {!pending && meta.reason && (
+            <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              <b>Motivo indicado:</b> {meta.reason}
+            </p>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {pending && (
+            <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
+              Já fui aprovado — verificar novamente
+            </Button>
+          )}
+          <Button className="w-full" onClick={() => { void (async () => { await onSignOut(); window.location.href = '/login'; })(); }}>
+            Terminar sessão
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading, isAdmin, memberData } = useAuth();
+  const { user, loading, isAdmin, memberData, signupMeta, signOut } = useAuth();
   
   useNotifications();
 
@@ -50,8 +90,19 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/login" />;
   }
 
+  /* v1.14: 1.º login após aprovação — troca obrigatória da palavra-passe
+     ANTES de qualquer outro ecrã (requisito 8). */
+  if (!isAdmin && memberData?.mustChangePassword) {
+    return (<Suspense fallback={<PageFallback />}><MemberForcePasswordChange /></Suspense>);
+  }
+
   if (!isAdmin && memberData) {
     return (<Suspense fallback={<PageFallback />}><MemberPortal /></Suspense>);
+  }
+
+  /* v1.14: auto-cadastro pendente/rejeitado — mensagem de estado, sem acesso. */
+  if (!isAdmin && !memberData && signupMeta) {
+    return <SignupStatusScreen meta={signupMeta} onSignOut={signOut} />;
   }
 
   if (!isAdmin) {
@@ -102,6 +153,8 @@ const Login = () => {
     const code = e?.code || '';
     if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found')
       return 'Email ou palavra-passe incorretos.';
+    if (code === 'auth/user-disabled')
+      return 'Esta conta foi desativada. Contacte o administrador.';
     if (code === 'auth/too-many-requests')
       return 'Demasiadas tentativas. Aguarde alguns minutos e tente novamente.';
     if (code === 'auth/network-request-failed')
@@ -212,9 +265,17 @@ const Login = () => {
           {info && (
             <p className="text-sm text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded-md px-3 py-2">{info}</p>
           )}
-          <p className="text-[11px] text-center text-muted-foreground">
-            O acesso é concedido pelo administrador da igreja.
-          </p>
+          <div className="space-y-1 text-center">
+            <Link
+              to="/register"
+              className="inline-block text-sm font-semibold text-blue-700 dark:text-blue-300 hover:underline"
+            >
+              Ainda não tem conta? Criar conta / Cadastrar-me
+            </Link>
+            <p className="text-[11px] text-muted-foreground">
+              O acesso é concedido pelo administrador da igreja.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -240,6 +301,7 @@ export default function App() {
                   <Suspense fallback={<PageFallback />}>
                   <Routes>
                     <Route path="/login" element={<Login />} />
+                    <Route path="/register" element={<SelfRegister />} />
                     
                     <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                       <Route index element={<Dashboard />} />
