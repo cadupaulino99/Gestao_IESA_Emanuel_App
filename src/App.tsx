@@ -38,6 +38,7 @@ const Contributions = lazy(() => import('./pages/Contributions'));
 const SelfRegister = lazy(() => import('./pages/SelfRegister'));
 const MemberForcePasswordChange = lazy(() => import('./components/members/MemberForcePasswordChange'));
 import { useNotifications } from './hooks/useNotifications';
+import { Toaster } from './components/ui/sonner';
 import { currentVersion } from './lib/updateCheck';
 
 const queryClient = new QueryClient();
@@ -312,6 +313,11 @@ const PageFallback = () => (
 export default function App() {
   return (
     <ThemeProvider>
+      {/* v1.14.2: Toaster GLOBAL — antes só existia dentro do Layout (liderança)
+          e os ecrãs fora dele (login, /register, pendente/rejeitado, troca de
+          palavra-passe) mostravam erros INVISÍVEIS: o cadastro falhava em
+          silêncio. */}
+      <Toaster position="top-center" richColors />
       <SettingsProvider>
         <ConfirmProvider>
           <CommandPaletteProvider>

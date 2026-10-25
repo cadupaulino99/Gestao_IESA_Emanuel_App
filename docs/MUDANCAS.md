@@ -1,5 +1,33 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.2 — Erros invisíveis: Toaster global, banners inline, lista de cadastros diagnóstica
+
+**Sintomas reportados**: (1) no telemóvel, o auto-cadastro «não saía da
+página» sem mostrar erro; (2) no aparelho do admin, «Cadastros Pendentes»
+não mostrava nada.
+
+**Causa raiz (1)**: o `<Toaster>` (sonner) só estava montado dentro do
+`Layout` — a casca da liderança. O `/register`, o login, o ecrã de
+pendente/rejeitado e a troca obrigatória de palavra-passe vivem FORA do
+Layout: qualquer `toast.error` aí era **invisível**. O cadastro falhava
+(validação ou rede) e o utilizador não via rigorosamente nada — só o rodapé
+estático («a igreja nunca vê a sua palavra-passe»), que foi confundido com
+uma mensagem. Corrigido:
+- `<Toaster position="top-center" richColors />` na RAIZ do App (removido do
+  Layout para não duplicar);
+- `SelfRegister` ganha **banner de erro dentro da página** (com código de
+  estado do servidor quando houver) + aviso claro quando a validação falha
+  («Há campos por corrigir…») com scroll para o topo.
+**Causa raiz (2)**: `handleFirestoreError` não mostra nada — regista e
+RELANÇA um JSON; chamado dentro de um catch, produzia uma rejeição não
+tratada e a lista ficava vazia em silêncio. `PendingSignups` agora tem
+**painel de erro inline** com a mensagem legível (PERMISSION_DENIED inclui a
+instrução de correr o workflow Deploy Firebase) + botão «Tentar novamente»;
+Aprovar/Rejeitar mostram toast de erro real.
+- Backend verificado em produção na mesma hora: rota /auth/self-register a
+  criar pedidos (200 pendente), duplicados a 409, validações a 400 — a falha
+  era de APRESENTAÇÃO, não de servidor.
+
 ## v1.14.1 — Revisão total: dead-ends, mensagens silenciosas e diagnóstico
 
 Sintomas reportados: «gravações impossíveis de apagar», «administradores não
