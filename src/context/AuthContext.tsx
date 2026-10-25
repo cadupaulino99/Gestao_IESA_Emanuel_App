@@ -14,6 +14,7 @@ import { Capacitor } from '@capacitor/core';
 import { auth, db } from '../lib/firebase';
 import { doc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../lib/firebase';
+import { toast } from 'sonner';
 
 interface AuthContextType {
   user: User | null;
@@ -76,8 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 mustChangePassword: ad.mustChangePassword === true,
                 tempPasswordIssuedAt: Number(ad.tempPasswordIssuedAt || 0) || null,
               });
-              // conta desativada: não entra (o Worker também bloqueia)
+              // conta desativada: não entra (o Worker também bloqueia).
+              // v1.14.1: com MENSAGEM — antes o utilizador era atirado para o
+              // login em silêncio e achava que «não conseguia aceder».
               if (ad.disabled === true) {
+                toast.error('A sua conta foi desativada. Contacte o super administrador.');
                 await firebaseSignOut(auth);
                 setUser(null);
                 return;
