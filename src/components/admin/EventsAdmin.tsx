@@ -48,6 +48,50 @@ function PosterThumb({ path, className = 'h-14 w-10' }: { path?: string | null; 
   return <img src={url} alt="Cartaz do evento" className={`${className} rounded border object-cover`} />;
 }
 
+/* v1.14.8: Field/Item viviam DENTRO do componente — cada tecla criava um tipo
+   novo e o React remontava a subárvore inteira: o input perdia o foco e o
+   teclado do telemóvel fechava a cada letra. Componentes de topo = estáveis. */
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="space-y-1"><Label className="text-[11px]">{label}</Label>{children}</div>;
+}
+
+function EventItem({ e, section, onEdit, onRemove }: {
+  e: NormalizedEvent;
+  section: 'up' | 'draft' | 'past';
+  onEdit: (e: NormalizedEvent) => void;
+  onRemove: (e: NormalizedEvent, permanent: boolean) => void;
+}) {
+  return (
+    <div className={`rounded-lg border p-3 flex gap-3 ${e.status === 'cancelado' ? 'border-red-300 bg-red-50/40 dark:bg-red-950/20' : ''}`}>
+      <PosterThumb path={e.posterThumbPath || e.posterPath} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <h4 className="text-sm font-bold truncate">{e.title}</h4>
+          <Badge variant="outline" className={`text-[9px] ${STATUS_CLASS[e.status] || ''}`}>{STATUS_LABEL[e.status] || e.status}</Badge>
+          {section === 'draft' && <Badge variant="secondary" className="text-[9px]">Rascunho</Badge>}
+          {e.reminder1d && <Badge variant="outline" className="text-[9px]">Lembrete 1 dia antes</Badge>}
+        </div>
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5"><Clock className="h-3 w-3" /> {fmtDateTimePT(e.date, e.time)}{e.dateEnd ? ` → ${fmtDateTimePT(e.dateEnd, e.timeEnd)}` : ''}</p>
+        {e.location && <p className="text-[11px] text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> {e.location}</p>}
+        {e.responsible && <p className="text-[11px] text-muted-foreground flex items-center gap-1"><UserRound className="h-3 w-3" /> {e.responsible}</p>}
+        {(e.createdBy || e.updatedBy) && (
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            {e.createdBy ? `Criado por ${e.createdBy}` : ''}{e.updatedBy ? ` · editado por ${e.updatedBy}` : ''}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 flex-col gap-1">
+        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => onEdit(e)}><Pencil className="h-3 w-3" /> Editar</Button>
+        {section === 'past' ? (
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive" onClick={() => onRemove(e, true)}><Trash2 className="h-3 w-3" /> Apagar (definitivo)</Button>
+        ) : (
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive" onClick={() => onRemove(e, false)}><Trash2 className="h-3 w-3" /> Apagar</Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Administração de EVENTOS (colecção `events` — a mesma do Dashboard e do
  * Portal do Membro; fonte única). Cartazes como FICHEIROS no Storage
@@ -141,15 +185,28 @@ export default function EventsAdmin() {
         id = ref.id;
       }
 
-      // cartaz: enviar ficheiro novo / remover o antigo (Storage; caminho no doc)
-      if (posterFile) {
-        const up = await uploadEventPoster(id, posterFile);
-        const old = editing ? [editing.posterPath, editing.posterThumbPath] : [];
-        await updateDoc(doc(db, 'events', id), { ...up });
-        await deleteEventPoster(old);
-      } else if (removePoster && editing?.posterPath) {
-        await updateDoc(doc(db, 'events', id), { posterPath: null, posterThumbPath: null });
-        await deleteEventPoster([editing.posterPath, editing.posterThumbPath]);
+      /* Cartaz (Storage): falha NÃO impede a publicação do evento — antes, um
+         bucket por activar rebentava o save inteiro depois do documento já
+         gravado (evento existia mas o ecrã mostrava erro e não fechava). */
+      let posterWarning: string | null = null;
+      try {
+        if (posterFile) {
+          const up = await uploadEventPoster(id, posterFile);
+          const oldPaths = editing ? [editing.posterPath, editing.posterThumbPath] : [];
+          await updateDoc(doc(db, 'events', id), { ...up });
+          await deleteEventPoster(oldPaths);
+        } else if (removePoster && editing?.posterPath) {
+          await updateDoc(doc(db, 'events', id), { posterPath: null, posterThumbPath: null });
+          await deleteEventPoster([editing.posterPath, editing.posterThumbPath]);
+        }
+      } catch (pe: any) {
+        const m = String(pe?.message || pe || '');
+        posterWarning = /bucket|not exist|404/i.test(m)
+          ? 'o armazenamento de ficheiros (Firebase Storage) ainda não foi activado no projecto — consola Firebase → Storage → «Começar»'
+          : m || 'falha desconhecida no carregamento';
+      }
+      if (posterWarning) {
+        toast.warning(`Evento guardado SEM cartaz: ${posterWarning}.`);
       }
 
       // notificações (só do que está publicado)
@@ -227,39 +284,8 @@ export default function EventsAdmin() {
   const byDate = (l: NormalizedEvent[]) => [...l].sort((a, b) =>
     String(a.date).localeCompare(String(b.date)) || String(a.time || '').localeCompare(String(b.time || '')));
 
-  const Item = ({ e, section }: { e: NormalizedEvent; section: 'up' | 'draft' | 'past' }) => (
-    <div className={`rounded-lg border p-3 flex gap-3 ${e.status === 'cancelado' ? 'border-red-300 bg-red-50/40 dark:bg-red-950/20' : ''}`}>
-      <PosterThumb path={e.posterThumbPath || e.posterPath} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <h4 className="text-sm font-bold truncate">{e.title}</h4>
-          <Badge variant="outline" className={`text-[9px] ${STATUS_CLASS[e.status] || ''}`}>{STATUS_LABEL[e.status] || e.status}</Badge>
-          {section === 'draft' && <Badge variant="secondary" className="text-[9px]">Rascunho</Badge>}
-          {e.reminder1d && <Badge variant="outline" className="text-[9px]">Lembrete 1 dia antes</Badge>}
-        </div>
-        <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5"><Clock className="h-3 w-3" /> {fmtDateTimePT(e.date, e.time)}{e.dateEnd ? ` → ${fmtDateTimePT(e.dateEnd, e.timeEnd)}` : ''}</p>
-        {e.location && <p className="text-[11px] text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> {e.location}</p>}
-        {e.responsible && <p className="text-[11px] text-muted-foreground flex items-center gap-1"><UserRound className="h-3 w-3" /> {e.responsible}</p>}
-        {(e.createdBy || e.updatedBy) && (
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            {e.createdBy ? `Criado por ${e.createdBy}` : ''}{e.updatedBy ? ` · editado por ${e.updatedBy}` : ''}
-          </p>
-        )}
-      </div>
-      <div className="flex shrink-0 flex-col gap-1">
-        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => startEdit(e)}><Pencil className="h-3 w-3" /> Editar</Button>
-        {section === 'past' ? (
-          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive" onClick={() => remove(e, true)}><Trash2 className="h-3 w-3" /> Apagar (definitivo)</Button>
-        ) : (
-          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive" onClick={() => remove(e, false)}><Trash2 className="h-3 w-3" /> Apagar</Button>
-        )}
-      </div>
-    </div>
-  );
 
-  const Field = ({ label, children }: { label: string; children: ReactNode }) => (
-    <div className="space-y-1"><Label className="text-[11px]">{label}</Label>{children}</div>
-  );
+
 
   return (
     <Card>
@@ -355,16 +381,16 @@ export default function EventsAdmin() {
           <>
             <section className="space-y-2">
               <h5 className="text-xs font-bold uppercase tracking-wide text-slate-500">Próximos ({upcoming.length})</h5>
-              {byDate(upcoming).map((e) => <Item key={e.id} e={e} section="up" />)}
+              {byDate(upcoming).map((e) => <EventItem key={e.id} e={e} section="up" onEdit={startEdit} onRemove={remove} />)}
               {upcoming.length === 0 && <p className="text-xs text-muted-foreground border rounded-md p-2 text-center">Sem eventos próximos publicados.</p>}
             </section>
             <section className="space-y-2">
               <h5 className="text-xs font-bold uppercase tracking-wide text-slate-500">Rascunhos ({drafts.length})</h5>
-              {byDate(drafts).map((e) => <Item key={e.id} e={e} section="draft" />)}
+              {byDate(drafts).map((e) => <EventItem key={e.id} e={e} section="draft" onEdit={startEdit} onRemove={remove} />)}
             </section>
             <section className="space-y-2">
               <h5 className="text-xs font-bold uppercase tracking-wide text-slate-500">Histórico ({past.length})</h5>
-              {byDate(past).reverse().map((e) => <Item key={e.id} e={e} section="past" />)}
+              {byDate(past).reverse().map((e) => <EventItem key={e.id} e={e} section="past" onEdit={startEdit} onRemove={remove} />)}
               {past.length === 0 && <p className="text-xs text-muted-foreground border rounded-md p-2 text-center">Sem eventos passados.</p>}
             </section>
           </>

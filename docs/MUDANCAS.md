@@ -1,5 +1,26 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.8 — Teclado permanece aberto nos formulários + cartaz não bloqueia a publicação
+
+Dois sintomas reportados do terreno:
+1. **«Clicas numa letra e o teclado desaparece»**: em `EventsAdmin` (e nas
+   listas de `AnnouncementsAdmin` e barra do `RichTextEditor`) os componentes
+   `Field`, `Item` e `Tool` estavam definidos DENTRO do render — cada tecla
+   (`setForm`) criava um tipo novo, o React REMONTAVA a subárvore inteira e o
+   input perdia o foco; no Android o teclado fechava a cada letra. Movidos
+   para o topo do módulo (tipos estáveis). Regressão trancada por teste:
+   `eventsFormFocus.test.tsx` exige que o MESMO nó DOM sobreviva à digitação
+   (título e local). Total: 177 testes.
+2. **«Não consegue carregar um cartaz»**: causa verificada remotamente — o
+   bucket do **Firebase Storage nunca foi activado** no projecto (a API
+   pública devolve 404 para `iesa-emanuel-xangongo.firebasestorage.app`).
+   Activação só pela consola: *Firebase → Storage → Começar* (uma vez).
+   Na app, o upload do cartaz passa a ser ISOLADO: se falhar, o evento é
+   publicado na mesma e aparece o aviso claro «Evento guardado SEM cartaz:
+   o armazenamento… não foi activado». Antes, o erro rebentava o `save`
+   DEPOIS do documento criado — o evento existia mas o formulário continuava
+   aberto com erro (parecia que publicar falhava).
+
 ## v1.14.7 — P2: testes de componentes (os fluxos que mais bugs deram)
 
 Infra-estrutura: `jsdom` + `@testing-library/react` 16 + `jest-dom`
