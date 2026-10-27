@@ -1,5 +1,39 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.7 — P2: testes de componentes (os fluxos que mais bugs deram)
+
+Infra-estrutura: `jsdom` + `@testing-library/react` 16 + `jest-dom`
+(devDependencies); `vitest.config.ts` com plugin React, alias `@`, include de
+`*.test.tsx` e `src/test/setup.ts` (stubs Radix/jsdom: pointer capture,
+ResizeObserver, matchMedia, scrollTo). Os testes puros continuam em `node`.
+
+**+29 testes (146 → 175)** nos pontos críticos:
+- `confirmDialog.test.tsx` — o diálogo de TODAS as acções destrutivas:
+  palavra tolerante a caixa («apagar» confirma), Confirmar desativado até
+  acertar, Cancelar resolve false, duplo clique sem zombies (as três
+  regressões de v1.12.3 ficam trancadas).
+- `selfRegister.test.tsx` — auto-cadastro: email normalizado no payload,
+  `passwordConfirm` não viaja, «Cadastro recebido!» no sucesso, **banner
+  vermelho com código 409** quando o servidor recusa (regressão v1.14.2),
+  validações de palavra-passe/telefone bloqueiam sem chamar o servidor.
+- `pendingSignups.test.tsx` — lista de pendentes com dados, expansão de
+  detalhes, **painel PERMISSION_DENIED com «Tentar novamente»**, gate de
+  perfil (pastor não vê nem carrega dados), estado vazio com diagnóstico.
+- `memberBoard.test.tsx` — Portal do Membro: fixados/urgentes no topo,
+  expirados e rascunhos OCULTOS, agenda com «HOJE» e ocorrência cancelada
+  riscada, eventos com «Hoje»/«Faltam 5 dias», filtro Passados.
+- `richText.test.tsx` — sanitização na 3.ª camada (render): `<script>` e
+  `onerror` nunca chegam ao DOM, links `javascript:` caem, formatação
+  permitida sobrevive; «Ver mais» recolhe/expande.
+- `authMessages.test.ts` — anti-enumeração: email inexistente e palavra-passe
+  errada dão a MESMA mensagem; reset nunca revela contas.
+
+Correcções que os testes forçaram:
+- `PendingSignups` já não carrega dados para perfis não-admin (antes o
+  useEffect corria antes do gate de UI).
+- `friendlyError` do Login extraído para `lib/authMessages.ts` (testável),
+  com `auth/invalid-email` e `auth/weak-password` acrescentados ao mapa.
+
 ## v1.14.6 — P2: verificação de tipos em toda a app + higiene do repositório
 
 - **@types/react/@types/react-dom 19**: até aqui o `tsc` NÃO verificava JSX

@@ -71,7 +71,9 @@ export default function PendingSignups() {
       setLoading(false);
     }
   };
-  useEffect(() => { void load(); }, []);
+  /* v1.14.7: nem sequer lê para perfis não-admin (o servidor também recusa
+     escritas; leituras de liderança são permitidas mas aqui não são necessárias). */
+  useEffect(() => { if (userRole === 'admin') void load(); }, [userRole]);
 
   if (userRole !== 'admin') {
     return (
