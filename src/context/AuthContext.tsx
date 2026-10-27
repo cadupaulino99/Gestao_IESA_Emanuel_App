@@ -24,6 +24,12 @@ interface AuthContextType {
   memberData: any | null; // Added to store member info if logged in as simple member
   /** v1.14: estado do auto-cadastro quando (ainda) não é membro activo. */
   signupMeta: { statusSignup: 'pendente' | 'rejeitado' | 'aprovado'; reason?: string | null } | null;
+  /* v1.14.6: o provider já devolvia estes campos desde a v1.10 — a interface
+     é que estava incompleta (invisível sem @types/react). */
+  adminMeta: { isSuper: boolean; disabled: boolean; mustChangePassword: boolean; tempPasswordIssuedAt: number | null } | null;
+  isSuperAdmin: boolean;
+  mustChangePassword: boolean;
+  tempPasswordIssuedAt: number | null;
   isNative: boolean;
   signIn: () => Promise<void>; // Google (nativo no Android, popup na web)
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -38,6 +44,10 @@ const AuthContext = createContext<AuthContextType>({
   userRole: null,
   memberData: null,
   signupMeta: null,
+  adminMeta: null,
+  isSuperAdmin: false,
+  mustChangePassword: false,
+  tempPasswordIssuedAt: null,
   isNative: false,
   signIn: async () => {},
   signInWithEmail: async () => {},

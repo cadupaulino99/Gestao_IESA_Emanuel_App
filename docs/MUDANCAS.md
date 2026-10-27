@@ -1,5 +1,34 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.6 — P2: verificação de tipos em toda a app + higiene do repositório
+
+- **@types/react/@types/react-dom 19**: até aqui o `tsc` NÃO verificava JSX
+  nenhum (o módulo react não tinha tipos — tudo `any`). Resultado imediato:
+  **20 erros reais apanhados e corrigidos**, incluindo:
+  • **Bug vivo — Rádio**: `const { confirm } = useConfirm()` desestruturava
+    uma FUNÇÃO → `confirm` vinha `undefined` → o clique no caixote do lixo
+    rebentava com um TypeError ANTES de abrir o diálogo. **É a causa real de
+    «gravações impossíveis de apagar» persistir depois da v1.12.3.** Os
+    outros 11 pontos de chamada do useConfirm estavam correctos.
+  • **Bug latente — Finanças**: o reset do formulário de despesa esquecia o
+    `referenceDate` (data ficava `undefined` após guardar uma despesa) e o
+    estado não tipava os campos do recibo (`receiptBase64`/`receiptMime`).
+  • **AuthContext**: interface incompleta — `adminMeta`, `isSuperAdmin`,
+    `mustChangePassword` e `tempPasswordIssuedAt` eram devolvidos pelo
+    provider mas não existiam para o TypeScript.
+  • **MemberTithesTracker**: linhas do Excel passam a aceitar números (os
+    totais anuais ficam somáveis na folha).
+  • **MemberPortal**: `cardData` tipado com `MemberCardData` (budget/
+    contributions da v1.11 já eram gravados sem tipo).
+  • Removidos os desacatos da era sem tipos (`declare props` no
+    ErrorBoundary, `key` declarado em props de componentes internos).
+- **Higiene do repositório**: `apk/` removido do git (11 MB — APK v1.3.0; os
+  builds vivem nas Releases); `@capacitor/ios` removido (nunca houve
+  plataforma iOS); `express` movido para devDependencies (só o servidor de
+  dev o usa); `firebase-tools` pinado no major **14** no workflow de deploy
+  (o `@latest` podia partir o deploy sem aviso). `functions/` mantém-se
+  (decisão Blaze pendente).
+
 ## v1.14.5 — Fim do P1: super admin só pela flag `isSuper` (sem email hardcoded)
 
 O proprietário confirmou (2026-10-27) que `admins/cadupaulino99@gmail.com`

@@ -39,10 +39,13 @@ gates, Worker 2.8.0 saudável, cron activo.
 
 ## 🟡 P2 — melhorias sugeridas
 
-10. **`@types/react` ausente**: o `tsc` não verifica JSX/props (tudo `any`) —
+10. ✅ **FEITO (v1.14.6)** — @types/react 19 instalado; 20 erros reais
+    apanhados e corrigidos (incl. o bug vivo do apagar gravações na Rádio).
+    Nota histórica: **`@types/react` estava ausente**: o `tsc` não verifica JSX/props (tudo `any`) —
     foi preciso `declare props` no ErrorBoundary. Introduzir os tipos
     gradualmente (módulos novos primeiro); apanha bugs em compile-time.
-11. **Higiene do repo** (~21 MB): remover `apk/` (11 MB; as Releases já
+11. ✅ **FEITO (v1.14.6)**, excepto functions/ (decisão do utilizador):
+    **Higiene do repo** (~21 MB): remover `apk/` (11 MB; as Releases já
     alojam os APKs), decidir sobre `functions/` (morto no plano Spark),
     mover `express` para devDependencies, remover `@capacitor/ios` se não
     houver plano iOS.
@@ -57,8 +60,8 @@ gates, Worker 2.8.0 saudável, cron activo.
     projeto) — suficiente à escala actual; subir para Cloudflare Rate
     Limiting rules se o volume crescer.
 15. **Testes de componentes** (login, cadastro, aprovação) — hoje só funções
-    puras (146). E pinar `firebase-tools@X.Y.Z` no workflow de deploy (o
-    `@latest` pode partir sem aviso).
+    puras (146). ✅ `firebase-tools` pinado no major 14 (v1.14.6); testes de
+    componentes continuam pendentes (agora viáveis com @types/react).
 16. Enumeração no auto-cadastro: os 409 específicos (email/BI/telefone já
     existem) revelam registos — aceite por desenho (o membro precisa de saber
     para contactar o administrador) e mitigado pelo rate limit. Alternativa

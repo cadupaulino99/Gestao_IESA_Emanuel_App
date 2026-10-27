@@ -50,7 +50,12 @@ export default function Radio() {
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
   const [tick, setTick] = useState(0); // relógio do gravador
   const recAudioRef = useRef<HTMLAudioElement | null>(null);
-  const { confirm } = useConfirm();
+  /* v1.14.6: useConfirm() DEVOLVE A FUNÇÃO — o destructuring `{ confirm }`
+     dava undefined e o clique no caixote rebentava com um TypeError antes de
+     abrir o diálogo (era isto que tornava as gravações «impossíveis de apagar»
+     mesmo depois da v1.12.3). Apanhado pelo @types/react — o tsc antigo não
+     verificava JSX. */
+  const confirm = useConfirm();
 
   /* re-render quando o player/gravador mudam de estado */
   useEffect(() => livePlayer.subscribe(rerender), []);
