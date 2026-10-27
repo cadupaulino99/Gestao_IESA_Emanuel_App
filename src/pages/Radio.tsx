@@ -40,7 +40,10 @@ import {
 } from '../lib/radio';
 import { useConfirm } from '../context/ConfirmContext';
 
-export default function Radio() {
+/* v1.15.0: `variant="member"` = só player ao vivo (+ «a tocar agora» e site);
+   o gravador e a biblioteca de gravações continuam ferramentas da liderança.
+   O stream é público e nada aqui escreve no Firestore — zero impacto nas regras. */
+export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member' }) {
   const [, force] = useState(0);
   const rerender = () => force((n) => n + 1);
 
@@ -282,6 +285,7 @@ export default function Radio() {
         </CardContent>
       </Card>
 
+      {variant === 'full' && (
       <div className="grid gap-4 md:gap-6 lg:grid-cols-2">
         {/* Gravação */}
         <Card>
@@ -376,6 +380,7 @@ export default function Radio() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }
