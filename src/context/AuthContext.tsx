@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (docSnap.exists()) {
               const ad = docSnap.data() as any;
               setAdminMeta({
-                isSuper: ad.isSuper === true || currentUser.email?.toLowerCase() === 'cadupaulino99@gmail.com',
+                isSuper: ad.isSuper === true,   // v1.14.5: só a flag (sem email hardcoded) — o servidor é a autoridade
                 disabled: ad.disabled === true,
                 mustChangePassword: ad.mustChangePassword === true,
                 tempPasswordIssuedAt: Number(ad.tempPasswordIssuedAt || 0) || null,

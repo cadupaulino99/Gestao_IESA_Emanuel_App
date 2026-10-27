@@ -42,8 +42,8 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.8.1';
-const WORKER_BUILD = '2026-10-25 (v2.8.0: auto-cadastro de membros /auth/self-register; v2.7.0: lembretes de eventos)';
+const WORKER_VERSION = '2.8.2';
+const WORKER_BUILD = '2026-10-27 (v2.8.2: super só pela flag isSuper, sem email hardcoded; v2.8.0: auto-cadastro /auth/self-register)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -320,7 +320,9 @@ function rateOk(email) {
 /* Super admin: flag isSuper no documento admins/<email> OU o email fundador
    (antes da migracao criar a flag). Gestao de admins (criar contas, reset,
    ativar/desativar) e EXCLUSIVA do super — tambem no servidor, nao so no UI. */
-const SUPER_EMAIL = 'cadupaulino99@gmail.com';
+/* v2.8.2 (auditoria P1): SUPER_EMAIL removido — o papel de super vem SÓ da
+   flag isSuper no documento admins/ (confirmada a 2026-10-27). As guardas
+   das rotas /admin/* passam a consultar o documento do alvo. */
 
 async function getAdminDoc(email, env) {
   if (!email) return null;
@@ -340,7 +342,7 @@ async function getAdminDoc(email, env) {
       const num = (k) => (f[k] && Number(f[k].integerValue || f[k].doubleValue)) || 0;
       out = {
         role: str('role') || 'admin',
-        isSuper: bool('isSuper') || lower === SUPER_EMAIL,
+        isSuper: bool('isSuper'),
         disabled: bool('disabled'),
         mustChangePassword: bool('mustChangePassword'),
         tempPasswordIssuedAt: num('tempPasswordIssuedAt'),
@@ -987,8 +989,12 @@ async function runReminders(env, now) {
     const weeks = (now - startedAt) / (7 * 86400000);
     if (!cfg.testMode && weeks > cfg.maxWeeks) {
       await fsPatch(env, 'contributions', row.id, { reminderStopped: true });
+      if (!cfg.alertsEmail) {
+        console.log('admin_alert ignorado (defina settings/notifications.alertsEmail para receber estes alertas)');
+        continue;
+      }
       await fsAdd(env, 'notifications', {
-        userEmail: cfg.alertsEmail || SUPER_EMAIL, kind: 'admin_alert',  /* v2.8.1: configurável em settings/notifications.alertsEmail */
+        userEmail: cfg.alertsEmail, kind: 'admin_alert',  /* v2.8.2: destino configurável; sem fallback hardcoded */
         title: 'Lembretes parados (limite de semanas)',
         body: `«${fv(f, 'description')}» de ${fv(f, 'memberName') || fv(f, 'memberEmail')} atingiu ${cfg.maxWeeks} semanas de lembretes sem ser concluída.`,
         read: false, createdAt: now, refId: row.id,
@@ -1220,9 +1226,10 @@ export default {
         const { email, tempPassword } = await request.json();
         const target = String(email || '').toLowerCase();
         if (!target) return json({ error: 'Email obrigatório.' }, 400);
-        if (target === SUPER_EMAIL) return json({ error: 'A conta do super administrador não pode ser redefinida por aqui.' }, 403);
         const tDoc = await getAdminDoc(target, env);
         if (!tDoc) return json({ error: 'Este email não está na coleção admins.' }, 404);
+        /* v2.8.2: protege QUALQUER conta com a flag isSuper (antes: um email fixo) */
+        if (tDoc.isSuper === true) return json({ error: 'A conta de super administrador não pode ser redefinida por aqui.' }, 403);
         const localId = await itGetLocalId(env, target);
         if (!localId) return json({ error: 'Não encontrei a conta de autenticação deste email.' }, 404);
         const pwd = tempPassword || genTempPassword();
@@ -1238,9 +1245,9 @@ export default {
         const { email, disabled } = await request.json();
         const target = String(email || '').toLowerCase();
         if (!target) return json({ error: 'Email obrigatório.' }, 400);
-        if (target === SUPER_EMAIL) return json({ error: 'A conta do super administrador não pode ser desativada.' }, 403);
         const tDoc = await getAdminDoc(target, env);
         if (!tDoc) return json({ error: 'Este email não está na coleção admins.' }, 404);
+        if (tDoc.isSuper === true) return json({ error: 'A conta de super administrador não pode ser desativada.' }, 403);
         const localId = await itGetLocalId(env, target);
         if (localId) await itSetAccount(env, { localId, disableUser: !!disabled });
         await patchAdminDoc(env, target, { disabled: !!disabled });

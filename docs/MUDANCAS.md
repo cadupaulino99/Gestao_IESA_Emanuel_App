@@ -1,5 +1,22 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.5 — Fim do P1: super admin só pela flag `isSuper` (sem email hardcoded)
+
+O proprietário confirmou (2026-10-27) que `admins/cadupaulino99@gmail.com`
+tem `isSuper: true`. Removido o fallback de email hardcoded — era uma porta
+permanente: quem comprometesse aquela conta Gmail herdava super admin.
+- **firestore.rules**: `isSuperAdmin()` = só a flag no documento. Mantém-se o
+  bootstrap auto-extinguível (só activo enquanto o documento NÃO existir —
+  caminho de recuperação).
+- **Worker 2.8.2**: `SUPER_EMAIL` eliminado; `getAdminDoc` devolve `isSuper`
+  só pela flag; as guardas de «repor palavra-passe»/«desativar conta» passam
+  a proteger QUALQUER conta com `isSuper` (consulta ao documento do alvo —
+  mais forte que um email fixo); o alerta «lembretes parados» só é enviado
+  com `settings/notifications.alertsEmail` definido (sem destino hardcoded).
+- **AuthContext**: `isSuper` do cliente = só a flag (o servidor manda).
+- Recuperação de emergência (documento admins destruído): bootstrap nas
+  regras + consola do Firestore.
+
 ## v1.14.4 — Auditoria P1: auditoria completa, renovações privadas, alertas configuráveis
 
 Itens 6–8 de `docs/AUDITORIA-2026-10-25.md`:

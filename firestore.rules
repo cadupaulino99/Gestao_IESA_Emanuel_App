@@ -21,15 +21,16 @@ service cloud.firestore {
       return isAuthenticated() && getRole() == 'admin';
     }
 
-    // Super admin: flag isSuper no documento (ou o email fundador ATÉ a migração
-    // criar a flag). Só ele gere contas de admin — no servidor, não só no UI.
+    // Super admin: APENAS a flag isSuper no documento admins/<email>.
+    // v1.14.5 (auditoria P1): removido o fallback de email hardcoded — era
+    // uma porta permanente (quem comprometesse a conta Gmail herdava super).
+    // Flag isSuper:true confirmada no documento pelo proprietário (2026-10-27).
+    // Recuperação se o documento for destruído: bootstrap auto-extinguível
+    // abaixo + consola do Firestore.
     function isSuperAdmin() {
-      return isAuthenticated() && (
-        (exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) &&
-         get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.isSuper == true) ||
-        request.auth.token.email == "Cadupaulino99@gmail.com" ||
-        request.auth.token.email == "cadupaulino99@gmail.com"
-      );
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.isSuper == true;
     }
 
     // Bootstrap AUTO-EXTINGUÍVEL: enquanto não existir admins/<email do fundador>,
