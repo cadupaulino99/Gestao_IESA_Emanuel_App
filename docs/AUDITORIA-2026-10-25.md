@@ -26,6 +26,10 @@ gates, Worker 2.8.0 saudável, cron activo.
    rules (fallback `isSuperAdmin`) e no Worker (`SUPER_EMAIL`). Confirmar que
    o documento `admins/` tem `isSuper: true` e remover o fallback de email
    (manter só o bootstrap auto-extinguível).
+   ✅ **FEITO (v1.14.4/v1.14.5)**: flag `isSuper: true` confirmada pelo
+   proprietário a 2026-10-27; fallback removido das rules, do Worker
+   (guardas passaram a consultar o documento do alvo) e do AuthContext.
+   Worker 2.8.2.
 9. Risco residual de dependências (documentado, não incluído no APK ou
    dev-only): `tinypool` 1.x via vitest 3 (fix exige vitest 4/Node 22),
    `vite` dev-server (nunca exposto), `@grpc/grpc-js` (só build node do
