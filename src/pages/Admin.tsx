@@ -363,10 +363,19 @@ export default function Admin() {
   const handleBackup = async () => {
     try {
       setLoading(true);
+      /* v1.14.3 (auditoria): lista COMPLETA — faltavam 14 colecções, entre
+         elas as do cartão de membro (communions/donations/renewals), as
+         contribuições (v1.11), settings da igreja, agenda/cadastros (v1.13/14).
+         Só fica de fora `trash` (já é uma cópia de segurança de eliminações). */
       const collections = [
-        'members', 'tithes', 'offerings', 'expenses', 'budgets', 
-        'admins', 'pedidos_atualizacao', 'audit_logs', 'announcements', 
-        'events', 'financialMonths', 'assets', 'buildingFunds'
+        'members', 'tithes', 'offerings', 'expenses', 'budgets',
+        'admins', 'pedidos_atualizacao', 'audit_logs', 'announcements',
+        'events', 'financialMonths', 'financialYears', 'assets', 'buildingFunds',
+        'communions', 'donations', 'renewals',
+        'contributions', 'contribution_payments', 'member_budgets',
+        'settings', 'agenda_items', 'member_signups', 'campaigns',
+        'expense_receipts', 'message_outbox', 'whatsapp_outbox',
+        'notifications', 'board_notify_log',
       ];
       const backupData: any = {};
       
