@@ -25,6 +25,48 @@ import { luandaDayKey, fmtDatePT } from '../../lib/luanda';
 
 const EMPTY = { title: '', html: '', level: 'normal' as 'normal' | 'urgente', pinned: false, visibleUntil: '', alsoSms: false };
 
+/* v1.14.8: componentes movidos para o topo do módulo — definidos dentro do
+   render, cada tecla remontava a lista (o mesmo defeito que fechava o teclado
+   no formulário de eventos). */
+function audit(a: NormalizedAnnouncement) {
+  return (
+    <p className="mt-1 text-[10px] text-slate-400">
+      Criado por {a.createdBy || a.adminId || '—'}{(a.updatedBy && a.updatedAt) ? ` · editado por ${a.updatedBy} em ${fmtDatePT(new Date(a.updatedAt).toISOString().slice(0, 10))}` : ''}
+    </p>
+  );
+}
+
+
+function AnnouncementItem({ a, dayKey, onEdit, onRemove, extra }: {
+  a: NormalizedAnnouncement;
+  dayKey: string;
+  onEdit: (a: NormalizedAnnouncement) => void;
+  onRemove: (a: NormalizedAnnouncement) => void;
+  extra?: ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border p-3 space-y-1.5">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h4 className="text-sm font-bold truncate">{a.title}</h4>
+            {a.pinned && <Badge variant="secondary" className="text-[9px] gap-0.5"><Pin className="h-2.5 w-2.5" /> Fixado</Badge>}
+            {a.level === 'urgente' && <Badge className="bg-red-600 text-[9px]">URGENTE</Badge>}
+            {isAnnouncementExpired(a, dayKey) && <Badge variant="outline" className="text-[9px] text-amber-600 border-amber-400">Expirado (visível até {fmtDatePT(a.visibleUntil)})</Badge>}
+          </div>
+          <RichTextView html={a.html} className="text-xs text-muted-foreground line-clamp-3 mt-0.5" />
+          {audit(a)}
+        </div>
+        <div className="flex shrink-0 flex-col gap-1">
+          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => onEdit(a)}><Pencil className="h-3 w-3" /> Editar</Button>
+          {extra}
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive" onClick={() => onRemove(a)}><Trash2 className="h-3 w-3" /> Apagar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Administração dos AVISOS (colecção `announcements` — a mesma que o Portal
  * do Membro lê; fonte única, sem cópias). Rascunhos só aqui; «visível até»
@@ -169,33 +211,7 @@ export default function AnnouncementsAdmin() {
   const archive = list.filter((a) => a.status === 'arquivado' || isAnnouncementExpired(a, dayKey));
   const byNew = (l: NormalizedAnnouncement[]) => [...l].sort((x, y) => (y.updatedAt || y.createdAt || 0) - (x.updatedAt || x.createdAt || 0));
 
-  const audit = (a: NormalizedAnnouncement) => (
-    <p className="mt-1 text-[10px] text-slate-400">
-      Criado por {a.createdBy || a.adminId || '—'}{(a.updatedBy && a.updatedAt) ? ` · editado por ${a.updatedBy} em ${fmtDatePT(new Date(a.updatedAt).toISOString().slice(0, 10))}` : ''}
-    </p>
-  );
 
-  const Item = ({ a, extra }: { a: NormalizedAnnouncement; extra?: ReactNode }) => (
-    <div className="rounded-lg border p-3 space-y-1.5">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <h4 className="text-sm font-bold truncate">{a.title}</h4>
-            {a.pinned && <Badge variant="secondary" className="text-[9px] gap-0.5"><Pin className="h-2.5 w-2.5" /> Fixado</Badge>}
-            {a.level === 'urgente' && <Badge className="bg-red-600 text-[9px]">URGENTE</Badge>}
-            {isAnnouncementExpired(a, dayKey) && <Badge variant="outline" className="text-[9px] text-amber-600 border-amber-400">Expirado (visível até {fmtDatePT(a.visibleUntil)})</Badge>}
-          </div>
-          <RichTextView html={a.html} className="text-xs text-muted-foreground line-clamp-3 mt-0.5" />
-          {audit(a)}
-        </div>
-        <div className="flex shrink-0 flex-col gap-1">
-          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => startEdit(a)}><Pencil className="h-3 w-3" /> Editar</Button>
-          {extra}
-          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive" onClick={() => remove(a)}><Trash2 className="h-3 w-3" /> Apagar</Button>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <Card>
@@ -263,7 +279,7 @@ export default function AnnouncementsAdmin() {
             <section className="space-y-2">
               <h5 className="text-xs font-bold uppercase tracking-wide text-slate-500">Publicados ({published.length})</h5>
               {byNew(published).map((a) => (
-                <Item key={a.id} a={a} extra={
+                <AnnouncementItem key={a.id} a={a} dayKey={dayKey} onEdit={startEdit} onRemove={remove} extra={
                   <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => setStatus(a, 'arquivado')}><ArchiveRestore className="h-3 w-3" /> Arquivar</Button>
                 } />
               ))}
@@ -271,12 +287,12 @@ export default function AnnouncementsAdmin() {
             </section>
             <section className="space-y-2">
               <h5 className="text-xs font-bold uppercase tracking-wide text-slate-500">Rascunhos ({drafts.length})</h5>
-              {byNew(drafts).map((a) => <Item key={a.id} a={a} />)}
+              {byNew(drafts).map((a) => <AnnouncementItem key={a.id} a={a} dayKey={dayKey} onEdit={startEdit} onRemove={remove} />)}
             </section>
             <section className="space-y-2">
               <h5 className="text-xs font-bold uppercase tracking-wide text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" /> Arquivo — expirados e ocultados ({archive.length})</h5>
               {byNew(archive).map((a) => (
-                <Item key={a.id} a={a} extra={
+                <AnnouncementItem key={a.id} a={a} dayKey={dayKey} onEdit={startEdit} onRemove={remove} extra={
                   <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => isAnnouncementExpired(a, dayKey) ? republishExpired(a) : setStatus(a, 'publicado')}>
                     <ArchiveRestore className="h-3 w-3" /> Republicar
                   </Button>

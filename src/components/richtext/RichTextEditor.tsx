@@ -12,6 +12,22 @@ import { sanitizeHtml, richTextPlainLength, RICHTEXT_MAX_PLAIN } from '../../lib
    recusa padrões perigosos — ver lib/richtext.ts (3 camadas).
    ═══════════════════════════════════════════════════════════════════════ */
 
+/* v1.14.8: botão da barra fora do render (remontava a cada tecla). */
+function Tool({ onClick, title, children }: { onClick: () => void; title: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onMouseDown={(e) => e.preventDefault() /* não perde a selecção */}
+      onClick={onClick}
+      className="h-7 w-7 rounded flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
+    >
+      {children}
+    </button>
+  );
+}
+
 interface Props {
   value: string;
   onChange: (html: string) => void;
@@ -61,18 +77,6 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Escreva
   const chars = richTextPlainLength(value);
   const over = chars > RICHTEXT_MAX_PLAIN;
 
-  const Tool = ({ onClick, title, children }: { onClick: () => void; title: string; children: ReactNode }) => (
-    <button
-      type="button"
-      title={title}
-      aria-label={title}
-      onMouseDown={(e) => e.preventDefault() /* não perde a selecção */}
-      onClick={onClick}
-      className="h-7 w-7 rounded flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700"
-    >
-      {children}
-    </button>
-  );
 
   return (
     <div className="rounded-md border border-input bg-background">
