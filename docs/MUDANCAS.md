@@ -1,5 +1,26 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.4 — Auditoria P1: auditoria completa, renovações privadas, alertas configuráveis
+
+Itens 6–8 de `docs/AUDITORIA-2026-10-25.md`:
+- **Auditoria unificada** (`lib/audit.ts`): `audit_logs` tinha DOIS esquemas
+  (Admin gravava `byEmail/at`; Finanças `adminEmail/createdAt`) e a aba
+  «Auditoria» só lia um — as entradas do Admin apareciam com data «-» e autor
+  vazio. `logAudit()` grava os dois e a aba passou a aceitar ambos. Acções
+  agora auditadas: aprovar/rejeitar cadastros, publicar/actualizar/arquivar/
+  republicar aviso (e lixeira), publicar/alterar/apagar evento (incl.
+  definitivo), criar/actualizar/lixeira/suspender ocorrência da agenda e
+  correr backups.
+- **Renovações mais privadas**: as novas gravam `memberEmail` e a leitura
+  passa a `canReadMemberDoc()` (liderança ‖ próprio ‖ legado sem dono) —
+  fecha a última leitura alargada das colecções do cartão. Legados continuam
+  legíveis (migração natural, igual a communions/donations).
+- **Worker 2.8.1**: o alerta «lembretes parados» segue para
+  `settings/notifications.alertsEmail` (configurável no Firestore);
+  SUPER_EMAIL fica apenas como recurso. A remoção total do email de super
+  hardcoded nas regras continua pendente de confirmar `isSuper: true` no
+  documento `admins/` (para não trancar a gestão de administradores).
+
 ## v1.14.3 — Auditoria P0: privacidade dos membros, backups completos, erros visíveis
 
 Auditoria profunda de 2026-10-25 (relatório completo em

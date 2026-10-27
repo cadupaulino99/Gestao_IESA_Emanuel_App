@@ -392,6 +392,7 @@ export default function Admin() {
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
       await saveBlob(blob, `backup_igreja_${new Date().toISOString().split('T')[0]}.json`);
       toast.success("Backup concluído com sucesso!");
+      await audit('backup.created', collections.join(',').slice(0, 180));
     } catch(e) {
       toast.error("Erro ao gerar backup.");
     } finally {
@@ -477,10 +478,16 @@ export default function Admin() {
   }, [isDialogOpen]);
 
   /* ─────────── Gestão de administradores (só super admin) ─────────── */
-  const audit = (action: string, targetEmail: string) =>
-    addDoc(collection(db, 'audit_logs'), {
-      action, targetEmail, byEmail: user?.email || 'unknown', at: Date.now(),
+  /* v1.14.4: grava nos DOIS esquemas do audit_logs (a aba «Auditoria» lia
+     só adminEmail/createdAt — as entradas do Admin apareciam vazias). */
+  const audit = (action: string, targetEmail: string) => {
+    const at = Date.now();
+    return addDoc(collection(db, 'audit_logs'), {
+      action, targetEmail, byEmail: user?.email || 'unknown', at,
+      adminEmail: user?.email || 'unknown', createdAt: at,
+      collectionName: String(targetEmail).split('/')[0] || '', detail: '',
     }).catch(() => {});
+  };
 
   const reloadUsers = async () => {
     const uSnap = await getDocs(query(collection(db, 'admins')));
@@ -1500,14 +1507,14 @@ export default function Admin() {
                       auditLogs.map(log => (
                         <TableRow key={log.id} className="text-sm">
                           <TableCell className="whitespace-nowrap">
-                            {log.createdAt ? new Date(log.createdAt).toLocaleString('pt-AO') : '-'}
+                            {(log.createdAt || log.at) ? new Date(log.createdAt || log.at).toLocaleString('pt-AO') : '-'}
                           </TableCell>
                           <TableCell>
                             <Badge variant={log.action === 'DELETE' ? 'destructive' : 'default'} className="text-[10px]">
                               {log.action}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-medium text-xs">{log.adminEmail}</TableCell>
+                          <TableCell className="font-medium text-xs">{log.adminEmail || log.byEmail}</TableCell>
                           <TableCell className="text-xs text-muted-foreground uppercase">{log.collectionName}</TableCell>
                           <TableCell className="max-w-xs text-xs font-mono text-muted-foreground">
                             {log.action === 'DELETE' && (

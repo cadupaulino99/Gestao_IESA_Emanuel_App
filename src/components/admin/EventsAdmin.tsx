@@ -3,6 +3,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase
 import { CalendarPlus, Pencil, Trash2, Loader2, ImagePlus, MapPin, Clock, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { logAudit } from '../../lib/audit';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { moveToTrash } from '../../lib/trash';
@@ -160,6 +161,7 @@ export default function EventsAdmin() {
             alsoSms: form.alsoSms, byEmail: email,
           });
           toast.success(`Evento publicado — ${r.notified} membro(s) notificado(s)${r.smsQueued ? ` · ${r.smsQueued} na fila SMS/WhatsApp` : ''}.`);
+          void logAudit('event.published', `events/${id}`, email, form.title.trim());
         } else {
           const what = eventChangesForNotification(editing, { ...data, id });
           if (what) {
@@ -168,13 +170,16 @@ export default function EventsAdmin() {
               alsoSms: form.alsoSms, byEmail: email,
             });
             toast.success(`Evento actualizado — ${r.notified} membro(s) notificado(s) da alteração.`);
+            void logAudit('event.changed', `events/${id}`, email, what || '');
           } else if (editing.publishStatus === 'rascunho') {
             const r = await publishBoardNotification({
               kind: 'evento', label: boardLabels.newEvent(after), refId: id, alsoSms: form.alsoSms, byEmail: email,
             });
             toast.success(`Evento publicado — ${r.notified} membro(s) notificado(s).`);
+            void logAudit('event.published', `events/${id}`, email, form.title.trim());
           } else {
             toast.success('Evento actualizado.');
+            void logAudit('event.updated', `events/${id}`, email, form.title.trim());
           }
         }
       } else {
@@ -202,9 +207,11 @@ export default function EventsAdmin() {
         await deleteEventPoster([e.posterPath, e.posterThumbPath]);
         await deleteDoc(doc(db, 'events', e.id));
         toast.success('Evento apagado definitivamente.');
+        void logAudit('event.deleted-permanent', `events/${e.id}`, user?.email || '', e.title);
       } else {
         await moveToTrash('events', e.id, user?.email || 'unknown');
         toast.success('Evento movido para a Lixeira.');
+        void logAudit('event.trashed', `events/${e.id}`, user?.email || '', e.title);
       }
       if (editing?.id === e.id) reset();
       await load();

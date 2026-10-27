@@ -3,6 +3,7 @@ import { collection, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore'
 import { CalendarDays, Pencil, Trash2, Loader2, Ban, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { logAudit } from '../../lib/audit';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { moveToTrash } from '../../lib/trash';
@@ -76,6 +77,7 @@ export default function AgendaAdmin() {
       if (editing) await updateDoc(doc(db, 'agenda_items', editing.id), data);
       else await addDoc(collection(db, 'agenda_items'), data);
       toast.success(editing ? 'Atividade actualizada.' : 'Atividade acrescentada à agenda semanal.');
+      void logAudit(editing ? 'agenda.updated' : 'agenda.created', `agenda_items/${editing?.id || 'nova'}`, user?.email || '', form.title.trim());
       reset();
       await load();
     } catch (e) {
@@ -91,6 +93,7 @@ export default function AgendaAdmin() {
     try {
       await moveToTrash('agenda_items', i.id, user?.email || 'unknown');
       toast.success('Atividade movida para a Lixeira.');
+      void logAudit('agenda.trashed', `agenda_items/${i.id}`, user?.email || '', i.title);
       if (editing?.id === i.id) reset();
       await load();
     } catch (e) {
@@ -109,6 +112,7 @@ export default function AgendaAdmin() {
       toast.success(cancelledDates.includes(dateIso)
         ? `Ocorrência de ${fmtDatePT(dateIso)} cancelada (os membros vêem-na riscada).`
         : `Ocorrência de ${fmtDatePT(dateIso)} reactivada.`);
+      void logAudit(cancelledDates.includes(dateIso) ? 'agenda.occurrence-cancelled' : 'agenda.occurrence-reactivated', `agenda_items/${i.id}`, user?.email || '', `${i.title} · ${dateIso}`);
       await load();
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `agenda_items/${i.id}`);

@@ -3,6 +3,7 @@ import { collection, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore'
 import { Bell, BellOff, Pencil, Trash2, Pin, ArchiveRestore, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { logAudit } from '../../lib/audit';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { moveToTrash } from '../../lib/trash';
@@ -96,8 +97,10 @@ export default function AnnouncementsAdmin() {
           alsoSms: form.alsoSms, byEmail: email,
         });
         toast.success(`Aviso publicado — ${r.notified} membro(s) notificado(s)${r.smsQueued ? ` · ${r.smsQueued} na fila SMS/WhatsApp` : ''}.`);
+        void logAudit('announcement.published', `announcements/${id}`, email, form.title.trim());
       } else {
         toast.success(status === 'rascunho' ? 'Rascunho gravado (os membros não o vêem).' : 'Aviso actualizado.');
+        void logAudit(status === 'rascunho' ? 'announcement.draft' : 'announcement.updated', `announcements/${editing!.id}`, email, form.title.trim());
       }
       reset();
       await load();
@@ -119,8 +122,10 @@ export default function AnnouncementsAdmin() {
           kind: 'aviso', label: boardLabels.newAnnouncement(a), refId: a.id, alsoSms: false, byEmail: user?.email || '',
         });
         toast.success(`Republicado — ${r.notified} membro(s) notificado(s).`);
+        void logAudit('announcement.republished', `announcements/${a.id}`, user?.email || '', a.title);
       } else {
         toast.success(status === 'publicado' ? 'Aviso republicado.' : 'Aviso arquivado (deixa de aparecer aos membros).');
+        void logAudit(status === 'publicado' ? 'announcement.republished' : 'announcement.archived', `announcements/${a.id}`, user?.email || '', a.title);
       }
       await load();
     } catch (e) {
@@ -138,6 +143,7 @@ export default function AnnouncementsAdmin() {
         kind: 'aviso', label: boardLabels.newAnnouncement(a), refId: a.id, alsoSms: false, byEmail: user?.email || '',
       });
       toast.success(`Republicado sem prazo — ${r.notified} membro(s) notificado(s).`);
+      void logAudit('announcement.republished', `announcements/${a.id}`, user?.email || '', `${a.title} (sem prazo)`);
       await load();
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `announcements/${a.id}`);
@@ -150,6 +156,7 @@ export default function AnnouncementsAdmin() {
     try {
       await moveToTrash('announcements', a.id, user?.email || 'unknown');
       toast.success('Aviso movido para a Lixeira.');
+      void logAudit('announcement.trashed', `announcements/${a.id}`, user?.email || '', a.title);
       if (editing?.id === a.id) reset();
       await load();
     } catch (e) {

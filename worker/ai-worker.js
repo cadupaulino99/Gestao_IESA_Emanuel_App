@@ -42,7 +42,7 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.8.0';
+const WORKER_VERSION = '2.8.1';
 const WORKER_BUILD = '2026-10-25 (v2.8.0: auto-cadastro de membros /auth/self-register; v2.7.0: lembretes de eventos)';
 
 const CORS = {
@@ -957,7 +957,7 @@ async function runReminders(env, now) {
   const tok = await saAccessToken(env.FIREBASE_SA_JSON);
   const cr = await fetch(`https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/settings/notifications`,
     { headers: { Authorization: `Bearer ${tok}` } });
-  const DEF = { perWeek: 3, days: [1, 3, 5], hour: 9, maxWeeks: 8, externalReminders: false, maxExternalPerWeek: 2, testMode: false };
+  const DEF = { perWeek: 3, days: [1, 3, 5], hour: 9, maxWeeks: 8, externalReminders: false, maxExternalPerWeek: 2, testMode: false, alertsEmail: '' };
   let cfg = DEF;
   if (cr.ok) {
     const cj = await cr.json();
@@ -970,6 +970,7 @@ async function runReminders(env, now) {
       externalReminders: f.externalReminders?.booleanValue ?? false,
       maxExternalPerWeek: fnum(f, 'maxExternalPerWeek') || DEF.maxExternalPerWeek,
       testMode: f.testMode?.booleanValue ?? false,
+      alertsEmail: f.alertsEmail?.stringValue || '',
     };
     if (!cfg.days.length) cfg.days = DEF.days;
   }
@@ -987,7 +988,7 @@ async function runReminders(env, now) {
     if (!cfg.testMode && weeks > cfg.maxWeeks) {
       await fsPatch(env, 'contributions', row.id, { reminderStopped: true });
       await fsAdd(env, 'notifications', {
-        userEmail: 'cadupaulino99@gmail.com', kind: 'admin_alert',
+        userEmail: cfg.alertsEmail || SUPER_EMAIL, kind: 'admin_alert',  /* v2.8.1: configurável em settings/notifications.alertsEmail */
         title: 'Lembretes parados (limite de semanas)',
         body: `«${fv(f, 'description')}» de ${fv(f, 'memberName') || fv(f, 'memberEmail')} atingiu ${cfg.maxWeeks} semanas de lembretes sem ser concluída.`,
         read: false, createdAt: now, refId: row.id,
