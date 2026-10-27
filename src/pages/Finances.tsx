@@ -45,7 +45,7 @@ export default function Finances() {
   const [selectedMonth, setSelectedMonth] = useState(MONTHS[d.getMonth()]);
   const [selectedYear, setSelectedYear] = useState(d.getFullYear().toString());
   
-  const [members, setMembers] = useState<{id: string, name: string, email?: string}[]>([]);
+  const [members, setMembers] = useState<{id: string, name: string, email?: string, phone?: string}[]>([]);
   const [memberLookup, setMemberLookup] = useState<Record<string, string>>({});
   const [lastMemberDoc, setLastMemberDoc] = useState<any>(null);
   const [hasMoreMembers, setHasMoreMembers] = useState(false);
@@ -89,7 +89,13 @@ export default function Finances() {
     contributionDetail: ''
   });
   const [oD, setOD] = useState({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: new Date().toISOString().split('T')[0], sinodPercentage: '0' });
-  const [eD, setED] = useState({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: new Date().toISOString().split('T')[0] });
+  /* v1.14.6: tipo explícito — o estado ganha receiptBase64/receiptMime no
+     upload do recibo e o openEditExpense não repõe customCategory. */
+  const [eD, setED] = useState<{
+    description: string; category: string; amount: string; responsible: string;
+    customCategory?: string; referenceDate: string;
+    receiptBase64?: string; receiptMime?: string;
+  }>({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: new Date().toISOString().split('T')[0] });
   const [isCustomCategory, setIsCustomCategory] = useState(false);
 
   const [isTOpen, setIsTOpen] = useState(false);
@@ -886,7 +892,7 @@ export default function Finances() {
        }
 
        toast.success("Saída registada.");
-       setIsEOpen(false); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', receiptBase64: '', receiptMime: '' }); setIsCustomCategory(false); loadData(false);
+       setIsEOpen(false); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: new Date().toISOString().split('T')[0], receiptBase64: '', receiptMime: '' }); setIsCustomCategory(false); loadData(false);
     } catch (error) { 
        toast.error("Falha ao guardar."); 
        handleFirestoreError(error, OperationType.WRITE, 'expenses');

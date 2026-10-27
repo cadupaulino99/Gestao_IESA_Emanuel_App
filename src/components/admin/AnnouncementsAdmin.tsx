@@ -175,9 +175,7 @@ export default function AnnouncementsAdmin() {
     </p>
   );
 
-  /* key declarado nos props: o projecto não tem @types/react (JSX é any para o
-   tsc) e o transform do React 19 extrai o key antes de chegar ao componente. */
-  const Item = ({ a, extra }: { a: NormalizedAnnouncement; extra?: ReactNode; key?: string | number }) => (
+  const Item = ({ a, extra }: { a: NormalizedAnnouncement; extra?: ReactNode }) => (
     <div className="rounded-lg border p-3 space-y-1.5">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">

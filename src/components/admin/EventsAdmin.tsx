@@ -227,7 +227,7 @@ export default function EventsAdmin() {
   const byDate = (l: NormalizedEvent[]) => [...l].sort((a, b) =>
     String(a.date).localeCompare(String(b.date)) || String(a.time || '').localeCompare(String(b.time || '')));
 
-  const Item = ({ e, section }: { e: NormalizedEvent; section: 'up' | 'draft' | 'past'; key?: string | number }) => (
+  const Item = ({ e, section }: { e: NormalizedEvent; section: 'up' | 'draft' | 'past' }) => (
     <div className={`rounded-lg border p-3 flex gap-3 ${e.status === 'cancelado' ? 'border-red-300 bg-red-50/40 dark:bg-red-950/20' : ''}`}>
       <PosterThumb path={e.posterThumbPath || e.posterPath} />
       <div className="min-w-0 flex-1">

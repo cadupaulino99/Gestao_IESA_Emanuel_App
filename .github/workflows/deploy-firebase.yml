@@ -43,7 +43,7 @@ jobs:
         # tudo quando o Storage ainda nao estava ativado no console).
         run: |
           set -o pipefail
-          npx --yes firebase-tools@latest deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ID" 2>&1 | tee /tmp/deploy.log
+          npx --yes firebase-tools@14 deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ID" 2>&1 | tee /tmp/deploy.log
 
       - name: Deploy Storage (regras dos cartazes) — tolerante
         env:
@@ -55,7 +55,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          npx --yes firebase-tools@latest deploy --only storage --project "$PROJECT_ID" 2>&1 | tee -a /tmp/deploy.log \
+          npx --yes firebase-tools@14 deploy --only storage --project "$PROJECT_ID" 2>&1 | tee -a /tmp/deploy.log \
             || echo "::warning::Storage NAO publicado — ativa o bucket no console (Storage → Começar) e volta a correr o workflow. Regras/índices do Firestore JA foram publicados acima."
 
       - name: Reportar falha em issue (com o log)

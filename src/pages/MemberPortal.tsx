@@ -65,7 +65,7 @@ import {
 } from "../components/ui/tabs";
 import { toast } from "sonner";
 import MemberBoard from "../components/portal/MemberBoard";
-import MemberCardView from "../components/members/MemberCardView";
+import MemberCardView, { type MemberCardData } from "../components/members/MemberCardView";
 import UpdateBanner from "../components/UpdateBanner";
 import { generateMemberCardPdf, savePdf } from "../lib/pdfUtils";
 import {
@@ -90,11 +90,11 @@ export default function MemberPortal() {
     estadoCivil: "",
   });
   const [submittingUpdate, setSubmittingUpdate] = useState(false);
-  const [cardData, setCardData] = useState<{
-    communions: CommunionMark[];
-    donations: Donation[];
-    renewals: Renewal[];
-  }>({ communions: [], donations: [], renewals: [] });
+  /* v1.14.6: tipo = o do componente (MemberCardData sem `tithes`, que o
+     Portal passa à parte) — budget/contributions (v1.11) incluídos. */
+  const [cardData, setCardData] = useState<Omit<MemberCardData, 'tithes'>>(
+    { communions: [], donations: [], renewals: [] }
+  );
   const [cardBusy, setCardBusy] = useState(false);
   // edição dos próprios dados (sugestão da liderança, 2026-10-23)
   const [editOpen, setEditOpen] = useState(false);

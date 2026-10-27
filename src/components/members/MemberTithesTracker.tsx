@@ -159,7 +159,7 @@ export function MemberTithesTracker() {
       
       // Data rows
       memberStats.forEach(stat => {
-        const row = [stat.name];
+        const row: (string | number)[] = [stat.name];
         
         stat.months.forEach((tithed, idx) => {
           const isFuture = selectedYear === currentYear && idx > currentMonthIdx;

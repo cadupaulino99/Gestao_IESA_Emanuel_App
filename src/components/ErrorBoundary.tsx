@@ -18,9 +18,6 @@ interface State {
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
-  /* `declare` = só tipos, sem emissão (useDefineForClassFields:false) —
-     necessário porque o projecto não tem @types/react e a classe base é `any`. */
-  declare props: Readonly<Props>;
   state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
