@@ -432,6 +432,8 @@ export interface NotifSettings {
   externalReminders: boolean;     // SMS/WhatsApp nos lembretes (def. false)
   maxExternalPerWeek: number;     // tecto por membro/semana (def. 2)
   testMode: boolean;              // lembretes de minuto a minuto p/ testes
+  /** v1.14.4: destino dos alertas de administração do Worker (defeito: SUPER_EMAIL). */
+  alertsEmail?: string;
 }
 
 export const NOTIF_SETTINGS_DEFAULT: NotifSettings = {

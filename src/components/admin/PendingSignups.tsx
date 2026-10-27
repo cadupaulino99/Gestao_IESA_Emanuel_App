@@ -3,6 +3,7 @@ import { collection, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore'
 import { CheckCircle2, ChevronDown, ChevronUp, Loader2, UserPlus, UserX, Inbox } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../../lib/firebase';
+import { logAudit } from '../../lib/audit';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { nextInternalCode } from '../../lib/members';
@@ -118,6 +119,7 @@ export default function PendingSignups() {
         read: false, createdAt: now, refId: ref.id,
       }).catch(() => {});
       toast.success(`«${s.name}» aprovado — entrou na lista oficial de membros.`);
+      void logAudit('signup.approved', `member_signups/${s.id}`, user?.email || '', `name=${s.name}; memberId=${ref.id}`);
       await load();
     } catch (e) {
       toast.error('Falha ao aprovar: ' + (e?.message || 'erro desconhecido'));
@@ -144,6 +146,7 @@ export default function PendingSignups() {
         read: false, createdAt: now, refId: s.id,
       }).catch(() => {});
       toast.success(`Cadastro de «${s.name}» rejeitado.`);
+      void logAudit('signup.rejected', `member_signups/${s.id}`, user?.email || '', reason.trim() || undefined);
       setRejecting(null); setReason('');
       await load();
     } catch (e) {

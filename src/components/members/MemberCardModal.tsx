@@ -162,6 +162,7 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
     try {
       await addDoc(collection(db, 'renewals'), {
         memberId: member.id,
+        memberEmail: member.email || null,   // v1.14.4 (P1): dono identificável p/ regras
         date: renDate,
         pastorSign: renSign.trim(),
         createdAt: Date.now(),

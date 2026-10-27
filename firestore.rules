@@ -232,7 +232,9 @@ service cloud.firestore {
     }
 
     match /renewals/{docId} {
-      allow read, list: if isAuthenticated();
+      // v1.14.4 (P1): alinhado com communions/donations — liderança, o próprio
+      // (renovações novas levam memberEmail) ou legado sem dono identificado.
+      allow read, list: if canReadMemberDoc();
       allow create: if hasFinancialWriteAccess() && isValidId(docId)
                     && incoming().keys().hasAll(['memberId', 'date']);
       allow update, delete: if hasFinancialWriteAccess();
