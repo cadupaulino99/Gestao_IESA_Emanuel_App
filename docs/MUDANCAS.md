@@ -1,5 +1,25 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.14.3 — Auditoria P0: privacidade dos membros, backups completos, erros visíveis
+
+Auditoria profunda de 2026-10-25 (relatório completo em
+`docs/AUDITORIA-2026-10-25.md`). Cinco correcções críticas:
+1. **Privacidade**: `members` era legível por QUALQUER sessão (incl. cadastros
+   pendentes/rejeitados) — BI, telefones, moradas e fotos da congregação
+   inteira. Agora `canReadMemberDoc()`; `isOwnMemberDoc` aceita também o campo
+   `email`; `pedidos_atualizacao` só liderança lê.
+2. **Shell Android**: Capacitor 8.3.4 → **8.5.3** (CRITICAL de WebView do
+   audit); vitest 2.1.9 → 3.2.7. Riscos residuais dev-only documentados.
+3. **Backups**: cobriam 13 de 27 colecções (cartão de membro, contribuições,
+   settings, agenda e cadastros estavam de FORA). Lista completa.
+4. **Erros silenciosos**: `handleFirestoreError` relançava JSON (55 sítios) —
+   agora toast legível + log, sem rethrow.
+5. **ErrorBoundary global**: excepções de render davam ecrã branco; agora há
+   painel com resumo, versão e recarregar.
+
+**Publicação**: correr o workflow «Deploy Firebase» (regras de privacidade) e
+instalar o APK v1.14.3 (Capacitor 8.5.3). Testes: 146.
+
 ## v1.14.2 — Erros invisíveis: Toaster global, banners inline, lista de cadastros diagnóstica
 
 **Sintomas reportados**: (1) no telemóvel, o auto-cadastro «não saía da

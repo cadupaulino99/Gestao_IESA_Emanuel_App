@@ -62,9 +62,16 @@ service cloud.firestore {
     // partir o portal de ninguém — migração natural: cada novo registo já leva
     // memberEmail.
     function isOwnMemberDoc() {
-      return isAuthenticated()
-        && resource.data.keys().hasAll(['memberEmail'])
-        && resource.data.memberEmail == request.auth.token.email;
+      return isAuthenticated() && (
+        (resource.data.keys().hasAll(['memberEmail'])
+          && resource.data.memberEmail == request.auth.token.email)
+        // v1.14.3: o campo `email` também identifica o dono — documentos com
+        // email ligado à conta mas sem memberEmail deixavam de ser legíveis
+        // pelo próprio quando a leitura passou a canReadMemberDoc().
+        || (resource.data.keys().hasAll(['email'])
+          && resource.data.email is string
+          && resource.data.email == request.auth.token.email)
+      );
     }
     function isLegacyMemberDoc() {
       return isAuthenticated() && (
@@ -254,7 +261,11 @@ service cloud.firestore {
     }
 
     match /members/{memberId} {
-      allow read, list: if isAuthenticated();
+      // v1.14.3 (auditoria): era isAuthenticated() — QUALQUER sessão (incl.
+      // cadastros pendentes/rejeitados) listava a congregação inteira com BI,
+      // telefone, morada e foto. Agora: liderança, o próprio (memberEmail ou
+      // email) ou documento legado sem dono identificado.
+      allow read, list: if canReadMemberDoc();
       allow create: if hasFinancialWriteAccess() && isValidId(memberId);
       // O próprio membro (conta com o mesmo email) pode editar um subconjunto
       // seguro dos seus dados — sugestão da liderança (2026-10-23).
@@ -563,7 +574,8 @@ service cloud.firestore {
       allow delete: if canPublishBoard();
     }
     match /pedidos_atualizacao/{reqId} {
-      allow read, list: if isAuthenticated();
+      // v1.14.3: pedidos contêm dados pessoais propostos; o Portal só CRIA.
+      allow read, list: if hasFinancialWriteAccess();
       allow create: if isAuthenticated() && incoming().memberId != null;
       allow update, delete: if isAdmin();
     }

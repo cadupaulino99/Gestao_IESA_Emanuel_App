@@ -39,6 +39,7 @@ const SelfRegister = lazy(() => import('./pages/SelfRegister'));
 const MemberForcePasswordChange = lazy(() => import('./components/members/MemberForcePasswordChange'));
 import { useNotifications } from './hooks/useNotifications';
 import { Toaster } from './components/ui/sonner';
+import ErrorBoundary from './components/ErrorBoundary';
 import { currentVersion } from './lib/updateCheck';
 
 const queryClient = new QueryClient();
@@ -325,6 +326,7 @@ export default function App() {
               <AuthProvider>
                 <BrowserRouter>
                   <CommandPalette />
+                  <ErrorBoundary>
                   <Suspense fallback={<PageFallback />}>
                   <Routes>
                     <Route path="/login" element={<Login />} />
@@ -347,6 +349,7 @@ export default function App() {
                     </Route>
                   </Routes>
                   </Suspense>
+                  </ErrorBoundary>
                 </BrowserRouter>
               </AuthProvider>
             </QueryClientProvider>
