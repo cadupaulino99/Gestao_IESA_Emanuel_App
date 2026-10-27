@@ -1,7 +1,7 @@
 {
   "name": "gestao-iesa-emanuel-xangongo",
   "private": true,
-  "version": "1.14.6",
+  "version": "1.14.7",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -75,12 +75,16 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
     "express": "^4.22.3",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

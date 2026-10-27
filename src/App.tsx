@@ -41,6 +41,7 @@ import { useNotifications } from './hooks/useNotifications';
 import { Toaster } from './components/ui/sonner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { currentVersion } from './lib/updateCheck';
+import { friendlyAuthError, isUnknownAccountError, RESET_MESSAGE } from './lib/authMessages';
 
 const queryClient = new QueryClient();
 
@@ -161,20 +162,8 @@ const Login = () => {
     } catch(e) {}
   }
 
-  const friendlyError = (e: any): string => {
-    const code = e?.code || '';
-    if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found')
-      return 'Email ou palavra-passe incorretos.';
-    if (code === 'auth/user-disabled')
-      return 'Esta conta foi desativada. Contacte o administrador.';
-    if (code === 'auth/too-many-requests')
-      return 'Demasiadas tentativas. Aguarde alguns minutos e tente novamente.';
-    if (code === 'auth/network-request-failed')
-      return 'Sem ligação à internet. Verifique a rede e tente novamente.';
-    if (code === 'auth/operation-not-allowed')
-      return 'Este método de entrada não está ativo. Contacte o administrador.';
-    return e?.message || 'Não foi possível iniciar sessão.';
-  };
+  /* v1.14.7: mensagens extraídas para lib/authMessages (testáveis). */
+  const friendlyError = friendlyAuthError;
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,14 +193,13 @@ const Login = () => {
     setError(null); setBusy(true);
     try {
       await resetPassword(email);
-      setInfo('Se existir uma conta com este email, enviámos um link de reposição. Verifique a caixa de entrada (e o spam).');
+      setInfo(RESET_MESSAGE);
     } catch (err: any) {
       /* v1.14.1: email inexistente NÃO revela — mesma mensagem genérica
          (evita enumeração de contas e confusão). Só erros reais de rede
          mostram erro. */
-      const code = err?.code || '';
-      if (code === 'auth/user-not-found' || code === 'auth/invalid-email') {
-        setInfo('Se existir uma conta com este email, enviámos um link de reposição. Verifique a caixa de entrada (e o spam).');
+      if (isUnknownAccountError(err)) {
+        setInfo(RESET_MESSAGE);
       } else {
         setError(friendlyError(err));
       }

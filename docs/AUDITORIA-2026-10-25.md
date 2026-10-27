@@ -59,9 +59,11 @@ gates, Worker 2.8.0 saudável, cron activo.
 14. **Rate limits do Worker por isolate** (melhor esforço, como o resto do
     projeto) — suficiente à escala actual; subir para Cloudflare Rate
     Limiting rules se o volume crescer.
-15. **Testes de componentes** (login, cadastro, aprovação) — hoje só funções
-    puras (146). ✅ `firebase-tools` pinado no major 14 (v1.14.6); testes de
-    componentes continuam pendentes (agora viáveis com @types/react).
+15. ✅ **FEITO (v1.14.6/v1.14.7)**: `firebase-tools` pinado no major 14 e
+    testes de componentes entregues — jsdom + Testing Library, 29 testes nos
+    fluxos críticos (confirmação destrutiva, auto-cadastro, cadastros
+    pendentes, portal do membro, sanitização no render, mensagens de auth).
+    Total: 175.
 16. Enumeração no auto-cadastro: os 409 específicos (email/BI/telefone já
     existem) revelam registos — aceite por desenho (o membro precisa de saber
     para contactar o administrador) e mitigado pelo rate limit. Alternativa
