@@ -1,5 +1,20 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.15.0 — Rádio para os membros (nova aba no Portal)
+
+Os membros passam a ver/ouvir a **Rádio Maranata 91.9 FM** dentro do Portal:
+aba nova «Rádio» com o player ao vivo (play/pausa + volume), «a tocar agora»
+(API pública do AzuraCast) e o link do site da rádio. O **gravador** e a
+**biblioteca de gravações** continuam exclusivos da liderança (ferramentas de
+produção): o componente `Radio` aceita `variant="member"` e esconde-os —
+a mesma página, sem duplicar código (o player singleton já existia: continua
+a tocar ao navegar).
+- O stream é público e nada neste ecrã escreve no Firestore → regras e Worker
+  intocados; zero novos riscos.
+- Portal passa a 4 abas (Geral & Finanças · Avisos, Agenda e Eventos · Rádio ·
+  O meu cartão); grelha 2×2 no telemóvel, 4 colunas no ecrã grande.
+- Testes: `radioVariant.test.tsx` (+3 → **180**) tranca as duas variantes.
+
 ## v1.14.8 — Teclado permanece aberto nos formulários + cartaz não bloqueia a publicação
 
 Dois sintomas reportados do terreno:

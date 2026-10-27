@@ -65,6 +65,7 @@ import {
 } from "../components/ui/tabs";
 import { toast } from "sonner";
 import MemberBoard from "../components/portal/MemberBoard";
+import RadioPage from "./Radio";
 import MemberCardView, { type MemberCardData } from "../components/members/MemberCardView";
 import UpdateBanner from "../components/UpdateBanner";
 import { generateMemberCardPdf, savePdf } from "../lib/pdfUtils";
@@ -295,9 +296,10 @@ export default function MemberPortal() {
         </div>
 
         <Tabs defaultValue="dados" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
             <TabsTrigger value="dados">Geral & Finanças</TabsTrigger>
             <TabsTrigger value="mural">Avisos, Agenda e Eventos</TabsTrigger>
+            <TabsTrigger value="radio">Rádio</TabsTrigger>
             <TabsTrigger value="cartao" className="gap-1.5">
               <CreditCard className="h-4 w-4" /> O meu cartão
             </TabsTrigger>
@@ -561,6 +563,10 @@ export default function MemberPortal() {
               </div>
               <MemberBoard />
             </div>
+          </TabsContent>
+
+          <TabsContent value="radio" className="pt-4">
+            <RadioPage variant="member" />
           </TabsContent>
 
           <TabsContent value="cartao" className="space-y-4 pt-4">
