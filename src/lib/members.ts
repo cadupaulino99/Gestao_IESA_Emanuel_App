@@ -152,7 +152,7 @@ export async function mergeMembers(source: Member, target: Member, userEmail: st
   for (const f of FIELDS) {
     if (!target[f as keyof Member] && source[f as keyof Member]) fill[f] = source[f as keyof Member];
   }
-  if (Object.keys(fill).length) await updateDoc(doc(db, 'members', target.id), fill);
+  if (Object.keys(fill).length) await updateDoc(doc(db, 'members', target.id), fill as Record<string, any>);
 
   await moveToTrash('members', source.id, userEmail);
   return { moved, filledFields: Object.keys(fill), trashed: true };

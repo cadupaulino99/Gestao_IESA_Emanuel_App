@@ -122,3 +122,20 @@ export function formatMoneyCells(ws: any, XLSX: any): void {
     }
   } catch { /* nunca bloqueia a exportação */ }
 }
+
+
+/** v1.18 (P2 «backup Android»): cópia DIRECTA para a memória do telemóvel
+ *  (Documents/Backup/), sem passar pela folha de partilha. Devolve o caminho
+ *  gravado, ou null na web (onde o <a download> do saveBlob já chega). */
+export async function saveToDeviceBackup(blob: Blob, filename: string): Promise<string | null> {
+  if (Capacitor.getPlatform() === 'web') return null;
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onloadend = () => resolve(String(r.result).split(',')[1]);
+    r.onerror = () => reject(new Error('Não foi possível ler o ficheiro.'));
+    r.readAsDataURL(blob);
+  });
+  const path = `Backup/${filename}`;
+  await Filesystem.writeFile({ path, data: base64, directory: Directory.Documents, recursive: true });
+  return `Documents/${path}`;
+}

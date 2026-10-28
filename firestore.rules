@@ -268,8 +268,14 @@ service cloud.firestore {
              (data.get('status', '') is string);
     }
 
+    // v1.18 (P2 «validação»): deixa de ser um stub — guarda-corpos mínimos
+    // também na edição (o nome continua obrigatório e com tamanho são).
     function isValidMemberUpdate(data) {
-       return data.keys() == existing().keys() || true; // Weak validation, rely on hasOnly in action
+      return (!data.keys().hasAny(['name']) ||
+              (data.name is string && data.name.size() > 0 && data.name.size() <= 200)) &&
+             (!data.keys().hasAny(['phone']) || data.phone == null || data.phone is string) &&
+             (!data.keys().hasAny(['email']) || data.email == null || data.email is string) &&
+             (!data.keys().hasAny(['status']) || data.status is string);
     }
 
     match /members/{memberId} {
@@ -278,10 +284,14 @@ service cloud.firestore {
       // telefone, morada e foto. Agora: liderança, o próprio (memberEmail ou
       // email) ou documento legado sem dono identificado.
       allow read, list: if canReadMemberDoc();
-      allow create: if hasFinancialWriteAccess() && isValidId(memberId);
+      // v1.18 (P2): validadores LIGADOS no servidor (estavam escritos mas por
+      // usar — os deploys até avisavam «Unused function»). Create exige
+      // name/createdAt/updatedAt e tipos sãos; update da liderança idem.
+      allow create: if hasFinancialWriteAccess() && isValidId(memberId) && isValidMemberCreate(incoming());
       // O próprio membro (conta com o mesmo email) pode editar um subconjunto
       // seguro dos seus dados — sugestão da liderança (2026-10-23).
-      allow update: if (hasFinancialWriteAccess() && isValidId(memberId)) || isSelfEdit() || isSelfFlagClear();
+      allow update: if (hasFinancialWriteAccess() && isValidId(memberId) && isValidMemberUpdate(incoming()))
+                    || isSelfEdit() || isSelfFlagClear();
       allow delete: if hasFinancialWriteAccess() && isValidId(memberId);
     }
 
@@ -581,6 +591,17 @@ service cloud.firestore {
           ['statusSignup', 'reason', 'approvedBy', 'approvedAt', 'memberId', 'rejectedBy', 'rejectedAt']) &&
         incoming().statusSignup in ['pendente', 'aprovado', 'rejeitado'];
       allow delete: if isAdmin();
+    }
+
+    // v1.18 (P2 «Rádio»): gravações PUBLICADAS pela liderança para os membros
+    // ouvirem no Portal (ficheiros em Storage radio/**; aqui só os metadados).
+    match /radio_recordings/{recId} {
+      allow read, list: if isAuthenticated();
+      allow create: if hasFinancialWriteAccess() && isValidId(recId) &&
+                    incoming().keys().hasAll(['name', 'path', 'publishedBy', 'publishedAt']) &&
+                    incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 200 &&
+                    incoming().path is string && incoming().path.matches('^radio/[^/]+$');
+      allow update, delete: if hasFinancialWriteAccess();
     }
 
     // Controlo do digest diário de notificações do módulo (só liderança).

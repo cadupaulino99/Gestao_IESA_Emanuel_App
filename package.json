@@ -1,7 +1,7 @@
 {
   "name": "gestao-iesa-emanuel-xangongo",
   "private": true,
-  "version": "1.17.0",
+  "version": "1.18.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "lint:lib": "tsc -p tsconfig.lib.json --noEmit",
     "build:android": "vite build && cap sync android",
     "build:web": "vite build",
     "open:android": "cap open android",

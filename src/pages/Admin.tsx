@@ -18,7 +18,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Shield, Plus, Trash2, Download, Upload, Church, Save, Bell, CheckCircle2, XCircle, Database, AlertTriangle, KeyRound, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { saveBlob, saveXlsx } from '../lib/download';
+import { saveBlob, saveXlsx, saveToDeviceBackup } from '../lib/download';
 import { useConfirm } from '../context/ConfirmContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../context/AuthContext';
@@ -42,6 +42,8 @@ export default function Admin() {
   const [requests, setRequests] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
+  /* v1.18 (P2 «backup Android»): última cópia (marcador settings/backups) */
+  const [lastBackup, setLastBackup] = useState<{ at?: number; lastBackupAt?: number; size?: number; devicePath?: string | null } | null>(null);
   const [migrating, setMigrating] = useState(false);
   /* v1.16.0 — migração «Carimbar memberEmail» (fecha a leitura legada) */
   const [mePlan, setMePlan] = useState<null | {
@@ -475,6 +477,12 @@ export default function Admin() {
     }
   };
 
+  useEffect(() => {
+    getDoc(doc(db, 'settings', 'backups'))
+      .then((d) => { if (d.exists()) setLastBackup(d.data() as any); })
+      .catch(() => {});
+  }, []);
+
   const handleBackup = async () => {
     try {
       setLoading(true);
@@ -505,8 +513,17 @@ export default function Admin() {
       }
       
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
-      await saveBlob(blob, `backup_igreja_${new Date().toISOString().split('T')[0]}.json`);
-      toast.success("Backup concluído com sucesso!");
+      const fname = `backup_igreja_${new Date().toISOString().split('T')[0]}.json`;
+      await saveBlob(blob, fname);
+      /* v1.18: no telemóvel, além da folha de partilha, fica SEMPRE uma cópia
+         directa em Documents/Backup/ + marcador (data/tamanho/caminho). */
+      const devicePath = await saveToDeviceBackup(blob, fname).catch(() => null);
+      const marker = { lastBackupAt: Date.now(), size: blob.size, devicePath, by: user?.email || '' };
+      await setDoc(doc(db, 'settings', 'backups'), marker, { merge: true }).catch(() => {});
+      setLastBackup(marker);
+      toast.success(devicePath
+        ? `Backup concluído! Cópia directa guardada em ${devicePath}.`
+        : 'Backup concluído com sucesso!');
       await audit('backup.created', collections.join(',').slice(0, 180));
     } catch(e) {
       toast.error("Erro ao gerar backup.");
@@ -743,6 +760,7 @@ export default function Admin() {
       const success = await restoreFromTrash(trashId);
       if (success) {
         toast.success("Registo restaurado com sucesso!");
+        void audit('trash.restored', trashId);
         // Refresh trash list
         const trashSnap = await getDocs(query(collection(db, 'trash'), orderBy('deletedAt', 'desc')));
         setTrashItems(trashSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -811,6 +829,7 @@ export default function Admin() {
     setSavingChurch(true);
     try {
       await setDoc(doc(db, 'settings', 'church'), churchInfo);
+      void audit('settings.church-updated', 'settings/church');
       prefSet('church-settings', JSON.stringify(churchInfo));
       window.dispatchEvent(new Event('storage'));
       toast.success('Definições da igreja salvas com sucesso.');
@@ -1116,6 +1135,16 @@ export default function Admin() {
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="outline" onClick={handleBackup} className="gap-2"><Download className="h-4 w-4" /> 1. Descarregar cópia</Button>
+                  {(lastBackup?.lastBackupAt || lastBackup?.at) ? (
+                    <p className="text-[11px] text-muted-foreground w-full">
+                      Última cópia: {new Date(Number(lastBackup?.lastBackupAt || lastBackup?.at)).toLocaleString('pt-PT')}
+                      {lastBackup?.size ? ` · ${(Number(lastBackup.size) / 1048576).toFixed(1)} MB` : ''}
+                      {lastBackup?.devicePath ? ` · aparelho: ${lastBackup.devicePath}` : ''}
+                      {Date.now() - Number(lastBackup?.lastBackupAt || lastBackup?.at) > 30 * 86400000 && (
+                        <span className="ml-1 font-semibold text-amber-600">— há mais de 30 dias: faça nova cópia!</span>
+                      )}
+                    </p>
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />
                     Fiz a cópia de segurança

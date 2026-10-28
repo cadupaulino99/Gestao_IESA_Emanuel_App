@@ -1,5 +1,44 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.18.0 — P2: sermões para membros, validação no servidor, strict em lib/, backup Android, cron visível, README
+
+- **Rádio — biblioteca para os membros**: a liderança publica gravações da
+  biblioteca local (botão da nuvem): áudio → Storage `radio/<nome>.aac`,
+  metadados → `radio_recordings` (regras: leitura autenticada, escrita
+  liderança). Portal → Rádio ganha **«Gravações da igreja»**; o URL só se
+  resolve ao tocar (poupa a quota diária de descargas do Spark). Despublicar
+  remove registo + ficheiro. Auditoria `radio.published/unpublished`.
+- **Validação de membros no SERVIDOR**: `isValidMemberCreate` estava escrito
+  mas DESLIGADO (os deploys até avisavam «Unused function») — ligado no
+  create; `isValidMemberUpdate` era um stub (`|| true`) — agora guarda nome/
+  telefone/email/status com tipos e tamanhos. Self-edit e flag-clear intactos.
+- **TypeScript STRICT em `src/lib`** (`tsconfig.lib.json`, `npm run
+  lint:lib`, passo novo no CI): o núcleo de regras de negócio (dinheiro,
+  Luanda, sanitização, migrações, agenda, notificações) passa a ser verificado
+  com strict — 1 erro encontrado e corrigido (merge de membros). UI mantém o
+  tsconfig flexível (endurecimento gradual, sem rebentar 1000 erros).
+- **Backup Android**: além da folha de partilha, a cópia fica SEMPRE gravada
+  directamente em `Documents/Backup/` + marcador `settings/backups` (data,
+  tamanho, caminho) + aviso «há mais de 30 dias» no cartão de backup.
+- **Cron visível**: Worker **2.9.1** grava heartbeat (`settings/worker_cron`,
+  throttle 10 min); `/__health` expõe `cron.ageMinutes`; Suporte →
+  Diagnóstico diz «✓ Cron vivo — última execução há X min» ou «✗ SEM pulsar»
+  (o worker-health.yml diário já vigiava a versão; agora vigia-se também o
+  pulso).
+- **Auditoria alargada**: member.created/updated/trashed, trash.restored,
+  settings.church-updated, radio.published/unpublished (juntam-se a signups,
+  avisos, eventos, agenda, backups e palavras-passe).
+- **README reescrito**: estado actual (stack, segurança, Luanda/cêntimos,
+  publicação, migrações, docs, plano de majors).
+- **Dependências**: tentativa de vite 7/vitest 4 bloqueada por BUG DO NPM
+  10.8.2 (`edgesOut` no arborist) — mantidos vite 6.4.5 + vitest 3.2.7
+  (dev-only, sem risco no APK); plano no README. `npm ci --ignore-scripts`
+  documentado para sandboxes pequenas.
+- «Email na ficha» (P2) já tinha ficado feito na v1.17.0.
+
+Testes: 191 (radioVariant actualizado para a secção de gravações).
+Deploy: regras+storage (workflow) e **Worker 2.9.1**.
+
 ## v1.17.0 — P1 completo: contactos, conta rejeitada, pedidos, chat, fotos no Storage, xlsx seguro, IA num só backend
 
 - **Contactos do membro**: ficha (Membros → tocar no membro) com acções
