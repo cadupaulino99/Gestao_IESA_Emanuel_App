@@ -1,4 +1,5 @@
 import { formatKz } from './money';
+import { memberPhotoUrl } from './memberPhotos';
 import { jsPDF } from 'jspdf';
 import { saveBlob } from './download';
 import { prefGet } from './prefs';
@@ -333,10 +334,22 @@ export const generateMemberCardPdf = async (
   doc.setDrawColor(120, 120, 120);
   doc.setLineWidth(0.3);
   doc.rect(12, y2, 30, 38, 'S');
-  if (member.photoBase64) {
+  /* v1.17: foto a partir do Storage (photoPath) com fallback ao base64 legado */
+  const photoSrc = await memberPhotoUrl(member);
+  if (photoSrc) {
     try {
-      doc.addImage(`data:image/jpeg;base64,${member.photoBase64}`, 'JPEG', 12.5, y2 + 0.5, 29, 37);
-    } catch { /* foto inválida: fica a moldura vazia */ }
+      let dataUrl = photoSrc;
+      if (photoSrc.startsWith('http')) {
+        const blob = await (await fetch(photoSrc)).blob();
+        dataUrl = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onloadend = () => resolve(String(r.result));
+          r.onerror = () => reject(new Error('foto'));
+          r.readAsDataURL(blob);
+        });
+      }
+      doc.addImage(dataUrl, 'JPEG', 12.5, y2 + 0.5, 29, 37);
+    } catch { /* sem foto acessível: fica a moldura vazia */ }
   } else {
     doc.setFontSize(6.5);
     doc.setTextColor(150, 150, 150);

@@ -18,8 +18,10 @@ export interface Member {
   motherName?: string;
   /** Naturalidade («Natural de …»). */
   placeOfBirth?: string;
-  /** Fotografia do titular (JPEG comprimido em base64, ~400 px). */
+  /** LEGADO: fotografia em base64 no documento (v1.17: só se o Storage falhar). */
   photoBase64?: string;
+  /** v1.17: caminho no Storage (member-photos/<id>.<ext>) — tem prioridade. */
+  photoPath?: string | null;
   /** Aceita receber mensagens por telemóvel (SMS/WhatsApp). Defeito: sim. */
   acceptsMessages?: boolean;
   phone?: string;

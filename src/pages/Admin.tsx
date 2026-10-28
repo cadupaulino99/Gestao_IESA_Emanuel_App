@@ -60,6 +60,9 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isRequestsOpen, setIsRequestsOpen] = useState(false);
+  /* v1.17 (P1 «pedidos»): rejeição com motivo opcional (o membro vê). */
+  const [rejectingReqId, setRejectingReqId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   // atribuir credenciais a partir de um membro já cadastrado (sugestão da liderança)
   const [members, setMembers] = useState<any[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
@@ -237,28 +240,63 @@ export default function Admin() {
   const handleApproveRequest = async (req: any) => {
     const confirmed = await confirmDialog("Aprovar as alterações e atualizar o membro?");
     if (!confirmed) return;
-    
     try {
-      // Update Member
-      const memberRef = doc(db, 'members', req.memberId);
-      await updateDoc(memberRef, {
-        phone: req.requestedData.telefone,
-        address: req.requestedData.endereco,
-        maritalStatus: req.requestedData.estadoCivil,
-        updatedAt: Date.now()
-      });
-      
-      // Update request status
+      /* v1.17: só sobrescreve campos que o membro PREENCHEU — antes, um campo
+         vazio no pedido apagava o dado actual do membro. */
+      const rd = req.requestedData || {};
+      const patch: Record<string, unknown> = { updatedAt: Date.now() };
+      if (String(rd.telefone || '').trim()) patch.phone = String(rd.telefone).trim();
+      if (String(rd.endereco || '').trim()) patch.address = String(rd.endereco).trim();
+      if (String(rd.estadoCivil || '').trim()) patch.maritalStatus = String(rd.estadoCivil).trim();
+      await updateDoc(doc(db, 'members', req.memberId), patch);
       await updateDoc(doc(db, 'pedidos_atualizacao', req.id), {
-        status: 'aprovado',
-        updatedAt: Date.now()
+        status: 'aprovado', updatedAt: Date.now(),
+        reviewedBy: user?.email || '', reviewedAt: Date.now(),
       });
-      
+      // notifica o membro (se tiver conta) + auditoria
+      const mSnap = await getDoc(doc(db, 'members', req.memberId));
+      const mEmail = (mSnap.exists() ? (mSnap.data() as any).email : null) || req.memberEmail || null;
+      if (mEmail) {
+        await addDoc(collection(db, 'notifications'), {
+          userEmail: String(mEmail).toLowerCase(), kind: 'request_approved',
+          title: 'Pedido de atualização aprovado',
+          body: 'Os seus dados foram actualizados pela liderança.',
+          read: false, createdAt: Date.now(), refId: req.id,
+        }).catch(() => {});
+      }
+      await audit('request.approved', req.memberName || req.memberId);
       toast.success("Dados do membro atualizados com sucesso!");
       loadRequests();
     } catch (e) {
       toast.error("Erro ao aprovar o pedido.");
       handleFirestoreError(e, OperationType.WRITE, 'members');
+    }
+  };
+
+  /* v1.17: rejeição em dois passos (motivo opcional visível ao membro). */
+  const confirmRejectRequest = async (req: any) => {
+    try {
+      await updateDoc(doc(db, 'pedidos_atualizacao', req.id), {
+        status: 'rejeitado', reason: rejectReason.trim() || null,
+        updatedAt: Date.now(), reviewedBy: user?.email || '', reviewedAt: Date.now(),
+      });
+      const mSnap = await getDoc(doc(db, 'members', req.memberId));
+      const mEmail = (mSnap.exists() ? (mSnap.data() as any).email : null) || req.memberEmail || null;
+      if (mEmail) {
+        await addDoc(collection(db, 'notifications'), {
+          userEmail: String(mEmail).toLowerCase(), kind: 'request_rejected',
+          title: 'Pedido de atualização não aprovado',
+          body: rejectReason.trim() ? `Motivo: ${rejectReason.trim()}` : 'Contacte a secretaria para mais informações.',
+          read: false, createdAt: Date.now(), refId: req.id,
+        }).catch(() => {});
+      }
+      await audit('request.rejected', req.memberName || req.memberId);
+      toast.info("Pedido rejeitado.");
+      setRejectingReqId(null); setRejectReason('');
+      loadRequests();
+    } catch (e) {
+      toast.error("Erro ao rejeitar o pedido.");
+      handleFirestoreError(e, OperationType.WRITE, 'pedidos_atualizacao');
     }
   };
 
@@ -529,22 +567,6 @@ export default function Admin() {
     }
   };
 
-  const handleRejectRequest = async (reqId: string) => {
-    const confirmed = await confirmDialog("Rejeitar este pedido de alteração?");
-    if (!confirmed) return;
-    
-    try {
-      await updateDoc(doc(db, 'pedidos_atualizacao', reqId), {
-        status: 'rejeitado',
-        updatedAt: Date.now()
-      });
-      toast.info("Pedido rejeitado.");
-      loadRequests();
-    } catch (e) {
-      toast.error("Erro ao rejeitar o pedido.");
-      handleFirestoreError(e, OperationType.WRITE, 'pedidos_atualizacao');
-    }
-  };
 
   useEffect(() => {
     if (!isDialogOpen || members.length) return;
@@ -882,9 +904,25 @@ export default function Admin() {
                         <Button size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => handleApproveRequest(req)}>
                           <CheckCircle2 className="w-4 h-4 mr-2" /> Aprovar
                         </Button>
-                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleRejectRequest(req.id)}>
-                          <XCircle className="w-4 h-4 mr-2" /> Rejeitar
-                        </Button>
+                        {rejectingReqId === req.id ? (
+                          <div className="flex-1 space-y-1.5">
+                            <Input
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              placeholder="Motivo (opcional — o membro vê esta mensagem)"
+                              className="h-8 text-xs"
+                              maxLength={280}
+                            />
+                            <div className="flex gap-1.5">
+                              <Button size="sm" variant="destructive" className="flex-1" onClick={() => confirmRejectRequest(req)}>Confirmar</Button>
+                              <Button size="sm" variant="ghost" onClick={() => { setRejectingReqId(null); setRejectReason(''); }}>Cancelar</Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="destructive" className="flex-1" onClick={() => { setRejectingReqId(req.id); setRejectReason(req.reason || ''); }}>
+                            <XCircle className="w-4 h-4 mr-2" /> Rejeitar
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>

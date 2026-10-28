@@ -42,8 +42,8 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.8.2';
-const WORKER_BUILD = '2026-10-27 (v2.8.2: super só pela flag isSuper, sem email hardcoded; v2.8.0: auto-cadastro /auth/self-register)';
+const WORKER_VERSION = '2.9.0';
+const WORKER_BUILD = '2026-10-28 (v2.9.0: apagar conta+pedido de cadastro rejeitado; v2.8.x: super por flag, auto-cadastro)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -773,6 +773,15 @@ async function fsPatchRaw(env, col, id, fields, maskPaths) {
   if (!r.ok) throw new Error('PATCHRAW ' + col + '/' + id + ': ' + r.status);
 }
 
+async function fsDeleteDoc(env, col, id) {
+  const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+  const r = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${env.PROJECT_ID}/databases/(default)/documents/${col}/${encodeURIComponent(id)}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${tok}` } }
+  );
+  if (!r.ok && r.status !== 404) throw new Error('DELETE ' + col + '/' + id + ': ' + r.status);
+}
+
 const fvStr = (v) => (v && v.stringValue) || '';
 const fvInt = (v) => Number((v && (v.integerValue || v.doubleValue)) || 0);
 
@@ -1091,6 +1100,7 @@ export default {
           '/admin/reset-temp-password',
           '/admin/set-account-disabled',
           '/auth/self-register (público)',
+          '/admin/delete-signup-account',
         ],
         models: GEMINI_MODELS,
         config: {
@@ -1253,6 +1263,39 @@ export default {
         await patchAdminDoc(env, target, { disabled: !!disabled });
         roleCache = { ts: 0, map: {} };
         return json({ ok: true, disabled: !!disabled });
+      }
+
+      /* --- v2.9.0: apagar CONTA+PEDIDO de um cadastro REJEITADO (admin).
+             Liberta o email (o Auth deixava-o preso para sempre) e remove o
+             member_signups. Só rejeitados — nunca contas de membros activos. */
+      if (path === '/admin/delete-signup-account') {
+        if (!(role === 'admin' || isSuper)) return json({ error: 'Só administradores podem apagar contas de cadastros.' }, 403);
+        const { signupId } = await request.json();
+        const id = String(signupId || '').trim().toLowerCase();
+        if (!id) return json({ error: 'signupId obrigatório.' }, 400);
+        const sDoc = await fsGetDoc(env, 'member_signups', id);
+        if (!sDoc) return json({ error: 'Pedido não encontrado.' }, 404);
+        if (fvStr(sDoc.statusSignup) !== 'rejeitado') {
+          return json({ error: 'Só é possível apagar contas de cadastros REJEITADOS.' }, 409);
+        }
+        let accountDeleted = false;
+        const localId = await itGetLocalId(env, id);
+        if (localId) {
+          const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+          const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+            body: JSON.stringify({ localId }),
+          });
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            return json({ error: 'Falha ao apagar a conta Auth: ' + ((j.error && j.error.message) || r.status) }, 500);
+          }
+          accountDeleted = true;
+        }
+        await fsDeleteDoc(env, 'member_signups', id);
+        roleCache = { ts: 0, map: {} };
+        return json({ ok: true, accountDeleted, email: id });
       }
 
       /* --- liderança (admin/pastor/tesoureiro) --- */

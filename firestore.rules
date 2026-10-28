@@ -591,7 +591,10 @@ service cloud.firestore {
     }
     match /pedidos_atualizacao/{reqId} {
       // v1.14.3: pedidos contêm dados pessoais propostos; o Portal só CRIA.
-      allow read, list: if hasFinancialWriteAccess();
+      // v1.17: o próprio pode ler/acompanhar os SEUS pedidos (memberEmail).
+      allow read, list: if hasFinancialWriteAccess() ||
+        (isAuthenticated() && resource.data.keys().hasAll(['memberEmail']) &&
+         resource.data.memberEmail == request.auth.token.email);
       allow create: if isAuthenticated() && incoming().memberId != null;
       allow update, delete: if isAdmin();
     }
@@ -605,8 +608,18 @@ service cloud.firestore {
 
     // --- Support Messages Collection ---
     match /support_messages/{msgId} {
-      allow read, list: if isAuthenticated();
-      allow create: if isAuthenticated() && incoming().senderId == request.auth.uid && incoming().text is string && incoming().text.size() > 0;
+      // v1.17 (P1 «chat»): conversas por fio (memberEmail). Liderança lê tudo;
+      // membro só lê o SEU fio. Antes: qualquer sessão lia TODAS as mensagens.
+      allow read, list: if hasFinancialWriteAccess() ||
+        (isAuthenticated() && resource.data.keys().hasAll(['memberEmail']) &&
+         resource.data.memberEmail == request.auth.token.email);
+      allow create: if isAuthenticated() &&
+        incoming().senderId == request.auth.uid &&
+        incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 2000 &&
+        (hasFinancialWriteAccess() ||
+         (incoming().keys().hasAll(['memberEmail']) &&
+          incoming().memberEmail == request.auth.token.email &&
+          incoming().senderRole == 'member'));
       allow update, delete: if isAdmin();
     }
 

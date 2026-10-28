@@ -30,6 +30,8 @@ import MemberCardModal from '../components/members/MemberCardModal';
 import { validateBi, findSimilarMembers, nextInternalCode, mergeMembers, editBi } from '../lib/members';
 import { normalizePhoneAO, phoneError, duplicatePhones } from '../lib/phone';
 import CommunionTracker from '../components/members/CommunionTracker';
+import MemberContactActions from '../components/members/MemberContactActions';
+import { uploadMemberPhoto } from '../lib/memberPhotos';
 import { compressImageFile } from '../lib/ai';
 import { PastoralMessageGeneratorModal } from '../components/members/PastoralMessageGeneratorModal';
 import jsPDF from 'jspdf';
@@ -165,6 +167,9 @@ export default function Members() {
   const [memberTithes, setMemberTithes] = useState<any[]>([]);
   const [loadingTithes, setLoadingTithes] = useState(false);
   const confirmDialog = useConfirm();
+  /* v1.17 (P1 «fotos»): foto NOVA escolhida nesta sessão → no guardar, vai
+     para o Storage (photoPath) em vez de ficar base64 no documento. */
+  const photoDirtyRef = React.useRef(false);
 
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -233,14 +238,28 @@ export default function Members() {
 
   const mutation = useMutation({
     mutationFn: async (payload: MemberForm) => {
+      let memberId: string;
       if (editingMember) {
         const { locked, reason } = isRecordLocked(editingMember.createdAt);
         if (locked && !isAdmin) {
           throw new Error(reason || "Registo bloqueado.");
         }
         await updateDoc(doc(db, 'members', editingMember.id), { ...payload, updatedAt: Date.now() });
+        memberId = editingMember.id;
       } else {
-        await addDoc(collection(db, 'members'), { ...payload, createdAt: Date.now(), updatedAt: Date.now() });
+        const r = await addDoc(collection(db, 'members'), { ...payload, createdAt: Date.now(), updatedAt: Date.now() });
+        memberId = r.id;
+      }
+      /* v1.17: foto nova → Storage; documento fica só com o CAMINHO.
+         Se o bucket não estiver activado, mantém o base64 (nada parte). */
+      if (photoDirtyRef.current && (payload as any).photoBase64) {
+        try {
+          const path = await uploadMemberPhoto(memberId, String((payload as any).photoBase64));
+          await updateDoc(doc(db, 'members', memberId), { photoPath: path, photoBase64: null });
+        } catch {
+          toast.warning('Fotografia mantida no documento — o Storage (consola Firebase) ainda não está activado.');
+        }
+        photoDirtyRef.current = false;
       }
     },
     onSuccess: () => {
@@ -293,6 +312,18 @@ export default function Members() {
     }
     if (data.acceptsMessages === undefined) data.acceptsMessages = true;
 
+    // v1.17: email normalizado (minúsculas/sem espaços) + espelho memberEmail
+    // (as regras isOwnMemberDoc comparam com o email do token, em minúsculas)
+    if (data.email !== undefined) {
+      const em = String(data.email || '').trim().toLowerCase();
+      if (em) {
+        data.email = em;
+        (data as any).memberEmail = em;
+      } else {
+        delete data.email;
+      }
+    }
+
     // ── B.I.: formato angolano + unicidade (bloqueia) ──
     const bi = validateBi(data.documentNumber);
     if (!bi.ok) {
@@ -336,6 +367,7 @@ export default function Members() {
 
   const openEdit = (member: Member) => {
     setEditingMember(member);
+    photoDirtyRef.current = false;
     const validStatuses = ['Activo', 'Inativo', 'Sob Disciplina', 'Transferido', 'Falecido'];
     let safeStatus = member.status || 'Activo';
     if (!validStatuses.includes(safeStatus)) {
@@ -356,6 +388,7 @@ export default function Members() {
 
     reset({
       name: member.name,
+      email: member.email || '',
       documentNumber: member.documentNumber || '',
       memberNumber: member.memberNumber || '',
       fatherName: member.fatherName || '',
@@ -579,6 +612,7 @@ export default function Members() {
                               try {
                                 const p = await compressImageFile(f, { max: 400, quality: 0.8 });
                                 setValue('photoBase64', p.base64, { shouldDirty: true });
+                                photoDirtyRef.current = true;
                                 toast.success('Fotografia anexada ao cartão.');
                               } catch {
                                 toast.error('Não foi possível ler a imagem.');
@@ -604,6 +638,12 @@ export default function Members() {
                       <div className="space-y-2">
                         <Label>Telefone</Label>
                         <Input {...register("phone")} placeholder="+244 9XX XXX XXX" inputMode="tel" />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Email (da conta, opcional)</Label>
+                        <Input {...register("email")} placeholder="nome@email.com" inputMode="email" autoComplete="email" />
+                        {errors.email && <span className="text-xs text-destructive">{errors.email.message}</span>}
                       </div>
 
                       <div className="space-y-2 md:col-span-2">
@@ -872,6 +912,11 @@ export default function Members() {
                       <div>
                         <span className="text-muted-foreground block">Telefone</span>
                         {selectedMember.phone || '-'}
+                        <MemberContactActions phone={selectedMember.phone} email={selectedMember.email} compact />
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Email (conta)</span>
+                        {selectedMember.email || '-'}
                       </div>
                       <div>
                         <span className="text-muted-foreground block">Nº do BI</span>

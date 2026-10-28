@@ -49,9 +49,9 @@ gates, Worker 2.8.0 saudável, cron activo.
     alojam os APKs), decidir sobre `functions/` (morto no plano Spark),
     mover `express` para devDependencies, remover `@capacitor/ios` se não
     houver plano iOS.
-12. **Fotos de auto-cadastro em base64** dentro do documento (~700 KB máx.
-    contra o limite de 1 MB do Firestore) — migrar para o Storage (padrão
-    dos cartazes) antes de aparecerem documentos inchados.
+12. ✅ **FEITO (v1.17.0)**: fotos de membros E de cadastros aprovados vão
+    para o Storage (`member-photos/`), documento guarda só `photoPath`;
+    base64 fica como fallback (bucket por activar não parte nada).
 13. **Storage**: qualquer conta autenticada pode TENTAR escrever em
     `posters/**` (regras do Storage não lêem o Firestore — limitação
     documentada). Mitigação futura: custom claims (exige Functions/Blaze) ou

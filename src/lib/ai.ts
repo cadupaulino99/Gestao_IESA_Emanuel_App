@@ -113,6 +113,14 @@ export async function setAccountDisabled(input: { email: string; disabled: boole
   return callWorker<{ ok: boolean; disabled: boolean }>('/admin/set-account-disabled', input);
 }
 
+/** v1.17: apaga a conta Auth + o pedido de um cadastro REJEITADO (só admin;
+ *  o Worker confirma o estado). Liberta o email para novo cadastro. */
+export async function deleteSignupAccount(signupId: string) {
+  return callWorker<{ ok: boolean; accountDeleted: boolean; email: string }>(
+    '/admin/delete-signup-account', { signupId }
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* v1.14.0 — Auto-cadastro de membros (rota PÚBLICA do Worker)         */
 /* ------------------------------------------------------------------ */

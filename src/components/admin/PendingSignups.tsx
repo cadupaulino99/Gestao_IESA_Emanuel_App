@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { collection, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { CheckCircle2, ChevronDown, ChevronUp, Loader2, UserPlus, UserX, Inbox } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, Loader2, UserPlus, UserX, Inbox, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db } from '../../lib/firebase';
 import { logAudit } from '../../lib/audit';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { nextInternalCode } from '../../lib/members';
+import { deleteSignupAccount } from '../../lib/ai';
+import { uploadMemberPhoto } from '../../lib/memberPhotos';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -111,6 +113,14 @@ export default function PendingSignups() {
         if (v !== undefined && v !== null && v !== '') member[k] = v;
       }
       const ref = await addDoc(collection(db, 'members'), member);
+      /* v1.17 (P1 «fotos»): foto do cadastro vai para o Storage; o documento
+         do membro fica só com o caminho. Sem bucket → mantém base64. */
+      if (typeof s.photoBase64 === 'string' && s.photoBase64) {
+        try {
+          const path = await uploadMemberPhoto(ref.id, s.photoBase64);
+          await updateDoc(ref, { photoPath: path, photoBase64: null });
+        } catch { /* Storage por activar: foto fica no documento */ }
+      }
       await updateDoc(doc(db, 'member_signups', s.id), {
         statusSignup: 'aprovado', approvedBy: user?.email || '', approvedAt: now, memberId: ref.id,
       });
@@ -154,6 +164,24 @@ export default function PendingSignups() {
     } catch (e) {
       toast.error('Falha ao rejeitar: ' + (e?.message || 'erro desconhecido'));
       console.error('reject signup:', e);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteSignup = async (s: MemberSignup) => {
+    const ok = await confirmDialog(
+      `APAGAR DEFINITIVAMENTE a conta e o pedido de «${s.name}» (${s.email})?\n\nA conta de autenticação é removida (o email fica livre para um novo cadastro) e o pedido sai da lista. Não há recuperação.`,
+      'APAGAR');
+    if (!ok) return;
+    setBusyId(s.id);
+    try {
+      await deleteSignupAccount(s.id);
+      void logAudit('signup.deleted', `member_signups/${s.id}`, user?.email || '', `name=${s.name}`);
+      toast.success('Conta e pedido apagados — o email ficou livre.');
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Falha ao apagar a conta.');
     } finally {
       setBusyId(null);
     }
@@ -260,6 +288,14 @@ export default function PendingSignups() {
                     onClick={() => { setRejecting(s); setReason(s.statusSignup === 'rejeitado' ? (s.reason || '') : ''); }}>
                     <UserX className="h-3.5 w-3.5" /> Rejeitar
                   </Button>
+                  {s.statusSignup === 'rejeitado' && (
+                    /* v1.17 (P1 «conta rejeitada»): apagar conta Auth + pedido —
+                       liberta o email (ficava preso para sempre) e permite novo
+                       cadastro. Só admin; o Worker reconfirma o estado. */
+                    <Button size="sm" variant="ghost" className="gap-1.5 text-destructive" disabled={busyId === s.id} onClick={() => deleteSignup(s)}>
+                      <Trash2 className="h-3.5 w-3.5" /> Apagar conta e pedido
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

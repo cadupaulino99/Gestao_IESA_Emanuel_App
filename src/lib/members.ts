@@ -148,7 +148,7 @@ export async function mergeMembers(source: Member, target: Member, userEmail: st
 
   // Lacunas do destino que a origem preenche (BI, filiação, datas, foto…)
   const fill: Record<string, unknown> = {};
-  const FIELDS = ['documentNumber', 'issueDate', 'fatherName', 'motherName', 'placeOfBirth', 'photoBase64', 'birthDate', 'baptismDate', 'joinDate', 'phone', 'address', 'groupCell', 'internalCode'] as const;
+  const FIELDS = ['documentNumber', 'issueDate', 'fatherName', 'motherName', 'placeOfBirth', 'photoBase64', 'photoPath', 'birthDate', 'baptismDate', 'joinDate', 'phone', 'address', 'groupCell', 'internalCode'] as const;
   for (const f of FIELDS) {
     if (!target[f as keyof Member] && source[f as keyof Member]) fill[f] = source[f as keyof Member];
   }

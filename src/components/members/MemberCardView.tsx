@@ -1,4 +1,5 @@
 import { formatKz } from '../../lib/money';
+import MemberPhoto from './MemberPhoto';
 import { Check, X } from 'lucide-react';
 import { aggregateByMonth, sumYear, cardYears } from '../../lib/finance';
 import { toMonthIdx } from '../../lib/months';
@@ -293,8 +294,8 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
 
             <div className="flex items-end gap-3">
               <div className="w-24 h-28 rounded border border-slate-400 bg-white dark:bg-slate-800 overflow-hidden flex items-center justify-center">
-                {member.photoBase64 ? (
-                  <img src={`data:image/jpeg;base64,${member.photoBase64}`} alt="Fotografia do titular" className="w-full h-full object-cover" />
+                {(member.photoPath || member.photoBase64) ? (
+                  <MemberPhoto member={member} alt="Fotografia do titular" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-[9px] text-slate-400 text-center px-1">fotografia do titular</span>
                 )}

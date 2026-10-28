@@ -46,6 +46,9 @@ export default function Support() {
 
   // Human Team Chat State
   const [teamMessage, setTeamMessage] = useState('');
+  /* v1.17 (P1 «chat»): conversas por membro — null = canal interno da equipa;
+     string (memberEmail) = fio com esse membro (Portal → Suporte). */
+  const [thread, setThread] = useState<string | null>(null);
 
   // AI Assistant Chat State
   const [aiInput, setAiInput] = useState('');
@@ -71,6 +74,7 @@ export default function Support() {
   // Query human messages from Firestore
   const { data: messages, isLoading: isLoadingTeam } = useQuery({
     queryKey: ['supportMessages'],
+    refetchInterval: 20_000,   // mensagens dos membros chegam sem refrescar
     queryFn: async () => {
       try {
         const snap = await getDocs(query(collection(db, 'support_messages'), orderBy('createdAt', 'asc')));
@@ -90,6 +94,9 @@ export default function Support() {
         senderId: user?.uid,
         senderName: user?.displayName || user?.email || 'Utilizador',
         role: userRole,
+        senderRole: 'leader',                       // v1.17
+        threadId: thread || 'geral',                // v1.17
+        memberEmail: thread || null,                // v1.17
         createdAt: Date.now(),
       });
     },
@@ -102,6 +109,17 @@ export default function Support() {
       handleFirestoreError(e, OperationType.WRITE, 'support_messages');
     },
   });
+
+  /* v1.17: agrupar por fio — mensagens sem memberEmail = canal interno */
+  const threadOf = (m: any): string | null => (m?.memberEmail ? String(m.memberEmail) : null);
+  const memberThreads = Array.from(new Set(((messages || []) as any[]).map(threadOf).filter(Boolean))) as string[];
+  const lastOf = (t: string) => Math.max(0, ...((messages || []) as any[]).filter((m) => threadOf(m) === t).map((m) => Number(m.createdAt) || 0));
+  memberThreads.sort((a, b) => lastOf(b) - lastOf(a));
+  const shownMessages = ((messages || []) as any[]).filter((m) => threadOf(m) === thread);
+  const awaitingOf = (t: string) => {
+    const list = ((messages || []) as any[]).filter((m) => threadOf(m) === t);
+    return list.length > 0 && list[list.length - 1].senderRole === 'member';
+  };
 
   const handleSendTeam = (e: React.FormEvent) => {
     e.preventDefault();
@@ -363,21 +381,44 @@ export default function Support() {
           <CardHeader className="py-3 px-4 border-b bg-slate-50/50 dark:bg-slate-900/40">
             <CardTitle className="text-base flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-blue-500" />
-              Canal de Mensagens da Equipa Local
+              {thread ? `Suporte — ${thread}` : 'Canal de Mensagens da Equipa Local'}
             </CardTitle>
             <CardDescription className="text-xs">
-              Comunique com outros administradores, tesoureiros e equipa pastoral da congregação.
+              {thread
+                ? 'Conversa com o membro (ele escreve pelo Portal → Suporte; só você/liderança e ele a vêem).'
+                : 'Comunique com outros administradores, tesoureiros e equipa pastoral da congregação.'}
             </CardDescription>
           </CardHeader>
+          {/* v1.17: selector de conversas */}
+          <div className="flex flex-wrap gap-1.5 border-b px-4 py-2 bg-slate-50/50 dark:bg-slate-900/40">
+            <button
+              type="button"
+              onClick={() => setThread(null)}
+              className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${thread === null ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}
+            >
+              Equipa (interno)
+            </button>
+            {memberThreads.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setThread(t)}
+                className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors flex items-center gap-1.5 ${thread === t ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}`}
+              >
+                {awaitingOf(t) && <span className="h-1.5 w-1.5 rounded-full bg-red-500" title="À espera de resposta" />}
+                {t}
+              </button>
+            ))}
+          </div>
           <CardContent className="p-4 space-y-4">
             {isLoadingTeam ? (
               <div className="text-center py-4 text-sm text-muted-foreground">A carregar mensagens...</div>
-            ) : messages?.length === 0 ? (
+            ) : shownMessages.length === 0 ? (
               <div className="text-center py-8 text-sm text-muted-foreground">
-                Nenhuma mensagem interna registada ainda. Escreva abaixo para começar.
+                {thread ? 'Ainda não há mensagens com este membro.' : 'Nenhuma mensagem interna registada ainda. Escreva abaixo para começar.'}
               </div>
             ) : (
-              messages?.map((m: any) => {
+              shownMessages.map((m: any) => {
                 const isMine = m.senderId === user?.uid;
                 const isAdmin = m.role === 'admin';
                 return (
@@ -387,6 +428,11 @@ export default function Support() {
                       {isAdmin && !isMine && (
                         <span className="text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded font-medium">
                           Admin
+                        </span>
+                      )}
+                      {m.senderRole === 'member' && !isMine && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 px-1.5 py-0.5 rounded font-medium">
+                          Membro
                         </span>
                       )}
                       <span className="text-[10px] text-muted-foreground">
@@ -411,7 +457,7 @@ export default function Support() {
               <Input
                 value={teamMessage}
                 onChange={(e) => setTeamMessage(e.target.value)}
-                placeholder="Escreva uma mensagem interna para a equipa..."
+                placeholder={thread ? `Responder a ${thread}…` : "Escreva uma mensagem interna para a equipa..."}
                 className="flex-1"
                 disabled={teamMutation.isPending}
               />

@@ -13,6 +13,12 @@ import { normalizePhoneAO } from './phone';
 /** Esquema do formulário de membro (o que a Administração usa desde sempre). */
 export const memberSchema = z.object({
   name: z.string().min(2, "O nome deve ter pelo menos 2 caracteres"),
+  /* v1.17: email da conta (opcional no formulário da liderança) — normalizado
+     e espelhado em memberEmail para as regras de leitura do próprio. */
+  email: z.string().optional().refine(
+    (v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v).trim()),
+    'Email inválido. Ex.: nome@email.com'
+  ),
   documentNumber: z.string().optional(),
   memberNumber: z.string().optional(),
   fatherName: z.string().optional(),

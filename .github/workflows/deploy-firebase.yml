@@ -23,9 +23,6 @@ jobs:
         with:
           node-version: 22
 
-      - name: Instalar dependências das funções
-        run: npm --prefix functions ci || npm --prefix functions install
-
       - name: Autenticar com a conta de serviço
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -36,8 +33,8 @@ jobs:
       - name: Deploy Firestore (regras + índices) — obrigatório
         env:
           PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-        # Plano Spark (gratuito) nao permite Cloud Functions (exige Blaze).
-        # Quando ativares o Blaze, acrescenta ",functions" para levar a IA.
+        # v1.17: um só backend de IA — a pasta functions/ foi removida (morta
+        # no plano Spark); toda a IA vive no Cloudflare Worker (worker/).
         # v1.13.1: separado do Storage — as regras/índices NAO dependem do
         # bucket e nao podem ficar refens dele (o deploy conjunto abortava
         # tudo quando o Storage ainda nao estava ativado no console).

@@ -30,6 +30,13 @@ service firebase.storage {
                       fileName.matches('[^/]+\\.(jpg|png|webp)');
     }
 
+    // v1.17: fotografias de membros (mesma política dos cartazes).
+    match /member-photos/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isImageOk() &&
+                      fileName.matches('[^/]+\\.(jpg|png|webp)');
+    }
+
     match /posters/thumbs/{fileName} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && isImageOk() &&

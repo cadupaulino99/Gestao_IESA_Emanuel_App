@@ -65,6 +65,7 @@ import {
 } from "../components/ui/tabs";
 import { toast } from "sonner";
 import MemberBoard from "../components/portal/MemberBoard";
+import MemberSupport from "../components/portal/MemberSupport";
 import RadioPage from "./Radio";
 import MemberCardView, { type MemberCardData } from "../components/members/MemberCardView";
 import UpdateBanner from "../components/UpdateBanner";
@@ -91,6 +92,17 @@ export default function MemberPortal() {
     estadoCivil: "",
   });
   const [submittingUpdate, setSubmittingUpdate] = useState(false);
+  /* v1.17 (P1 «pedidos»): o membro vê o estado dos próprios pedidos. */
+  const [myRequests, setMyRequests] = useState<any[]>([]);
+
+  const loadMyRequests = async () => {
+    const em = String(memberData?.email || '').trim().toLowerCase();
+    if (!em) { setMyRequests([]); return; }
+    try {
+      const snap = await getDocs(query(collection(db, 'pedidos_atualizacao'), where('memberEmail', '==', em)));
+      setMyRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0)));
+    } catch { setMyRequests([]); /* regras por publicar ou sem pedidos */ }
+  };
   /* v1.14.6: tipo = o do componente (MemberCardData sem `tithes`, que o
      Portal passa à parte) — budget/contributions (v1.11) incluídos. */
   const [cardData, setCardData] = useState<Omit<MemberCardData, 'tithes'>>(
@@ -205,6 +217,7 @@ export default function MemberPortal() {
       await addDoc(collection(db, "pedidos_atualizacao"), {
         memberId: memberData.id,
         memberName: memberData.name,
+        memberEmail: String(memberData.email || '').trim().toLowerCase() || null,  // v1.17: o próprio pode acompanhar
         currentData: {
           telefone: memberData.phone || "",
           endereco: memberData.address || "",
@@ -296,10 +309,11 @@ export default function MemberPortal() {
         </div>
 
         <Tabs defaultValue="dados" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
             <TabsTrigger value="dados">Geral & Finanças</TabsTrigger>
             <TabsTrigger value="mural">Avisos, Agenda e Eventos</TabsTrigger>
             <TabsTrigger value="radio">Rádio</TabsTrigger>
+            <TabsTrigger value="suporte">Suporte</TabsTrigger>
             <TabsTrigger value="cartao" className="gap-1.5">
               <CreditCard className="h-4 w-4" /> O meu cartão
             </TabsTrigger>
@@ -375,6 +389,7 @@ export default function MemberPortal() {
                             endereco: memberData.address || "",
                             estadoCivil: memberData.maritalStatus || "",
                           });
+                          void loadMyRequests();
                         }
                         setIsUpdateOpen(open);
                       }}
@@ -459,6 +474,33 @@ export default function MemberPortal() {
                             {submittingUpdate ? "A enviar..." : "Enviar Pedido"}
                           </Button>
                         </form>
+
+                        {/* v1.17: estado dos meus pedidos */}
+                        <div className="mt-4 space-y-2 border-t pt-3">
+                          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Os meus pedidos</p>
+                          {myRequests.length === 0 && (
+                            <p className="text-xs text-muted-foreground">Ainda não fez pedidos de atualização.</p>
+                          )}
+                          {myRequests.slice(0, 8).map((r: any) => (
+                            <div key={r.id} className="rounded-md border p-2 text-xs space-y-0.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-muted-foreground">
+                                  {r.createdAt ? new Date(r.createdAt).toLocaleDateString('pt-PT') : '—'}
+                                </span>
+                                {r.status === 'aprovado' ? (
+                                  <Badge className="bg-emerald-600 text-[9px]">Aprovado</Badge>
+                                ) : r.status === 'rejeitado' ? (
+                                  <Badge variant="destructive" className="text-[9px]">Rejeitado</Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="text-[9px]">Pendente</Badge>
+                                )}
+                              </div>
+                              {r.status === 'rejeitado' && r.reason && (
+                                <p className="text-red-600 dark:text-red-400"><b>Motivo:</b> {r.reason}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </DialogContent>
                     </Dialog>
                   </div>
@@ -563,6 +605,14 @@ export default function MemberPortal() {
               </div>
               <MemberBoard />
             </div>
+          </TabsContent>
+
+          <TabsContent value="suporte" className="pt-4">
+            {/* v1.17 (P1 «chat»): conversa membro ↔ liderança, só dentro da app */}
+            <MemberSupport
+              memberEmail={String((memberData as any)?.email || "").trim().toLowerCase()}
+              memberName={(memberData as any)?.name || "Membro"}
+            />
           </TabsContent>
 
           <TabsContent value="radio" className="pt-4">

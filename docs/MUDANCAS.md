@@ -1,5 +1,45 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.17.0 — P1 completo: contactos, conta rejeitada, pedidos, chat, fotos no Storage, xlsx seguro, IA num só backend
+
+- **Contactos do membro**: ficha (Membros → tocar no membro) com acções
+  Ligar/WhatsApp/SMS/Email (`MemberContactActions`, via `openExternal` —
+  funciona no APK e na web); campo **Email** entra no formulário da liderança
+  (normalizado + espelho `memberEmail`) e aparece na ficha.
+- **Conta rejeitada liberta-se**: Worker **2.9.0** com rota
+  `/admin/delete-signup-account` (só admin; só cadastros REJEITADOS — o
+  servidor reconfirma): apaga a conta Auth (o email fica livre para novo
+  cadastro) e o pedido. Botão «Apagar conta e pedido» nos Rejeitados, com
+  confirmação digitada e auditoria.
+- **Pedidos de atualização**: aprovação NÃO destrutiva (campo vazio já não
+  apaga o dado actual), notificação ao membro (aprovado/rejeitado), auditoria
+  (`request.approved/rejected`), rejeição com **motivo opcional** visível ao
+  membro; Portal ganha «Os meus pedidos» (estado + motivo) e os pedidos novos
+  levam `memberEmail`; regras: o próprio lê o SEU pedido (antes: só liderança).
+- **Chat membro ↔ liderança** (`support_messages` por fio = memberEmail):
+  Portal → aba **«Suporte»** (bolhas, poll 20 s, só dentro da app); Suporte da
+  liderança ganha **selector de conversas** (Equipa interno + cada membro,
+  ponto vermelho «à espera de resposta», badge Membro). Regras: membro só lê
+  o seu fio (antes QUALQUER sessão lia todas as mensagens — buraco fechado);
+  create validado (texto ≤ 2000, `senderRole`, dono do fio).
+- **Fotos → Storage** (`member-photos/<id>.<ext>`): formulário de membro e
+  aprovação de cadastro enviam a foto como FICHEIRO e gravam só o caminho
+  (`photoPath`); cartão, PDF (fetch do URL) e ficha usam `MemberPhoto` com
+  fallback ao base64 legado. **Sem bucket activado nada parte**: o upload
+  falha em silêncio e a foto fica base64 (aviso claro). `storage.rules` com
+  `member-photos/**`.
+- **xlsx 0.18.5 → 0.20.3** (tarball oficial do CDN SheetJS — o npm parou no
+  0.18.5 vulnerável: prototype pollution + ReDoS). API compatível, 6 ficheiros
+  sem alterações.
+- **Um só backend de IA**: pasta `functions/` removida (morta no plano Spark),
+  bloco functions fora do `firebase.json`, passo de build das funções fora do
+  workflow, `@google/genai` movido para devDependencies (só o servidor de dev
+  o usa). Toda a IA de produção vive no **Cloudflare Worker**.
+
+Notas: Worker 2.9.0 precisa de ser publicado ( Via A ou token); regras +
+storage.rules pelo workflow «Deploy Firebase». Cartazes continuam à espera do
+bucket do Storage (consola → Storage → Começar) — agora também para as fotos.
+
 ## v1.16.0 — P0 privacidade: porta legada fechada, memberEmail carimbado, senha self-service
 
 Última fuga grande de privacidade: documentos SEM `memberEmail` (legados) eram
