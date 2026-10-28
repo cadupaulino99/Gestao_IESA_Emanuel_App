@@ -113,3 +113,65 @@ export function moneyPatchFor(
   }
   return { patch, unsure };
 }
+
+/* ═══════════════ MIGRAÇÃO v1.16.0 — CARIMBAR memberEmail ═══════════════
+ * Para FECHAR a leitura legada (qualquer sessão autenticada ler documentos
+ * sem dono identificado — BI, telefone e morada expostos), é preciso antes
+ * carimbar o email do membro dono em cada registo. Funções PURAS e
+ * idempotentes (testadas em __tests__/migrateMemberEmail.test.ts):
+ * devolvem o patch a aplicar, ou null se o documento já estiver carimbado.
+ * A UI (Admin → Gestão de Dados) aplica em lotes e, no fim, grava o marcador
+ * settings/system.memberEmailStamped=true — é esse marcador que FECHA a
+ * porta nas firestore.rules (legacyReadOpen()). Sem marcador: porta aberta.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/** Colecções cujos documentos levam `memberEmail` carimbado a partir do membro. */
+export const MEMBER_EMAIL_COLLECTIONS = [
+  'tithes', 'communions', 'donations', 'renewals',
+  'contributions', 'contribution_payments', 'member_budgets',
+] as const;
+
+/** Email normalizado (minúsculas, sem espaços) ou null. */
+export function normEmail(v: unknown): string | null {
+  const s = String(v ?? '').trim().toLowerCase();
+  return s.includes('@') ? s : null;
+}
+
+export interface MemberEmailSource {
+  id: string;
+  email?: string | null;
+  memberEmail?: string | null;
+}
+
+/** Patch para o documento de MEMBRO: memberEmail = email normalizado.
+ *  Compara com o valor CRU guardado: as regras do Firestore comparam strings
+ *  com caixa — um memberEmail 'MARIA@X.COM' trancaria o próprio fora, por
+ *  isso a migração re-carimba para minúsculas. */
+export function memberEmailPatchForMember(m: MemberEmailSource): { memberEmail: string } | null {
+  const want = normEmail(m?.email) || normEmail(m?.memberEmail);
+  if (!want) return null;                       // sem email → sem conta → nada a carimbar
+  return String(m?.memberEmail ?? '') === want ? null : { memberEmail: want };
+}
+
+/** Patch para documento FILHO (dízimo, comunhão, …): carimba a partir do mapa
+ *  memberId → email. Sem membro conhecido/com email → null (órfãos ficam para
+ *  decisão manual; a liderança continua a vê-los). */
+export function memberEmailPatchForChild(
+  child: { memberId?: string | null; memberEmail?: string | null } | null | undefined,
+  emailByMemberId: Map<string, string>
+): { memberEmail: string } | null {
+  const mid = String(child?.memberId ?? '');
+  const want = mid ? emailByMemberId.get(mid) : undefined;
+  if (!want) return null;
+  return String(child?.memberEmail ?? '') === want ? null : { memberEmail: want };
+}
+
+/** Constrói o mapa memberId → email normalizado a partir dos membros. */
+export function emailMapFromMembers(members: MemberEmailSource[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const m of members) {
+    const e = normEmail(m?.email) || normEmail(m?.memberEmail);
+    if (e && m?.id) map.set(m.id, e);
+  }
+  return map;
+}
