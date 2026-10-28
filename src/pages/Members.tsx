@@ -32,6 +32,7 @@ import { normalizePhoneAO, phoneError, duplicatePhones } from '../lib/phone';
 import CommunionTracker from '../components/members/CommunionTracker';
 import MemberContactActions from '../components/members/MemberContactActions';
 import { uploadMemberPhoto } from '../lib/memberPhotos';
+import { logAudit } from '../lib/audit';
 import { compressImageFile } from '../lib/ai';
 import { PastoralMessageGeneratorModal } from '../components/members/PastoralMessageGeneratorModal';
 import jsPDF from 'jspdf';
@@ -246,9 +247,11 @@ export default function Members() {
         }
         await updateDoc(doc(db, 'members', editingMember.id), { ...payload, updatedAt: Date.now() });
         memberId = editingMember.id;
+        void logAudit('member.updated', `members/${memberId}`, user?.email || '', String(payload.name || ''));
       } else {
         const r = await addDoc(collection(db, 'members'), { ...payload, createdAt: Date.now(), updatedAt: Date.now() });
         memberId = r.id;
+        void logAudit('member.created', `members/${memberId}`, user?.email || '', String(payload.name || ''));
       }
       /* v1.17: foto nova → Storage; documento fica só com o CAMINHO.
          Se o bucket não estiver activado, mantém o base64 (nada parte). */
@@ -286,6 +289,7 @@ export default function Members() {
         }
       }
       await moveToTrash('members', id, user?.email || 'unknown');
+      void logAudit('member.trashed', `members/${id}`, user?.email || '');
     },
     onSuccess: () => {
       toast.success("Membro movido para a lixeira.");

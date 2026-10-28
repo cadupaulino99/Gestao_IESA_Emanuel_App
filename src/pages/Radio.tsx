@@ -16,6 +16,8 @@ import {
   RefreshCw,
   Volume2,
   Loader2,
+  UploadCloud,
+  CloudOff,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -35,9 +37,16 @@ import {
   fetchNowPlaying,
   fmtDuration,
   fmtBytes,
+  publishRecording,
+  unpublishRecording,
+  listPublishedRecordings,
+  publishedRecordingUrl,
   type Recording,
   type NowPlaying,
+  type PublishedRecording,
 } from '../lib/radio';
+import { useAuth } from '../context/AuthContext';
+import { logAudit } from '../lib/audit';
 import { useConfirm } from '../context/ConfirmContext';
 
 /* v1.15.0: `variant="member"` = só player ao vivo (+ «a tocar agora» e site);
@@ -51,6 +60,10 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [playingRec, setPlayingRec] = useState<string | null>(null);
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
+  /* v1.18 (P2 «Rádio»): gravações publicadas para os membros */
+  const [published, setPublished] = useState<PublishedRecording[]>([]);
+  const [publishing, setPublishing] = useState<string | null>(null);
+  const { user } = useAuth();
   const [tick, setTick] = useState(0); // relógio do gravador
   const recAudioRef = useRef<HTMLAudioElement | null>(null);
   /* v1.14.6: useConfirm() DEVOLVE A FUNÇÃO — o destructuring `{ confirm }`
@@ -88,6 +101,7 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
 
   useEffect(() => {
     listRecordings().then(setRecordings);
+    listPublishedRecordings().then(setPublished).catch(() => setPublished([]));
   }, []);
 
   const toggleLive = async () => {
@@ -164,6 +178,41 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
       toast.error('Não foi possível apagar: ' + (e?.message || 'erro desconhecido'));
     } finally {
       setDeletingFile(null);
+    }
+  };
+
+  /* v1.18 (P2 «Rádio»): publicar/despublicar gravação para os membros.
+     Botão alterna: já publicada → despublica. */
+  const togglePublish = async (r: Recording) => {
+    const existing = published.find((p) => p.name === r.file);
+    if (existing) {
+      const ok = await confirm(`Despublicar «${r.file}»? Os membros deixam de a ver no Portal.`, 'DESPUBLICAR');
+      if (!ok) return;
+      setPublishing(r.file);
+      try {
+        await unpublishRecording(existing);
+        void logAudit('radio.unpublished', `radio_recordings/${existing.id}`, user?.email || '', r.file);
+        toast.success('Gravação despublicada.');
+        setPublished(await listPublishedRecordings());
+      } catch (e: any) {
+        toast.error('Falha ao despublicar: ' + (e?.message || ''));
+      } finally {
+        setPublishing(null);
+      }
+      return;
+    }
+    const ok = await confirm(`Publicar «${r.file}» para os membros ouvirem no Portal? O áudio é enviado para o Storage da igreja.`, 'PUBLICAR');
+    if (!ok) return;
+    setPublishing(r.file);
+    try {
+      await publishRecording(r, user?.email || '');
+      void logAudit('radio.published', `radio/${r.file}`, user?.email || '', r.file);
+      toast.success('Gravação publicada — os membros já a podem ouvir no Portal → Rádio.');
+      setPublished(await listPublishedRecordings());
+    } catch (e: any) {
+      toast.error('Falha ao publicar: ' + (e?.message || 'o Storage está activado? (consola Firebase → Storage)'));
+    } finally {
+      setPublishing(null);
     }
   };
 
@@ -367,6 +416,18 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
                         {new Date(r.mtime).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' })} · {fmtBytes(r.size)} · ~{fmtDuration((r.size * 8) / (RADIO.bitrateKbps * 1000))}
                       </p>
                     </div>
+                    {isNative() && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={`h-8 w-8 ${published.some((p) => p.name === r.file) ? 'text-emerald-600' : 'text-slate-500 hover:text-emerald-600'}`}
+                        onClick={() => togglePublish(r)}
+                        disabled={publishing !== null}
+                        title={published.some((p) => p.name === r.file) ? 'Publicada para os membros — tocar para despublicar' : 'Publicar para os membros (Portal → Rádio)'}
+                      >
+                        {publishing === r.file ? <Loader2 className="h-4 w-4 animate-spin" /> : published.some((p) => p.name === r.file) ? <UploadCloud className="h-4 w-4" /> : <CloudOff className="h-4 w-4" />}
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={() => exportRecording(r)} title="Partilhar / exportar">
                       {isNative() ? <Share2 className="h-4 w-4" /> : <Download className="h-4 w-4" />}
                     </Button>
@@ -381,6 +442,64 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
         </Card>
       </div>
       )}
+
+      {variant === 'member' && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Music4 className="h-4 w-4 text-slate-400" /> Gravações da igreja
+            </CardTitle>
+            <CardDescription>Sermões e transmissões publicadas pela liderança — toque para ouvir.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {published.length === 0 ? (
+              <p className="py-4 text-center text-xs text-muted-foreground">Ainda não há gravações publicadas.</p>
+            ) : (
+              published.map((p) => (
+                <div key={p.id} className="rounded-lg border p-2.5 space-y-1.5">
+                  <p className="text-xs font-semibold">{p.name.replace('.aac', '').replace(/[_-]/g, ' ')}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {p.publishedAt ? `Publicada em ${new Date(p.publishedAt).toLocaleDateString('pt-PT')}` : ''}
+                    {p.size ? ` · ${fmtBytes(p.size)}` : ''}
+                  </p>
+                  <PublishedPlayer p={p} />
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
+  );
+}
+
+/** v1.18: player de gravação publicada — o URL do Storage só se resolve ao
+ *  tocar (poupa a quota diária de descargas do plano Spark). */
+function PublishedPlayer({ p }: { p: PublishedRecording }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(false);
+  if (url) return <audio controls src={url} preload="metadata" className="w-full" />;
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="gap-1.5 text-xs"
+      disabled={busy || err}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          setUrl(await publishedRecordingUrl(p));
+        } catch {
+          setErr(true);
+          toast.error('Não foi possível carregar a gravação (o Storage pode não estar activado).');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+      {err ? 'Indisponível' : 'Ouvir'}
+    </Button>
   );
 }

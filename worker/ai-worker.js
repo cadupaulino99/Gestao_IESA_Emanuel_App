@@ -42,7 +42,7 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.9.0';
+const WORKER_VERSION = '2.9.1';
 const WORKER_BUILD = '2026-10-28 (v2.9.0: apagar conta+pedido de cadastro rejeitado; v2.8.x: super por flag, auto-cadastro)';
 
 const CORS = {
@@ -1069,6 +1069,20 @@ export default {
       const r = await runReminders(env, now);
       const b = await processEventReminders(env, now);
       console.log(`cron: outbox=${q} contribs=${c} lembretes=${r} eventos=${b}`);
+      /* v2.9.1: heartbeat do cron (throttle 10 min) — a app mostra se o
+         agendador está vivo (Suporte → Diagnóstico e /__health). */
+      try {
+        const hb = await fsGetDoc(env, 'settings', 'worker_cron');
+        const last = Number((hb && hb.lastRunAt && (hb.lastRunAt.integerValue || hb.lastRunAt.doubleValue)) || 0);
+        if (now - last > 10 * 60 * 1000) {
+          await fsPatch(env, 'settings', 'worker_cron', {
+            lastRunAt: now, version: WORKER_VERSION,
+            lastOutbox: q, lastReminders: r, lastEvents: b,
+          });
+        }
+      } catch (e) {
+        console.error('heartbeat falhou:', (e && e.message) || e);
+      }
     } catch (e) {
       console.error('cron falhou:', e?.message || e);
     }
@@ -1084,8 +1098,21 @@ export default {
        Se devolver 404 "Rota nao encontrada", o Worker publicado e ANTIGO
        (anterior a v2.0.0) e precisa de ser re-publicado. --- */
     if (path === '/__health' || path === '/health') {
+      let cron = null;
+      try {
+        const hb = await fsGetDoc(env, 'settings', 'worker_cron');
+        if (hb) {
+          const last = Number((hb.lastRunAt && (hb.lastRunAt.integerValue || hb.lastRunAt.doubleValue)) || 0);
+          cron = {
+            lastRunAt: last,
+            ageMinutes: last ? Math.round((Date.now() - last) / 60000) : null,
+            version: (hb.version && hb.version.stringValue) || null,
+          };
+        }
+      } catch { /* sem heartbeat ainda */ }
       return json({
         ok: true,
+        cron,
         service: 'iesa-ai',
         version: WORKER_VERSION,
         build: WORKER_BUILD,

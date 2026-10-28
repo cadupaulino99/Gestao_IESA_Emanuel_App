@@ -307,6 +307,15 @@ export async function runAiDiagnostics(): Promise<{ lines: string[]; ok: boolean
   lines.push(h.vision ? '✓ Leitura de documentos (visão) disponível.' : '✗ Esta versão NÃO tem leitura de documentos.');
   if (Array.isArray(h.models)) lines.push(`✓ Modelos configurados: ${h.models.join(' → ')}.`);
 
+  /* v1.18: cron vivo? (heartbeat gravado pelo agendador do Worker) */
+  const cron = (h as any).cron;
+  if (cron && typeof cron.ageMinutes === 'number') {
+    if (cron.ageMinutes <= 15) lines.push(`✓ Cron vivo (fila SMS, lembretes, estados) — última execução há ${cron.ageMinutes} min, v${cron.version || '?'}.`);
+    else lines.push(`✗ Cron SEM pulsar há ${cron.ageMinutes} min — verifique Workers → iesa-ai → Settings → Triggers (Cron «* * * * *»).`);
+  } else {
+    lines.push('⚠ Sem heartbeat do cron — Worker pode ser anterior à v2.9.1 ou o Trigger não está configurado.');
+  }
+
   const cfg = h.config || {};
   if (cfg.GEMINI_API_KEY === false) lines.push('✗ Falta o segredo GEMINI_API_KEY no Worker (Settings → Variables and Secrets).');
   else lines.push('✓ Segredo GEMINI_API_KEY presente.');

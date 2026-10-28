@@ -25,8 +25,16 @@ vi.mock('../../lib/radio', () => {
     fetchNowPlaying: vi.fn(async () => null),
     fmtDuration: (s: number) => `${Math.round(s)}s`,
     fmtBytes: (b: number) => `${b} B`,
+    publishRecording: vi.fn(async () => {}),
+    unpublishRecording: vi.fn(async () => {}),
+    listPublishedRecordings: vi.fn(async () => []),
+    publishedRecordingUrl: vi.fn(async () => 'https://x/r.aac'),
   };
 });
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { email: 'lider@iesa.ao', uid: 'u1' }, userRole: 'admin' }),
+}));
+vi.mock('../../lib/audit', () => ({ logAudit: vi.fn() }));
 
 import Radio from '../Radio';
 import { ConfirmProvider } from '../../context/ConfirmContext';
@@ -48,11 +56,12 @@ describe('Radio — variantes liderança vs membro', () => {
     expect(screen.getByText('Gravações no telemóvel')).toBeInTheDocument();
   });
 
-  it('variante membro: player ao vivo visível, gravador e biblioteca AUSENTES', () => {
+  it('variante membro: player + «Gravações da igreja»; gravador/biblioteca AUSENTES', async () => {
     renderRadio({ variant: 'member' });
     expect(screen.getByText('Rádio Maranata')).toBeInTheDocument();
     expect(screen.getByText(/emissão em direto/)).toBeInTheDocument();
     expect(screen.getByText('Site da rádio')).toBeInTheDocument();
+    expect(await screen.findByText('Gravações da igreja')).toBeInTheDocument();  // v1.18
     expect(screen.queryByText('Gravar transmissão')).toBeNull();
     expect(screen.queryByText('Gravações no telemóvel')).toBeNull();
     expect(screen.queryByText('Parar e guardar')).toBeNull();

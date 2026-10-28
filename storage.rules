@@ -43,6 +43,14 @@ service firebase.storage {
                       fileName.matches('[^/]+\\.(jpg|png|webp)');
     }
 
+    // v1.18: gravações da rádio publicadas para os membros (áudio .aac).
+    match /radio/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() &&
+                      request.resource.size <= 200 * 1024 * 1024 &&
+                      fileName.matches('[^/]+\\.aac');
+    }
+
     // Tudo o resto: fechado.
     match /{allPaths=**} {
       allow read, write: if false;

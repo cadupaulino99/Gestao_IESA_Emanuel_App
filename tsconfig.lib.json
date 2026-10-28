@@ -1,0 +1,12 @@
+{
+  "//": "v1.18.0 (P2 «strict»): verificação ESTRITA só das bibliotecas puras — o núcleo de regras de negócio (dinheiro, datas de Luanda, sanitização, migrações, agenda, notificações). As páginas/componentes continuam com o tsconfig raiz (flexível); a ideia é endurecer lib/ sem rebentar 1000 erros de UI. Correr: npm run lint:lib — o CI também corre.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noEmit": true
+  },
+  "include": ["src/lib/**/*.ts", "src/types.ts", "src/globals.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

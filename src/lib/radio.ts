@@ -314,3 +314,60 @@ export function fmtBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   v1.18.0 (P2 «Rádio») — GRAVAÇÕES PUBLICADAS PARA OS MEMBROS
+   A liderança publica uma gravação da biblioteca: o áudio vai para o
+   Storage (radio/<nome>.aac) e os metadados para `radio_recordings`.
+   Os membros ouvem no Portal → Rádio («Gravações da igreja»), com URL
+   resolvido só ao tocar (poupa a quota de descargas do plano Spark).
+   ═══════════════════════════════════════════════════════════════════════ */
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { storage, db } from './firebase';
+import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { dataUrlToBlob } from './download';
+
+export interface PublishedRecording {
+  id: string;
+  name: string;
+  path: string;
+  size?: number;
+  publishedBy?: string;
+  publishedAt?: number;
+}
+
+/** Envia o áudio para o Storage + cria o registo público. */
+export async function publishRecording(r: Recording, byEmail: string): Promise<void> {
+  const { data } = await Filesystem.readFile({ path: `${RADIO.folder}/${r.file}`, directory: Directory.Documents });
+  const b64 = typeof data === 'string' ? data : String(data);
+  await uploadBytes(storageRef(storage, `radio/${r.file}`), dataUrlToBlob(`data:audio/aac;base64,${b64}`), {
+    contentType: 'audio/aac',
+  });
+  await addDoc(collection(db, 'radio_recordings'), {
+    name: r.file,
+    path: `radio/${r.file}`,
+    size: r.size || 0,
+    publishedBy: byEmail || 'unknown',
+    publishedAt: Date.now(),
+  });
+}
+
+/** Remove o registo público + o ficheiro (falha do ficheiro não bloqueia). */
+export async function unpublishRecording(p: PublishedRecording): Promise<void> {
+  await deleteDoc(doc(db, 'radio_recordings', p.id));
+  try {
+    await deleteObject(storageRef(storage, p.path));
+  } catch { /* ficheiro já não existe / sem bucket */ }
+}
+
+/** Lista pública (mais recentes primeiro). */
+export async function listPublishedRecordings(): Promise<PublishedRecording[]> {
+  const snap = await getDocs(collection(db, 'radio_recordings'));
+  const out = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PublishedRecording);
+  return out.sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0));
+}
+
+/** URL de reprodução (exige sessão; só se resolve quando o membro toca). */
+export function publishedRecordingUrl(p: PublishedRecording): Promise<string> {
+  return getDownloadURL(storageRef(storage, p.path));
+}
