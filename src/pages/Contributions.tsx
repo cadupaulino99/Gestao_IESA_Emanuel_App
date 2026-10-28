@@ -221,6 +221,10 @@ export default function Contributions() {
       await addDoc(collection(db, 'contribution_payments'), {
         contributionId: payDialog.id, memberId: payDialog.memberId, amount,
         deliveryDate: pForm.deliveryDate, recordedBy: user?.email || 'unknown', createdAt: Date.now(),
+        /* v1.16.0: o dono identificável — sem isto, depois de fechada a porta
+           legada, o membro não conseguia LER os próprios pagamentos no Portal
+           (regras isOwnOrLeader exigem memberEmail). */
+        memberEmail: members.find((x) => x.id === payDialog.memberId)?.email || null,
       });
       const newPaid = paidSumOf(payments, payDialog.id) + amount;
       if (newPaid + 0.005 >= payDialog.amount && payDialog.status !== 'concluida') {

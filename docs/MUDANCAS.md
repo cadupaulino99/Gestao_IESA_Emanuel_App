@@ -1,5 +1,37 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.16.0 — P0 privacidade: porta legada fechada, memberEmail carimbado, senha self-service
+
+Última fuga grande de privacidade: documentos SEM `memberEmail` (legados) eram
+legíveis por qualquer sessão (`isLegacyMemberDoc`). O fecho é em dois tempos
+para não trancar ninguém:
+1. **Migração «Carimbar memberEmail»** (Admin → Gestão de Dados): carimba o
+   email do dono (normalizado — Firestore compara caixa; `MARIA@X.COM`
+   guardado trancaria o próprio membro) nos `members` + nas 7 colecções que o
+   Portal lê por memberId (tithes, communions, donations, renewals,
+   contributions, contribution_payments, member_budgets). «Analisar» mostra o
+   plano sem tocar em nada; exige cópia de segurança; idempotente; lotes de
+   400; órfãos (membro sem email/conta) ficam sem carimbo — só liderança os vê.
+2. **A porta só fecha quando a migração CORRE**: no fim grava
+   `settings/system.memberEmailStamped=true`; nas regras, `legacyReadOpen()`
+   mantém a cláusula legada activa enquanto o marcador não existir. Publicar
+   as regras não tranca ninguém; correr a migração fecha tudo. Reversão de
+   emergência: marcador a `false` na consola.
+- **Escritor futuro corrigido**: `contribution_payments` nascia SEM
+  memberEmail — depois da porta fechada, o membro deixaria de ler os próprios
+  pagamentos (query do Portal falhava inteira). Os outros 6 já carimbavam.
+- **Regras**: `tithes` update aceita `memberEmail`/`memberName` (carimbo);
+  `canReadMemberDoc` com porta marcadora.
+- **Palavra-passe self-service da liderança** (Definições → «A minha
+  palavra-passe»): actual → nova (8+, diferente) → reautentica +
+  `updatePassword` (hash só no Firebase Auth) + `audit_logs`. Até aqui só
+  havia a temporária do super ou o «Esqueci-me» no login — admins não
+  conseguiam mudar a própria senha com a sessão aberta. Mensagens claras:
+  actual errada, fraca, sessão antiga (`requires-recent-login`), conta Google.
+- Testes: **191** (+11 da migração: normalização, idempotência, caixa errada,
+  órfãos, cobertura das 7 colecções).
+- Guião: `docs/VERIFICACAO-MEMBEREMAIL.md` (ordem exacta + prova 403 + reversão).
+
 ## v1.15.0 — Rádio para os membros (nova aba no Portal)
 
 Os membros passam a ver/ouvir a **Rádio Maranata 91.9 FM** dentro do Portal:

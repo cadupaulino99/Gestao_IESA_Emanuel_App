@@ -80,8 +80,17 @@ service cloud.firestore {
         resource.data.memberEmail == null
       );
     }
+    // v1.16.0: a porta legada (documentos sem memberEmail legíveis por qualquer
+    // sessão) fecha ASSIM QUE a migração «Carimbar memberEmail» correr
+    // (Admin → Gestão de Dados), que grava settings/system.memberEmailStamped.
+    // Antes disso mantém-se aberta para não trancar o Portal de ninguém.
+    function legacyReadOpen() {
+      return !exists(/databases/$(database)/documents/settings/system) ||
+             get(/databases/$(database)/documents/settings/system).data.memberEmailStamped != true;
+    }
     function canReadMemberDoc() {
-      return hasFinancialWriteAccess() || isOwnMemberDoc() || isLegacyMemberDoc();
+      return hasFinancialWriteAccess() || isOwnMemberDoc() ||
+             (legacyReadOpen() && isLegacyMemberDoc());
     }
 
     // Edição dos próprios dados pelo membro: só um subconjunto de campos de
@@ -308,8 +317,12 @@ service cloud.firestore {
                     incoming().memberId == existing().memberId &&
                     incoming().adminId == existing().adminId &&
                     incoming().diff(existing()).affectedKeys().hasOnly([
-                      'memberId', 'month', 'year', 'amount', 'receiptNumber', 'referenceMonth', 'referenceYear', 'contributionType', 'contributionDetail', 'updatedAt'
+                      'memberId', 'month', 'year', 'amount', 'receiptNumber', 'referenceMonth', 'referenceYear', 'contributionType', 'contributionDetail', 'updatedAt',
+                      'memberEmail', 'memberName'
                     ]) &&
+                    // v1.16.0: memberEmail só pode ser carimbado como string/null
+                    (!incoming().diff(existing()).affectedKeys().hasAny(['memberEmail']) ||
+                      incoming().memberEmail == null || incoming().memberEmail is string) &&
                     (incoming().month == null || incoming().month is string) && 
                     (incoming().year == null || incoming().year is number) &&
                     (incoming().amount == null || incoming().amount is int);

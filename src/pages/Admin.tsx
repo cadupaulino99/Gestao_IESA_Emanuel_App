@@ -25,7 +25,8 @@ import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Badge } from '../components/ui/badge';
 import { restoreFromTrash, moveToTrash } from '../lib/trash';
-import { migrateTitheDoc, codeForSeq, moneyPatchFor, MONEY_FIELDS_V112, type MoneyUnsure } from '../lib/migrate';
+import { migrateTitheDoc, codeForSeq, moneyPatchFor, MONEY_FIELDS_V112, type MoneyUnsure,
+  emailMapFromMembers, memberEmailPatchForMember, memberEmailPatchForChild, MEMBER_EMAIL_COLLECTIONS } from '../lib/migrate';
 import { cleanBi } from '../lib/members';
 import { maxSeqFromCodes } from '../lib/members';
 import { NOTIF_SETTINGS_DEFAULT } from '../types';
@@ -42,6 +43,14 @@ export default function Admin() {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [migrating, setMigrating] = useState(false);
+  /* v1.16.0 — migração «Carimbar memberEmail» (fecha a leitura legada) */
+  const [mePlan, setMePlan] = useState<null | {
+    memberPatches: { id: string; patch: { memberEmail: string } }[];
+    childPatches: { col: string; id: string; patch: { memberEmail: string } }[];
+    perCol: Record<string, number>;
+    orphans: number;
+  }>(null);
+  const [meBusy, setMeBusy] = useState(false);
   const [biPlan, setBiPlan] = useState<{
     changes: { id: string; name: string; old: string; neu: string }[];
     collisions: { neu: string; membros: { id: string; name: string; old: string }[] }[];
@@ -81,6 +90,74 @@ export default function Admin() {
     offeringPercentage: '0'
   });
   const [savingChurch, setSavingChurch] = useState(false);
+
+  /* ─── v1.16.0: Carimbar memberEmail — pré-requisito para FECHAR a porta
+     legada das regras (documentos sem dono deixam de ser legíveis por
+     qualquer sessão). Idempotente; exige cópia de segurança. ─── */
+  const analyzeMemberEmail = async () => {
+    setMeBusy(true);
+    try {
+      const mSnap = await getDocs(collection(db, 'members'));
+      const members = mSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as any);
+      const emailMap = emailMapFromMembers(members);
+      const memberPatches = members
+        .map((m) => ({ id: m.id, patch: memberEmailPatchForMember(m) }))
+        .filter((x): x is { id: string; patch: { memberEmail: string } } => !!x.patch);
+      const childPatches: { col: string; id: string; patch: { memberEmail: string } }[] = [];
+      const perCol: Record<string, number> = {};
+      let orphans = 0;
+      for (const col of MEMBER_EMAIL_COLLECTIONS) {
+        const snap = await getDocs(collection(db, col));
+        for (const d of snap.docs) {
+          const data = d.data() as any;
+          const patch = memberEmailPatchForChild(data, emailMap);
+          if (patch) {
+            childPatches.push({ col, id: d.id, patch });
+            perCol[col] = (perCol[col] || 0) + 1;
+          } else if (data?.memberId && !data?.memberEmail && !emailMap.has(String(data.memberId))) {
+            orphans++;
+          }
+        }
+      }
+      setMePlan({ memberPatches, childPatches, perCol, orphans });
+      toast.success(`Análise: ${memberPatches.length} membro(s) + ${childPatches.length} registo(s) por carimbar${orphans ? ` · ${orphans} órfão(s)` : ''}.`);
+    } catch (e: any) {
+      toast.error('Análise falhou: ' + (e?.message || 'erro desconhecido'));
+    } finally {
+      setMeBusy(false);
+    }
+  };
+
+  const runMemberEmailMigration = async () => {
+    if (!backupConfirmed) { toast.error('Confirme primeiro a cópia de segurança.'); return; }
+    if (!mePlan) { toast.error('Corra primeiro «1. Analisar».'); return; }
+    setMeBusy(true);
+    try {
+      const all = [
+        ...mePlan.memberPatches.map((x) => ({ col: 'members', id: x.id, patch: x.patch })),
+        ...mePlan.childPatches,
+      ];
+      let n = 0;
+      for (let i = 0; i < all.length; i += 400) {
+        const b = writeBatch(db);
+        for (const x of all.slice(i, i + 400)) {
+          b.update(doc(db, x.col, x.id), x.patch);
+          n++;
+        }
+        await b.commit();
+      }
+      /* Marcador que FECHA a porta legada nas regras (legacyReadOpen()).
+         Sem ele, nada muda — a migração pode ser repetida sem risco. */
+      await setDoc(doc(db, 'settings', 'system'), { memberEmailStamped: true, memberEmailStampedAt: Date.now() }, { merge: true });
+      await audit('migration.member-email', `${n} documentos carimbados`);
+      toast.success(`Migração concluída: ${n} carimbo(s). Leitura legada FECHADA — cada conta vê só os seus dados.`);
+      setMePlan(null);
+    } catch (e: any) {
+      toast.error('Migração falhou: ' + (e?.message || '') + ' — pode repetir sem risco (é idempotente).');
+    } finally {
+      setMeBusy(false);
+    }
+  };
 
   const loadRequests = async () => {
     try {
@@ -1390,6 +1467,45 @@ export default function Admin() {
                   <Button onClick={runMigration} disabled={!backupConfirmed || migrating} className="gap-2">
                     <Database className="h-4 w-4" /> {migrating ? 'A migrar…' : '2. Executar migração'}
                   </Button>
+                </CardContent>
+             </Card>
+
+             {/* ── v1.16.0: carimbar memberEmail → fecha a leitura legada ── */}
+             <Card>
+                <CardHeader>
+                   <CardTitle className="flex items-center gap-2">
+                     <Shield className="h-5 w-5 text-emerald-600" /> Migração v1.16.0 — Carimbar memberEmail (privacidade)
+                   </CardTitle>
+                   <CardDescription>
+                     Documentos antigos sem <code>memberEmail</code> ainda são legíveis por <b>qualquer sessão</b>
+                     (porta legada das regras). Esta migração carimba o email do dono em cada registo
+                     (membros, dízimos, comunhões, donativos, renovações, contribuições, pagamentos,
+                     orçamentos) e, no fim, <b>fecha a porta</b>. Idempotente; use a cópia de segurança acima.
+                     Enquanto não correr, nada muda para ninguém.
+                   </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={analyzeMemberEmail} disabled={meBusy} className="gap-2">
+                      <Database className="h-4 w-4" /> 1. Analisar (não altera nada)
+                    </Button>
+                    <Button onClick={runMemberEmailMigration} disabled={!mePlan || !backupConfirmed || meBusy} className="gap-2">
+                      <Shield className="h-4 w-4" /> {meBusy ? 'A carimbar…' : '2. Carimbar e fechar a porta legada'}
+                    </Button>
+                  </div>
+                  {mePlan && (
+                    <div className="rounded border bg-muted/30 p-2 text-xs space-y-1">
+                      <p><b>Plano:</b> {mePlan.memberPatches.length} membro(s) + {mePlan.childPatches.length} registo(s) por carimbar.</p>
+                      {Object.entries(mePlan.perCol).map(([c, n]) => <p key={c}>• {c}: {n}</p>)}
+                      {mePlan.orphans > 0 && (
+                        <p className="text-amber-600">{mePlan.orphans} registo(s) órfão(s)/sem email ficam sem carimbo (só a liderança os verá depois de fechar a porta).</p>
+                      )}
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />
+                    Fiz a cópia de segurança (botão acima — partilhada com as outras migrações)
+                  </label>
                 </CardContent>
              </Card>
 

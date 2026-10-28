@@ -5,20 +5,62 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useTheme, type Mode, type Palette as PaletteId } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
-import { Settings as SettingsIcon, Monitor, Moon, Sun, Smartphone, Globe, Bell, AppWindow, Palette, EyeOff, LayoutTemplate, Languages, ShieldCheck } from 'lucide-react';
+import { Settings as SettingsIcon, Monitor, Moon, Sun, Smartphone, Globe, Bell, AppWindow, Palette, EyeOff, LayoutTemplate, Languages, ShieldCheck, KeyRound, Loader2 } from 'lucide-react';
 import { useDevice } from '../hooks/useDevice';
 import { Switch } from '../components/ui/switch';
 import { Button } from '../components/ui/button';
 import { currentVersion, lastKnownTag } from '../lib/updateCheck';
 import { db } from '../lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { NOTIF_SETTINGS_DEFAULT, type NotifSettings } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { ArrowDownToLine } from 'lucide-react';
 
 export default function Settings() {
-  const { isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
+
+  /* ── v1.16.0: mudar a PRÓPRIA palavra-passe (self-service da liderança).
+     Antes só havia dois caminhos: pedir ao super (temporária) ou «Esqueci-me»
+     no login — os admins ficavam «bloqueados» com uma palavra-passe que não
+     podiam alterar a partir da sessão. ── */
+  const [pwCur, setPwCur] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConf, setPwConf] = useState('');
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwErr, setPwErr] = useState<string | null>(null);
+  const hasPasswordProvider = (user?.providerData || []).some((pd) => pd.providerId === 'password');
+
+  const changeOwnPassword = async () => {
+    setPwErr(null);
+    if (!user?.email) { setPwErr('Sessão sem email associado.'); return; }
+    if (!pwCur) { setPwErr('Escreva a palavra-passe actual.'); return; }
+    if (pwNew.length < 8) { setPwErr('A nova palavra-passe precisa de 8+ caracteres.'); return; }
+    if (pwNew === pwCur) { setPwErr('A nova palavra-passe tem de ser DIFERENTE da actual.'); return; }
+    if (pwNew !== pwConf) { setPwErr('A confirmação não coincide.'); return; }
+    setPwBusy(true);
+    try {
+      // prova a actual (e refresca a sessão — requisito do updatePassword)
+      await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, pwCur));
+      await updatePassword(user, pwNew);   // o hash vive só no Firebase Auth
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'password.self-changed', targetEmail: user.email,
+        byEmail: user.email, at: Date.now(),
+        adminEmail: user.email, createdAt: Date.now(), collectionName: 'admins', detail: '',
+      }).catch(() => {});
+      toast.success('Palavra-passe alterada com sucesso.');
+      setPwCur(''); setPwNew(''); setPwConf('');
+    } catch (e: any) {
+      const c = String(e?.code || '');
+      if (c === 'auth/invalid-credential' || c === 'auth/wrong-password') setPwErr('A palavra-passe actual está errada.');
+      else if (c === 'auth/weak-password') setPwErr('Palavra-passe nova demasiado fraca para o servidor (8+ caracteres).');
+      else if (c === 'auth/requires-recent-login') setPwErr('Sessão antiga demais para esta operação — termine sessão, volte a entrar e tente de novo.');
+      else setPwErr(e?.message || 'Não foi possível alterar.');
+    } finally {
+      setPwBusy(false);
+    }
+  };
   const [ns, setNs] = useState<NotifSettings>(NOTIF_SETTINGS_DEFAULT);
   const [nsLoaded, setNsLoaded] = useState(false);
   const [nsSaving, setNsSaving] = useState(false);
@@ -58,6 +100,39 @@ export default function Settings() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
+        {/* ── Palavra-passe (v1.16.0) ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-primary" /> A minha palavra-passe
+            </CardTitle>
+            <CardDescription>
+              Altere a sua palavra-passe de acesso sem pedir a ninguém — confirme com a actual.
+              {!hasPasswordProvider && user ? ' Esta conta entra pelo Google: defina aqui uma palavra-passe alternativa ou use «Esqueci-me da palavra-passe» no login.' : ''}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Palavra-passe actual</Label>
+              <Input type="password" value={pwCur} onChange={(e) => setPwCur(e.target.value)} autoComplete="current-password" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Nova palavra-passe (8+ caracteres, diferente da actual)</Label>
+              <Input type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} autoComplete="new-password" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Confirmar nova palavra-passe</Label>
+              <Input type="password" value={pwConf} onChange={(e) => setPwConf(e.target.value)} autoComplete="new-password"
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void changeOwnPassword(); } }} />
+            </div>
+            {pwErr && <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive font-medium">{pwErr}</p>}
+            <Button onClick={changeOwnPassword} disabled={pwBusy} className="w-full gap-2">
+              {pwBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              Alterar palavra-passe
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* Aparência */}
         <Card className="shadow-sm border-slate-200 dark:border-slate-800">
           <CardHeader>
