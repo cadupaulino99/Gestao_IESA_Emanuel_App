@@ -12,8 +12,16 @@ import {
 import { Input } from "../components/ui/input";
 import { matchesRequired } from "../lib/confirm";
 
+type ConfirmOptions = {
+  /** true (omissão): a ação é destrutiva → botão vermelho; a ação segura
+      («Cancelar») fica proeminente (preenchida, na zona do polegar). */
+  destructive?: boolean;
+  actionLabel?: string;
+  cancelLabel?: string;
+};
+
 type ConfirmContextType = {
-  confirm: (message: string, requireText?: string) => Promise<boolean>;
+  confirm: (message: string, requireText?: string, options?: ConfirmOptions) => Promise<boolean>;
 }
 
 const ConfirmContext = createContext<ConfirmContextType | undefined>(undefined);
@@ -23,16 +31,18 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState('');
   const [requireText, setRequireText] = useState<string | undefined>(undefined);
   const [inputText, setInputText] = useState('');
+  const [options, setOptions] = useState<ConfirmOptions>({ destructive: true });
   /* Resolver em REF (não em state): sem closures stale e permite cancelar um
      confirm pendente quando chega outro — o duplo toque no botão do lixo
      criava uma Promise que nunca resolvia e o removeRecording ficava zombie. */
   const resolverRef = useRef<{ resolve: (value: boolean) => void } | null>(null);
 
-  const confirmFn = (msg: string, textToRequire?: string) => {
+  const confirmFn = (msg: string, textToRequire?: string, opts?: ConfirmOptions) => {
     resolverRef.current?.resolve(false); // confirm anterior pendente → cancelado
     resolverRef.current = null;
     setMessage(msg);
     setRequireText(textToRequire);
+    setOptions({ destructive: true, ...opts });
     setInputText('');
     setOpen(true);
     return new Promise<boolean>((resolve) => {
@@ -79,14 +89,25 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             </div>
           )}
 
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={(e) => { e.preventDefault(); handleClose(false); }}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
+          <AlertDialogFooter className="gap-2 sm:space-x-2">
+            {/* Ação segura proeminente: preenchida e, no telemóvel, na zona
+                do polegar (o footer empilha em coluna invertida). */}
+            <AlertDialogCancel
+              onClick={(e) => { e.preventDefault(); handleClose(false); }}
+              className="bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed"
+            >
+              {options.cancelLabel ?? 'Cancelar'}
+            </AlertDialogCancel>
+            <AlertDialogAction
               disabled={isConfirmDisabled}
               onClick={(e) => { e.preventDefault(); handleClose(true); }}
-              className={requireText ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+              className={
+                options.destructive
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/80'
+                  : 'bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed'
+              }
             >
-              Confirmar
+              {options.actionLabel ?? 'Confirmar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

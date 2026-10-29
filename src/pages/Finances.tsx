@@ -7,7 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '../components/ui/dialog';
+import { FormSection } from '../components/ui/form';
+import { EmptyState } from '../components/ui/state-view';
+import { Skeleton } from '../components/ui/skeleton';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -1481,17 +1484,18 @@ export default function Finances() {
                 <div className="flex flex-wrap gap-2">
                   <Input placeholder="Pesquisar membro ou recibo..." value={searchTithes} onChange={e => setSearchTithes(e.target.value)} className="w-[200px]" />
                   <Dialog open={isTOpen} onOpenChange={isClosed ? undefined : (o) => { setIsTOpen(o); if (o && !editingTithe) resetTD(); }}>
-                    <DialogTrigger asChild><Button size="sm" disabled={isClosed}><Plus className="w-4 h-4 mr-2" /> Registar</Button></DialogTrigger>
-                  <DialogContent className="max-h-[92dvh] overflow-y-auto">
+                    <DialogTrigger asChild><Button disabled={isClosed}><Plus className="w-4 h-4 mr-2" /> Registar</Button></DialogTrigger>
+                  <DialogContent className="max-h-[90dvh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Registar Entrada de Membro</DialogTitle>
                       <DialogDescription className="sr-only">Preencha os dados</DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={handleAddTithe} className="space-y-4">
-                      <div className="rounded-xl border border-dashed border-gold/60 bg-gold/5 px-3 py-2.5 flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-medium text-slate-600 dark:text-slate-300 mr-auto">Recebeu por transferência ou depósito?</span>
-                        <Button type="button" variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setReceiptDocOpen(true)}>
-                          🧾 Ler comprovativo com IA
+                    <form onSubmit={handleAddTithe} className="space-y-4 px-5 py-4">
+                    <FormSection title="Dados da entrada">
+                      <div className="rounded-lg border border-dashed border-border bg-muted px-3 py-2.5 flex flex-wrap items-center gap-2">
+                        <span className="text-body-sm font-medium text-muted-foreground mr-auto">Recebeu por transferência ou depósito?</span>
+                        <Button type="button" variant="outline" className="gap-1.5" onClick={() => setReceiptDocOpen(true)}>
+                          Ler comprovativo com IA
                         </Button>
                         <DocumentReaderModal
                           open={receiptDocOpen}
@@ -1620,8 +1624,8 @@ export default function Finances() {
                         <MoneyText required value={tD.amount} onChange={v => setTD({...tD, amount: v})} placeholder="0,00" />
                       </div>
 
-                      <div className="p-3 bg-muted/30 rounded-md border space-y-4">
-                        <div className="grid grid-cols-2 gap-2">
+                      <div className="p-3 bg-muted rounded-md border border-border space-y-4">
+                        <div className="form-grid">
                           <div className="space-y-2">
                             <Label>Mês de Entrega (contabilidade)</Label>
                             <Select value={tD.deliveryMonth} onValueChange={v => setTD(prev => ({
@@ -1664,7 +1668,7 @@ export default function Finances() {
                         </div>
 
                         <Label>Meses de Referência</Label>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="form-grid">
                           {MONTHS.map((nm, i2) => {
                             const m = String(i2 + 1).padStart(2, '0');
                             const isPaid = memberRegisteredTithes.some(item => {
@@ -1761,9 +1765,12 @@ export default function Finances() {
                       <Label>Nº Recibo (Opcional)</Label>
                       <Input value={tD.receiptNumber} onChange={e => setTD({...tD, receiptNumber: e.target.value})} />
                     </div>
-                    <Button type="submit" disabled={isSubmitting} className="w-full">
-                      {isSubmitting ? 'A guardar...' : 'Guardar'}
-                    </Button>
+                    </FormSection>
+                    <DialogFooter className="-mx-5 -mb-4">
+                      <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+                        {isSubmitting ? 'A guardar...' : 'Guardar'}
+                      </Button>
+                    </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -1779,12 +1786,12 @@ export default function Finances() {
                       {loading ? (
                         Array.from({ length: 3 }).map((_, i) => (
                           <TableRow key={i}>
-                            <TableCell><div className="h-4 w-16 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-12 bg-muted animate-pulse rounded"></div></TableCell>
+                            <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-12" /></TableCell>
                           </TableRow>
                         ))
                       ) : filteredTithes.map(t => (
@@ -1825,7 +1832,7 @@ export default function Finances() {
                           </TableCell>
                         </TableRow>
                       ))}
-                      {!loading && filteredTithes.length === 0 && <TableRow><TableCell colSpan={6} className="text-center">Sem registos.</TableCell></TableRow>}
+                      {!loading && filteredTithes.length === 0 && <TableRow><TableCell colSpan={6} className="p-4"><EmptyState title="Sem registos de dízimos" description="Registe a primeira entrada ou ajuste o mês/pesquisa." action={<Button variant="outline" onClick={() => setIsTOpen(true)}>Registar Entrada</Button>} className="border-0 bg-transparent" /></TableCell></TableRow>}
                     </TableBody>
                   </Table></div>
                 </div>
@@ -1835,12 +1842,12 @@ export default function Finances() {
                       Array.from({ length: 3 }).map((_, i) => (
                         <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2">
                            <div className="h-5 w-40 bg-muted animate-pulse rounded"></div>
-                           <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
-                           <div className="h-4 w-32 bg-muted animate-pulse rounded"></div>
+                           <Skeleton className="h-4 w-24" />
+                           <Skeleton className="h-4 w-32" />
                         </div>
                       ))
                    ) : filteredTithes.length === 0 ? (
-                      <div className="text-center text-muted-foreground py-4">Sem registos ou pesquisa não encontrada.</div>
+                      <div className="p-4"><EmptyState title="Sem registos" description="Registe um novo movimento ou ajuste a pesquisa." className="border-0 bg-transparent" /></div>
                    ) : filteredTithes.map(t => (
                       <div key={t.id} className={cn("border p-4 rounded-lg shadow-sm flex flex-col gap-2 relative transition-all", t._optimistic && "opacity-90 border-dashed border-amber-400 bg-amber-50/20")}>
                          <div className="font-semibold pr-8 flex items-center gap-2">
@@ -1888,13 +1895,14 @@ export default function Finances() {
               <div className="flex flex-wrap gap-2">
                 <Input placeholder="Pesquisar oferta..." value={searchOfferings} onChange={e => setSearchOfferings(e.target.value)} className="w-[200px]" />
                 <Dialog open={isOOpen} onOpenChange={isClosed ? undefined : setIsOOpen}>
-                  <DialogTrigger asChild><Button size="sm" disabled={isClosed}><Plus className="w-4 h-4 mr-2" /> Registar</Button></DialogTrigger>
+                  <DialogTrigger asChild><Button disabled={isClosed}><Plus className="w-4 h-4 mr-2" /> Registar</Button></DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Registar Oferta</DialogTitle>
                     <DialogDescription className="sr-only">Preencha os dados da oferta</DialogDescription>
                   </DialogHeader>
-                  <form onSubmit={handleAddOffering} className="space-y-4">
+                  <form onSubmit={handleAddOffering} className="space-y-4 px-5 py-4">
+                    <FormSection title="Dados da oferta">
                     <div className="space-y-2">
                       <Label>Descrição</Label>
                       <Input required value={oD.description} onChange={e => setOD({...oD, description: e.target.value})} />
@@ -1914,7 +1922,7 @@ export default function Finances() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <>
                       <div className="space-y-2">
                         <Label>Valor (Kz)</Label>
                         <MoneyText required value={oD.amount} onChange={v => setOD({...oD, amount: v})} placeholder="0,00" />
@@ -1923,7 +1931,7 @@ export default function Finances() {
                         <Label>Data Ref.</Label>
                         <Input required type="date" value={oD.referenceDate} onChange={e => setOD({...oD, referenceDate: e.target.value})} />
                       </div>
-                    </div>
+                    </>
                     {!editingOffering && oD.type !== 'Geral' && oD.type !== 'Missões' && oD.type !== 'Segurança Social' && oD.type !== 'Literaturas' && oD.type !== 'Específica' && (
                       <div className="space-y-2 pb-2">
                         <Label>Percentagem a enviar ao Sínodo (%)</Label>
@@ -1937,21 +1945,24 @@ export default function Finances() {
                           placeholder="Ex: 10"
                           required
                         />
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-caption text-muted-foreground">
                           Será registada uma saída automática com este valor.
                         </p>
                       </div>
                     )}
                     {!editingOffering && oD.type === 'Geral' && parseFloat(churchConfig?.offeringPercentage || '0') > 0 && (
                       <div className="space-y-2 pb-2">
-                        <p className="text-[12px] text-blue-600 bg-blue-50 p-2 rounded border border-blue-100">
+                        <p className="text-caption text-info bg-info-soft p-2 rounded border border-info/30">
                           <strong>Aviso:</strong> {parseFloat(churchConfig?.offeringPercentage || '0')}% desta oferta será automaticamente registada como Saída para o Sínodo, conforme definido no Painel de Administrador.
                         </p>
                       </div>
                     )}
-                    <Button type="submit" disabled={isSubmitting} className="w-full">
-                      {isSubmitting ? 'A guardar...' : 'Guardar'}
-                    </Button>
+                    </FormSection>
+                    <DialogFooter className="-mx-5 -mb-4">
+                      <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+                        {isSubmitting ? 'A guardar...' : 'Guardar'}
+                      </Button>
+                    </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -1967,11 +1978,11 @@ export default function Finances() {
                     {loading ? (
                       Array.from({ length: 3 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-12 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-12" /></TableCell>
                         </TableRow>
                       ))
                     ) : filteredOfferings.map(t => (
@@ -1998,7 +2009,7 @@ export default function Finances() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {!loading && filteredOfferings.length === 0 && <TableRow><TableCell colSpan={5} className="text-center">Sem registos.</TableCell></TableRow>}
+                    {!loading && filteredOfferings.length === 0 && <TableRow><TableCell colSpan={5} className="p-4"><EmptyState title="Sem registos de ofertas" description="Registe a primeira oferta ou ajuste o mês/pesquisa." action={<Button variant="outline" onClick={() => setIsOOpen(true)}>Registar Oferta</Button>} className="border-0 bg-transparent" /></TableCell></TableRow>}
                   </TableBody>
                 </Table></div>
               </div>
@@ -2007,12 +2018,12 @@ export default function Finances() {
                     Array.from({ length: 3 }).map((_, i) => (
                       <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2">
                          <div className="h-5 w-40 bg-muted animate-pulse rounded"></div>
-                         <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
+                         <Skeleton className="h-4 w-24" />
                          <div className="h-6 w-24 bg-muted animate-pulse rounded"></div>
                       </div>
                     ))
                  ) : filteredOfferings.length === 0 ? (
-                    <div className="text-center text-muted-foreground py-4">Sem registos ou pesquisa não encontrada.</div>
+                    <div className="p-4"><EmptyState title="Sem registos" description="Registe um novo movimento ou ajuste a pesquisa." className="border-0 bg-transparent" /></div>
                  ) : filteredOfferings.map(t => (
                     <div key={t.id} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2 relative">
                        <div className="font-semibold">{t.description}</div>
@@ -2049,13 +2060,14 @@ export default function Finances() {
               <div className="flex flex-wrap gap-2">
                 <Input placeholder="Pesquisar saída/categoria..." value={searchExpenses} onChange={e => setSearchExpenses(e.target.value)} className="w-[200px]" />
                 <Dialog open={isEOpen} onOpenChange={isClosed ? undefined : setIsEOpen}>
-                  <DialogTrigger asChild><Button size="sm" variant="destructive" disabled={isClosed}><Plus className="w-4 h-4 mr-2" /> Registar Despesa</Button></DialogTrigger>
+                  <DialogTrigger asChild><Button variant="destructive" disabled={isClosed}><Plus className="w-4 h-4 mr-2" /> Registar Despesa</Button></DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Registar Saída</DialogTitle>
                     <DialogDescription className="sr-only">Preencha os dados da saída</DialogDescription>
                   </DialogHeader>
-                  <form onSubmit={handleAddExpense} className="space-y-4">
+                  <form onSubmit={handleAddExpense} className="space-y-4 px-5 py-4">
+                    <FormSection title="Dados da saída">
                     <div className="space-y-2">
                       <Label>Descrição</Label>
                       <Input required value={eD.description} onChange={e => setED({...eD, description: e.target.value})} />
@@ -2102,11 +2114,14 @@ export default function Finances() {
                     <div className="space-y-2">
                       <Label>Comprovativo (Opcional, max: 800KB)</Label>
                       <Input type="file" accept="image/*,application/pdf" onChange={handleReceiptUpload} />
-                      {eD.receiptBase64 && <p className="text-xs text-green-600 font-medium">Comprovativo carregado!</p>}
+                      {eD.receiptBase64 && <p className="text-body-sm text-success font-medium">Comprovativo carregado!</p>}
                     </div>
-                    <Button type="submit" disabled={isSubmitting} className="w-full" variant="destructive">
-                      {isSubmitting ? 'A registar...' : 'Registar Despesa'}
-                    </Button>
+                    </FormSection>
+                    <DialogFooter className="-mx-5 -mb-4">
+                      <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto" variant="destructive">
+                        {isSubmitting ? 'A registar...' : 'Registar Despesa'}
+                      </Button>
+                    </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -2122,11 +2137,11 @@ export default function Finances() {
                     {loading ? (
                       Array.from({ length: 3 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-12 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-12" /></TableCell>
                         </TableRow>
                       ))
                     ) : filteredExpenses.map(t => (
@@ -2149,7 +2164,7 @@ export default function Finances() {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {!loading && filteredExpenses.length === 0 && <TableRow><TableCell colSpan={5} className="text-center">Sem registos.</TableCell></TableRow>}
+                    {!loading && filteredExpenses.length === 0 && <TableRow><TableCell colSpan={5} className="p-4"><EmptyState title="Sem registos de saídas" description="Registe a primeira saída ou ajuste o mês/pesquisa." action={<Button variant="outline" onClick={() => setIsEOpen(true)}>Registar Saída</Button>} className="border-0 bg-transparent" /></TableCell></TableRow>}
                   </TableBody>
                 </Table></div>
               </div>
@@ -2158,12 +2173,12 @@ export default function Finances() {
                     Array.from({ length: 3 }).map((_, i) => (
                       <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2 border-destructive/20">
                          <div className="h-5 w-40 bg-muted animate-pulse rounded"></div>
-                         <div className="h-4 w-32 bg-muted animate-pulse rounded"></div>
+                         <Skeleton className="h-4 w-32" />
                          <div className="h-6 w-24 bg-muted animate-pulse rounded"></div>
                       </div>
                     ))
                  ) : filteredExpenses.length === 0 ? (
-                    <div className="text-center text-muted-foreground py-4">Sem registos ou pesquisa não encontrada.</div>
+                    <div className="p-4"><EmptyState title="Sem registos" description="Registe um novo movimento ou ajuste a pesquisa." className="border-0 bg-transparent" /></div>
                  ) : filteredExpenses.map(t => (
                     <div key={t.id} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2 relative border-destructive/20">
                        <div className="font-semibold">{t.description}</div>

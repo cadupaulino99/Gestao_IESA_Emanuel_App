@@ -169,6 +169,40 @@ const FormMessage = React.forwardRef<
 })
 FormMessage.displayName = "FormMessage"
 
+/* FASE 3 — erro de campo fora de FormField: ícone + texto sob o campo,
+   com o mesmo aspecto do FormMessage. */
+const FieldError = ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+  if (!children) return null
+  return (
+    <p
+      role="alert"
+      className={cn(
+        "flex items-start gap-1.5 text-body-sm font-medium text-danger-foreground [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0",
+        className
+      )}
+    >
+      <AlertCircle aria-hidden />
+      <span>{children}</span>
+    </p>
+  )
+}
+
+/* FASE 3 — secção de formulário: legenda sempre visível + grelha de campos
+   (1 coluna no telemóvel, 2 colunas ≥640 px via .form-grid). */
+const FormSection = React.forwardRef<
+  React.ElementRef<"fieldset">,
+  React.HTMLAttributes<HTMLFieldSetElement> & { title: string; description?: string }
+>(({ title, description, className, children, ...props }, ref) => (
+  <fieldset ref={ref} className={cn("space-y-3", className)} {...props}>
+    <legend className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+      {title}
+    </legend>
+    {description && <p className="text-body-sm text-muted-foreground">{description}</p>}
+    <div className="form-grid">{children}</div>
+  </fieldset>
+))
+FormSection.displayName = "FormSection"
+
 export {
   useFormField,
   Form,
@@ -178,4 +212,6 @@ export {
   FormDescription,
   FormMessage,
   FormField,
+  FormSection,
+  FieldError,
 }

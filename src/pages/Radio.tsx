@@ -201,7 +201,7 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
       }
       return;
     }
-    const ok = await confirm(`Publicar «${r.file}» para os membros ouvirem no Portal? O áudio é enviado para o Storage da igreja.`, 'PUBLICAR');
+    const ok = await confirm(`Publicar «${r.file}» para os membros ouvirem no Portal? O áudio é enviado para o Storage da igreja.`, 'PUBLICAR', { destructive: false, actionLabel: 'Publicar' });
     if (!ok) return;
     setPublishing(r.file);
     try {

@@ -20,6 +20,21 @@ function Harness({ onResult }: { onResult: (v: boolean) => void }) {
   );
 }
 
+/* FASE 3 — harness para as opções de apresentação (destrutiva vs. segura). */
+function HarnessOpts({ onResult }: { onResult: (v: boolean) => void }) {
+  const confirm = useConfirm();
+  return (
+    <button
+      type="button"
+      onClick={async () =>
+        onResult(await confirm('Publicar gravação para os membros?', undefined, { destructive: false, actionLabel: 'Publicar' }))
+      }
+    >
+      abrir-segura
+    </button>
+  );
+}
+
 const renderHarness = () => {
   const spy = vi.fn();
   render(
@@ -75,5 +90,28 @@ describe('ConfirmContext (diálogo com palavra de confirmação)', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(spy.mock.calls[0][0]).toBe(false); // o pendente foi cancelado
     expect(spy.mock.calls[1][0]).toBe(true);  // o segundo completou
+  });
+
+  /* FASE 3 — apresentação: ação destrutiva vermelha + ação segura proeminente */
+  it('por omissão a ação é destrutiva (vermelha) e o Cancelar proeminente (primária)', async () => {
+    renderHarness();
+    fireEvent.click(screen.getByText('abrir'));
+    const confirmar = await screen.findByRole('button', { name: /Confirmar/i });
+    const cancelar = screen.getByRole('button', { name: /Cancelar/i });
+    expect(confirmar.className).toContain('bg-destructive');
+    expect(cancelar.className).toContain('bg-primary');
+  });
+
+  it('com destructive:false a ação fica primária (acções seguras)', async () => {
+    const spy = vi.fn();
+    render(
+      <ConfirmProvider>
+        <HarnessOpts onResult={spy} />
+      </ConfirmProvider>
+    );
+    fireEvent.click(screen.getByText('abrir-segura'));
+    const publicar = await screen.findByRole('button', { name: /Publicar/i });
+    expect(publicar.className).toContain('bg-primary');
+    expect(publicar.className).not.toContain('bg-destructive');
   });
 });

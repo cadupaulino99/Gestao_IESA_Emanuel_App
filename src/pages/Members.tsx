@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '../components/ui/dialog';
+import { FormSection, FieldError } from '../components/ui/form';
+import { EmptyState } from '../components/ui/state-view';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../components/ui/sheet';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -535,20 +537,20 @@ export default function Members() {
                   <Plus className="mr-2 h-4 w-4" /> Novo
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+              <DialogContent className="max-w-2xl max-h-[90dvh] flex flex-col">
                 <DialogHeader>
                   <DialogTitle>{editingMember ? 'Editar Membro' : 'Novo Membro'}</DialogTitle>
                   <DialogDescription className="sr-only">Preencha os dados do membro</DialogDescription>
                 </DialogHeader>
                 <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-2">
                   <form id="member-form" onSubmit={handleSubmit(handleSave)} className="space-y-4 px-1">
-                    <div className="rounded-xl border border-dashed border-gold/60 bg-gold/5 px-3 py-2.5 flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-medium text-slate-600 dark:text-slate-300 mr-auto">Preencher com IA a partir de fotografia:</span>
-                      <Button type="button" variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setDocKind('bi')}>
-                        🪪 Bilhete de Identidade
+                    <div className="rounded-lg border border-dashed border-border bg-muted px-3 py-2.5 flex flex-wrap items-center gap-2">
+                      <span className="text-body-sm font-medium text-muted-foreground mr-auto">Preencher com IA a partir de fotografia:</span>
+                      <Button type="button" variant="outline" className="gap-1.5" onClick={() => setDocKind('bi')}>
+                        Bilhete de Identidade
                       </Button>
-                      <Button type="button" variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => setDocKind('cartao')}>
-                        ✝️ Cartão de Membro
+                      <Button type="button" variant="outline" className="gap-1.5" onClick={() => setDocKind('cartao')}>
+                        Cartão de Membro
                       </Button>
                       <DocumentReaderModal
                         open={docKind !== null}
@@ -578,24 +580,24 @@ export default function Members() {
                         }}
                       />
                     </div>
-                    <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 px-3 py-2.5 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <FormSection title="Cartão e filiação" className="rounded-lg border border-dashed border-border px-3 py-3">
                       <div className="space-y-1">
-                        <Label className="text-xs">Nº do Cartão de Membro</Label>
+                        <Label>Nº do Cartão de Membro</Label>
                         <Input {...register("memberNumber")} placeholder="Ex.: 0141" inputMode="numeric" />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Naturalidade</Label>
+                        <Label>Naturalidade</Label>
                         <Input {...register("placeOfBirth")} placeholder="Ex.: Quitwa" />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Filiação — pai («Filho de…»)</Label>
+                        <Label>Filiação — pai («Filho de…»)</Label>
                         <Input {...register("fatherName")} />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">Filiação — mãe («…e de…»)</Label>
+                        <Label>Filiação — mãe («…e de…»)</Label>
                         <Input {...register("motherName")} />
                       </div>
-                      <div className="flex items-center gap-2 md:col-span-2">
+                      <div className="flex items-center gap-2 col-span-full">
                         <Checkbox
                           checked={watch('acceptsMessages') !== false}
                           onCheckedChange={(c) => setValue('acceptsMessages', c === true, { shouldDirty: true })}
@@ -603,8 +605,8 @@ export default function Members() {
                         />
                         <Label htmlFor="accepts-msgs" className="text-xs">Aceita mensagens por telemóvel (SMS/WhatsApp). Se desmarcado, recebe só notificações dentro do sistema.</Label>
                       </div>
-                      <div className="space-y-1 md:col-span-2">
-                        <Label className="text-xs">Fotografia do titular (para o cartão)</Label>
+                      <div className="space-y-1 col-span-full">
+                        <Label>Fotografia do titular (para o cartão)</Label>
                         <div className="flex items-center gap-2">
                           <Input
                             type="file"
@@ -631,13 +633,13 @@ export default function Members() {
                           )}
                         </div>
                       </div>
-                    </div>
+                    </FormSection>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormSection title="Identificação e estado">
                       <div className="space-y-2">
                         <Label>Nome Completo *</Label>
                         <Input {...register("name")} />
-                        {errors.name && <span className="text-xs text-destructive">{errors.name.message}</span>}
+                        {errors.name && <FieldError>{errors.name.message}</FieldError>}
                       </div>
                       <div className="space-y-2">
                         <Label>Telefone</Label>
@@ -647,10 +649,10 @@ export default function Members() {
                       <div className="space-y-2">
                         <Label>Email (da conta, opcional)</Label>
                         <Input {...register("email")} placeholder="nome@email.com" inputMode="email" autoComplete="email" />
-                        {errors.email && <span className="text-xs text-destructive">{errors.email.message}</span>}
+                        {errors.email && <FieldError>{errors.email.message}</FieldError>}
                       </div>
 
-                      <div className="space-y-2 md:col-span-2">
+                      <div className="space-y-2 col-span-full">
                         <Label>Nº do Bilhete de Identidade</Label>
                         <Input
                           {...register("documentNumber")}
@@ -710,23 +712,23 @@ export default function Members() {
                         </Select>
                       </div>
                       {watch('maritalStatus') === 'Casado(a)' && (
-                        <div className="space-y-2 md:col-span-2">
+                        <div className="space-y-2 col-span-full">
                           <Label>Nome do Cônjuge</Label>
                           <Input {...register("spouseName")} />
                         </div>
                       )}
 
-                      <div className="space-y-2 md:col-span-2">
+                      <div className="space-y-2 col-span-full">
                         <Label>Morada/Endereço</Label>
                         <Input {...register("address")} />
                       </div>
 
-                      <div className="space-y-2 md:col-span-2">
+                      <div className="space-y-2 col-span-full">
                         <Label>Célula/Grupo</Label>
                         <Input {...register("groupCell")} />
                       </div>
 
-                      <div className="space-y-2 md:col-span-2">
+                      <div className="space-y-2 col-span-full">
                         <Label>Estado</Label>
                         <Select value={watch('status')} onValueChange={v => setValue('status', v)}>
                           <SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger>
@@ -739,14 +741,14 @@ export default function Members() {
                           </SelectContent>
                         </Select>
                       </div>
-                    </div>
+                    </FormSection>
                   </form>
                 </div>
-                <div className="pt-4 px-2 border-t mt-auto shrink-0 w-full">
-                  <Button type="submit" form="member-form" className="w-full" disabled={mutation.isPending}>
+                <DialogFooter>
+                  <Button type="submit" form="member-form" className="w-full sm:w-auto" disabled={mutation.isPending}>
                     {mutation.isPending ? 'A Guardar...' : 'Guardar'}
                   </Button>
-                </div>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
@@ -788,7 +790,7 @@ export default function Members() {
                         </TableRow>
                       ))
                     ) : filteredMembers.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} className="text-center py-8">Nenhum membro encontrado.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="p-4"><EmptyState title="Nenhum membro encontrado" description="Ajuste a pesquisa ou os filtros, ou registe um novo membro." className="border-0 bg-transparent" /></TableCell></TableRow>
                     ) : filteredMembers.map(m => (
                       <TableRow key={m.id}>
                         <TableCell className="font-medium">{m.name}</TableCell>
@@ -829,7 +831,7 @@ export default function Members() {
                       </Card>
                     ))
                  ) : filteredMembers.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">Nenhum membro encontrado.</div>
+                    <div className="p-4"><EmptyState title="Nenhum membro encontrado" description="Ajuste a pesquisa ou os filtros, ou registe um novo membro." className="border-0 bg-transparent" /></div>
                  ) : filteredMembers.map(m => (
                      <Card key={m.id}>
                         <CardContent className="p-4 flex justify-between items-center">

@@ -3,7 +3,8 @@
 import * as React from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { cva, type VariantProps } from "class-variance-authority"
-import { X } from "lucide-react"
+import { ArrowLeft, X } from "lucide-react"
+import { DialogDepthContext } from "./dialog"
 
 import { cn } from "@/src/lib/utils"
 
@@ -58,22 +59,30 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      {children}
-      <SheetPrimitive.Close className="absolute right-3 top-3 z-20 flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-opacity duration-fast hover:bg-accent hover:text-foreground disabled:pointer-events-none">
-        <X className="h-5 w-5" />
-        <span className="sr-only">Fechar</span>
-      </SheetPrimitive.Close>
-    </SheetPrimitive.Content>
-  </SheetPortal>
-))
+>(({ side = "right", className, children, ...props }, ref) => {
+  /* Pilha partilhada com os Dialog: uma folha aberta sobre outro diálogo
+     mostra «Voltar»; um diálogo aberto sobre esta folha vê profundidade ≥1. */
+  const parentDepth = React.useContext(DialogDepthContext)
+  const nested = parentDepth >= 1
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), className)}
+        {...props}
+      >
+        <DialogDepthContext.Provider value={parentDepth + 1}>
+          {children}
+          <SheetPrimitive.Close className="absolute right-3 top-3 z-20 flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-opacity duration-fast hover:bg-accent hover:text-foreground disabled:pointer-events-none">
+            {nested ? <ArrowLeft className="h-5 w-5" /> : <X className="h-5 w-5" />}
+            <span className="sr-only">{nested ? "Voltar" : "Fechar"}</span>
+          </SheetPrimitive.Close>
+        </DialogDepthContext.Provider>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  )
+})
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({

@@ -141,6 +141,27 @@ export default function Layout() {
   /* estado do mini-player da rádio */
   useEffect(() => livePlayer.subscribe(() => force((n) => n + 1)), []);
 
+  /* FASE 3 — o teclado do Android nunca tapa o campo focado: ao focar um
+     campo, centramo-lo no ecrã (imediatamente e após a animação do teclado).
+     Em paisagem, onde o espaço é crítico, isto é essencial. */
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement)) return;
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const center = () => t.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+      center();
+      clearTimeout(timer);
+      timer = setTimeout(center, 350);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      clearTimeout(timer);
+    };
+  }, []);
+
   /* Barra de estado nativa acompanha o tema — cor lida do token --background
      em runtime (o StatusBar nativo não conhece vars de CSS) */
   useEffect(() => {

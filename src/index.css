@@ -7,6 +7,8 @@
 /* O que não for nenhum dos dois = telemóvel em retrato (barra inferior)*/
 @custom-variant nav-rail (@media (max-height: 499.98px) and (max-width: 1023.98px));
 @custom-variant nav-side (@media ((min-width: 1024px) or ((min-width: 768px) and (min-height: 500px))));
+/* Telemóvel em retrato: diálogos grandes viram folha inferior com pega */
+@custom-variant dlg-sheet (@media (max-width: 767.98px) and (min-height: 500px));
 
 /* ------------------------------------------------------------------ */
 /* FASE 1 — Sistema de design «Azul Sinodal»                           */
@@ -477,6 +479,22 @@ textarea,
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* FASE 3 — formulários: 1 coluna no telemóvel, 2 colunas ≥640 px.
+   Campos que precisam de largura total usam .col-span-full. */
+.form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 640px) {
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .form-grid > .col-span-full {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Respeito por prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -541,11 +559,9 @@ html {
     font-size: 16px !important;
   }
 
-  /* Diálogos/paleta nunca saem do ecrã */
-  [role="dialog"] {
-    max-width: calc(100vw - 20px) !important;
-    margin-inline: auto;
-  }
+  /* (FASE 3) a regra legacy «[role=dialog] max-width calc(100vw-20px)!important»
+     foi removida: a forma dos diálogos por orientação vive agora em
+     ui/dialog.tsx (folha inferior / painel direito / cartão centrado). */
 
   /* Toasts a largura inteira, legíveis */
   [data-sonner-toaster] {
