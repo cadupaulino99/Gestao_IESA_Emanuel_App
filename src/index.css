@@ -1,6 +1,14 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------ */
+/* FASE 2 — Variantes de navegação por forma de ecrã (só CSS)          */
+/* nav-rail: telemóvel em paisagem (altura < 500 px, largura < 1024)   */
+/* nav-side: tablet/desktop (≥1024 px, ou ≥768 px com altura ≥ 500)    */
+/* O que não for nenhum dos dois = telemóvel em retrato (barra inferior)*/
+@custom-variant nav-rail (@media (max-height: 499.98px) and (max-width: 1023.98px));
+@custom-variant nav-side (@media ((min-width: 1024px) or ((min-width: 768px) and (min-height: 500px))));
+
+/* ------------------------------------------------------------------ */
 /* FASE 1 — Sistema de design «Azul Sinodal»                           */
 /* Tokens em variáveis CSS do Tailwind 4. Claro + escuro (WCAG AA).   */
 /* Fonte Inter auto-hospedada (APK offline, sem CDN).                 */
@@ -516,7 +524,13 @@ html {
 
 /* Mini-player assenta exatamente cima da barra de navegação (em fluxo) */
 .miniplayer-above-nav {
-  bottom: calc(66px + env(safe-area-inset-bottom, 0px) + 8px);
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px);
+}
+/* Em paisagem (rail) não há barra inferior: flutua junto ao fundo */
+@media (max-height: 499.98px) and (max-width: 1023.98px) {
+  .miniplayer-above-nav {
+    bottom: 12px;
+  }
 }
 
 @media (max-width: 767px) {

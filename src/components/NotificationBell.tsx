@@ -39,7 +39,7 @@ export default function NotificationBell() {
         <Button variant="ghost" size="icon" className="relative" title="Notificações">
           <Bell className="h-5 w-5" />
           {unread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-danger-foreground text-caption font-bold flex items-center justify-center">
               {unread > 9 ? '9+' : unread}
             </span>
           )}

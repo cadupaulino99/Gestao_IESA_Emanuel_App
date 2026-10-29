@@ -18,6 +18,7 @@ export const PREF_KEYS = [
   'hide_financials',
   'app_language',
   'church-settings',
+  'nav-sidebar-collapsed',
 ] as const;
 
 export function prefGet(key: string): string | null {
