@@ -1,0 +1,3507 @@
+From 5bb919315401c440194ae245855b2906d1c012f8 Mon Sep 17 00:00:00 2001
+From: assistente-qwen <assistente-qwen@users.noreply.github.com>
+Date: Sat, 31 Oct 2026 21:29:00 +0000
+Subject: [PATCH] =?UTF-8?q?feat(v1.19.0):=20P3=20=E2=80=94=20Luanda=20em?=
+ =?UTF-8?q?=20todo=20o=20lado,=20Worker=202.10.0=20(quota/cron/token),=20r?=
+ =?UTF-8?q?egras=20sem=20buracos,=20testes=20do=20Worker=20e=20das=20regra?=
+ =?UTF-8?q?s?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Auditoria nova: docs/AUDITORIA-2026-10-31.md (25 achados, cada um com evidência
+e correcção). Guião de teste: docs/VERIFICACAO-V1.19.0.md.
+
+DATAS — «hoje», «este mês» e «este ano» passam a vir SÓ de lib/luanda.ts.
+A biblioteca existia desde a v1.13.0 mas ~50 sítios da UI continuavam no fuso do
+APARELHO (new Date().getMonth()) ou em UTC (toISOString().slice(0,10)). Bugs
+reais fechados:
+- Nascimento importado do Excel recuava SEMPRE 1 dia (meia-noite local em UTC+1
+  = 23:00 UTC do dia anterior) → isoFromParts().
+- Lançamentos feitos entre as 00:00 e as 01:00 guardavam o dia ANTERIOR
+  (prazo/entrega de contribuições, referência de ofertas/despesas, período dos
+  relatórios, donativos/renovações do cartão, nomes de backup e Excel — 24
+  sítios) → luandaDayKey().
+- PAINEL: a pizza «Dizimistas do Mês» estava SEMPRE vazia — where('month','==',10)
+  (número) contra o valor guardado '10' (string canónica da migração v1.9.3)
+  → luandaMonthStr().
+- Aniversariantes contados pelo dia do aparelho e com split('-'), que devolve NaN
+  para o legado 'DD/MM/AAAA' (o membro desaparecia da lista) → isBirthdayToday()
+  + normalizeBirthDate() (ISO, DD/MM/AAAA, DD-MM-AAAA, epoch). Vale para o Painel
+  e para a notificação local do APK.
+- Gráficos «últimos 6 meses» (ficha, Portal, Dízimos) partiam-se na viragem do
+  ano → lastMonthsLuanda(n), pura e testada.
+- Exportações/rodapés de PDF («Emitido em», «Gerado em», «Data:», relatórios,
+  campanhas) e o nome das gravações da Rádio → fmtTodayPT/fmtTodayTimePT/luandaParts.
+19 funções novas (puras, now injectável) + 19 testes.
+
+WORKER 2.10.0:
+- QUOTA (o achado mais caro): o cron reescrevia paidAmount em TODAS as
+  contribuições abertas, TODOS os minutos — fv(f,'paidAmount') devolve STRING
+  ("1500") e era comparado com NÚMERO (1500), logo o PATCH corria sempre.
+  20 contribuições ≈ 28.800 escritas/dia contra 20.000/dia do plano Spark.
+  Comparação numérica (fnum) + dinheiro em cêntimos inteiros de ponta a ponta.
+- CRON RESILIENTE: cada tarefa (outbox, contributions, reminders, events) no seu
+  runJob() com try/catch próprio. Antes UMA falha na primeira rebentava com as
+  outras três E com o heartbeat — a app dizia «Cron SEM pulsar» com o agendador
+  vivo. Heartbeat grava jobsOk + lastError; /__health expõe cron.ok/error/counts;
+  Suporte → Diagnóstico mostra qual tarefa falha (cronHealthLines, pura e testada).
+- Recálculo de contribuições de 5 em 5 min (isRecomputeMinute): o cliente já
+  grava status/paidAmount ao registar pagamento e a viragem p/ «em atraso» é
+  diária → −80% das leituras/escritas do cron.
+- Prazos em Luanda: em_atraso era decidido por due+'T23:59:59Z' (= 00:59 do dia
+  seguinte em Luanda) → luandaEndOfDayMs().
+- Token do Firebase endurecido: alg RS256 obrigatório, exp OBRIGATÓRIO (um token
+  sem exp passava), iat não futurista (60 s), sub não vazio, 32–4096 chars, JSON
+  malformado recusado sem excepção.
+- Palavra-passe temporária com política: validateTempPassword() (8–200, sem
+  espaços, letras E números, óbvias bloqueadas) em /admin/create-auth-account e
+  /admin/reset-temp-password; email validado/normalizado. genTempPassword()
+  garante 1 letra + 1 dígito (antes ~10% das geradas sairiam só com letras).
+- Auto-cadastro recusava datas só pelo formato: '1990-13-45' entrava em
+  member_signups → ficha (aniversariantes, cartão, relatórios). isRealIsoDate()
+  valida calendário + bissextos + anos. Apanhado pelo 1.º teste do Worker.
+- Rate limits com poda (pruneBuckets, tecto 2000) — os Maps cresciam sem limite.
+- TESTES DO WORKER: 0 → 50 (export const __test com funções puras; o
+  export default do Cloudflare não muda). Incluem coerência com a app:
+  fmtKz ≡ formatKz (lib/money) e luandaNow/luandaEndOfDayMs ≡ luandaParts/
+  luandaEndOfDay (lib/luanda) — o Worker duplica essa lógica.
+
+REGRAS (firestore.rules):
+- BURACO FECHADO: pedidos_atualizacao permitia a QUALQUER sessão (incl. cadastro
+  rejeitado) abrir pedidos sobre a ficha de OUTRO membro — `isAuthenticated() &&
+  incoming().memberId != null`. Agora ownsMemberRecord() (get() do documento do
+  membro vs. email do token; get()/exists() não contam p/ quota) + memberEmail
+  coerente + status 'pendente' + requestedData limitado aos 3 campos que a
+  aprovação aplica (telefone, endereco, estadoCivil).
+- Filas validadas: whatsapp_outbox e message_outbox aceitavam qualquer documento
+  de qualquer liderança (o Worker enviaria o que lá estivesse quando os
+  fornecedores pagos forem ligados) → validadores com os payloads reais.
+- notifications e audit_logs validados (aceita os DOIS esquemas de auditoria).
+- Removido o bloco match /settings/{…} DUPLICADO (dois equivalentes: editar um
+  não mudava nada — o Firestore avalia os dois e basta um allow).
+- Datas de Avisos/Eventos: isDateIsoStr aceitava '2026-13-45' (e o lembrete do
+  Worker compara strings) → mês 01-12, dia 01-31.
+
+FERRAMENTA NOVA — scripts/check-rules.mjs (npm run lint:rules + passo no CI +
+15 testes): sem Java no CI não há emulador e o deploy é manual, portanto sintaxe
+partida só aparecia no deploy e um validador escrito e NÃO ligado a nenhum allow
+não aparecia nunca (foi o que aconteceu a isValidMemberCreate até à v1.18).
+Apanha: (){}[] desequilibrados, funções chamadas e inexistentes, funções
+definidas e nunca usadas, blocos match duplicados (wildcards normalizados),
+match sem allow, operações inválidas em allow, cabeçalho em falta.
+
+Testes: 191 → 282 (+50 Worker, +15 regras, +19 Luanda, +7 diagnóstico do cron).
+tsc raiz 0 · tsc lib strict 0 · lint:rules 0 erros/0 avisos · node --check ok ·
+bundle completo validado com esbuild (o vite build precisa de >1 GB de RAM).
+Deploy: regras (workflow) + Worker 2.10.0. Sem migrações de dados.
+---
+ .github/workflows/ci.yml                      |   5 +
+ README.md                                     |  55 ++-
+ docs/AUDITORIA-2026-10-31.md                  | 130 ++++++
+ docs/MUDANCAS.md                              | 145 +++++++
+ docs/VERIFICACAO-V1.19.0.md                   | 213 ++++++++++
+ firestore.rules                               | 126 +++++-
+ package.json                                  |   3 +-
+ scripts/__tests__/checkRules.test.mjs         | 125 ++++++
+ scripts/check-rules.mjs                       | 227 ++++++++++
+ src/components/admin/AnnouncementsAdmin.tsx   |   4 +-
+ src/components/members/CommunionTracker.tsx   |   3 +-
+ src/components/members/MemberCardModal.tsx    |   7 +-
+ src/components/members/MemberCardView.tsx     |   3 +-
+ .../members/MemberTithesTracker.tsx           |   7 +-
+ src/hooks/useNotifications.ts                 |  16 +-
+ src/lib/__tests__/luanda.test.ts              | 145 +++++++
+ src/lib/__tests__/workerHealth.test.ts        |  54 +++
+ src/lib/ai.ts                                 |  62 ++-
+ src/lib/finance.ts                            |   3 +-
+ src/lib/luanda.ts                             | 201 +++++++++
+ src/lib/pdfUtils.ts                           |   3 +-
+ src/lib/radio.ts                              |   8 +-
+ src/pages/Admin.tsx                           |   5 +-
+ src/pages/Assets.tsx                          |   3 +-
+ src/pages/Budget.tsx                          |   3 +-
+ src/pages/BuildingFund.tsx                    |   3 +-
+ src/pages/Contributions.tsx                   |  15 +-
+ src/pages/Dashboard.tsx                       |  41 +-
+ src/pages/Finances.tsx                        |  33 +-
+ src/pages/MemberPortal.tsx                    |  28 +-
+ src/pages/Members.tsx                         |  38 +-
+ src/pages/Obligations.tsx                     |   3 +-
+ src/pages/Reports.tsx                         |  15 +-
+ vitest.config.ts                              |   4 +-
+ worker/__tests__/ai-worker.test.js            | 395 ++++++++++++++++++
+ worker/ai-worker.js                           | 265 ++++++++++--
+ 36 files changed, 2207 insertions(+), 189 deletions(-)
+ create mode 100644 docs/AUDITORIA-2026-10-31.md
+ create mode 100644 docs/VERIFICACAO-V1.19.0.md
+ create mode 100644 scripts/__tests__/checkRules.test.mjs
+ create mode 100644 scripts/check-rules.mjs
+ create mode 100644 src/lib/__tests__/workerHealth.test.ts
+ create mode 100644 worker/__tests__/ai-worker.test.js
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index fcc988e..f842485 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -24,6 +24,11 @@ jobs:
+         run: npx tsc --noEmit
+       - name: TypeScript ESTRITO em src/lib (v1.18)
+         run: npx tsc -p tsconfig.lib.json --noEmit
++      - name: Regras Firestore/Storage (v1.19 — verificador estático)
++        # Sem Java no CI não há emulador; este passo apanha os erros que só
++        # apareciam no deploy manual: sintaxe, funções inexistentes, validadores
++        # definidos e nunca ligados, blocos match duplicados.
++        run: npm run lint:rules
+       - name: Testes unitários (vitest)
+         run: npx vitest run
+       - name: Sintaxe do Worker
+diff --git a/README.md b/README.md
+index bb73f2f..2d877c0 100644
+--- a/README.md
++++ b/README.md
+@@ -9,8 +9,11 @@ com PDF frente/verso), **comunhão**, **Avisos, Agenda e Eventos**, **Rádio
+ Maranata** (ao vivo + gravações publicadas), **auto-cadastro com aprovação**,
+ **chat de suporte** e IA (leitura de BI/comprovativos, assistente pastoral).
+ 
+-> **Versões actuais**: app **v1.18.0** · Worker **v2.9.1** · **191 testes** ·
+-> `tsc` limpo (raiz) + **strict em `src/lib`** (`npm run lint:lib`).
++> **Versões actuais**: app **v1.19.0** · Worker **v2.10.0** · **282 testes** ·
++> `tsc` limpo (raiz) + **strict em `src/lib`** (`npm run lint:lib`) +
++> **regras verificadas** (`npm run lint:rules`).
++> Fase actual: **P3** concluído — ver `docs/AUDITORIA-2026-10-31.md`
++> (P0/P1/P2 em `docs/AUDITORIA-2026-10-25.md`).
+ 
+ ---
+ 
+@@ -24,8 +27,8 @@ Maranata** (ao vivo + gravações publicadas), **auto-cadastro com aprovação**
+ | Estado/dados | @tanstack/react-query · Firebase **Firestore** + **Auth** + **Storage** |
+ | Backend de IA/contas/filas | **Cloudflare Worker** (`worker/ai-worker.js`) — Gemini (visão+texto), criação de contas Auth, fila SMS/WhatsApp, lembretes e estados via **cron (todos os minutos)** |
+ | PDF/Excel | jsPDF + autotable · SheetJS **xlsx 0.20.3** (CDN oficial — o npm parou no 0.18.5 vulnerável) |
+-| Testes | Vitest 3 (funções puras em node) + **Testing Library/jsdom** (componentes) |
+-| CI/CD | GitHub Actions: `ci` (tsc + tsc-lib-strict + testes + worker check), `build-android` (APK/AAB → Release), `deploy-firebase` (manual: regras+índices+storage), `worker-health` (drift diário → issue) |
++| Testes | Vitest 3 (funções puras em node) + **Testing Library/jsdom** (componentes) + **testes do Worker** (`worker/__tests__`) e **das regras** (`scripts/__tests__`) |
++| CI/CD | GitHub Actions: `ci` (tsc + tsc-lib-strict + **lint:rules** + testes + worker check), `build-android` (APK/AAB → Release), `deploy-firebase` (manual: regras+índices+storage), `worker-health` (drift diário → issue) |
+ 
+ **Um só backend de IA**: tudo passa pelo Worker (a pasta `functions/` foi removida —
+ o plano Spark não permite Cloud Functions; `@google/genai` existe só no servidor
+@@ -50,7 +53,15 @@ sem cartão. Ver `docs/GUIA-CLOUDFLARE-WORKER.md`.
+   memberEmail» (marcador `settings/system.memberEmailStamped`);
+   `member_signups` só o Worker cria, só admin aprova/rejeita; HTML de
+   avisos/eventos validado no servidor (`isSafeRichText`); escrita de membros
+-  validada (`isValidMemberCreate/Update` desde a v1.18).
++  validada (`isValidMemberCreate/Update` desde a v1.18); **desde a v1.19 (P3)**
++  também `pedidos_atualizacao` (só sobre a própria ficha — `ownsMemberRecord`,
++  `requestedData` limitado aos 3 campos que a aprovação aplica), as filas
++  `message_outbox`/`whatsapp_outbox`, `notifications` e `audit_logs` têm
++  validadores de forma/tamanho, e `npm run lint:rules` impede no CI validadores
++  escritos e não ligados, blocos `match` duplicados e sintaxe partida.
++- **Token do Firebase verificado no Worker** (não só no cliente): assinatura
++  RS256 com o chaveiro da Google, `alg` fixo, `exp` obrigatório, `iat` não
++  futurista, `sub` não vazio, `iss`/`aud` do projecto (v2.10.0).
+ - **XSS (3 camadas)**: editor saneia → apresentação re-saneia (`richtext.ts`)
+   → servidor recusa (`<script`, `javascript:`, handlers…).
+ - **Storage** (`storage.rules`): leitura só autenticado; `posters/**`,
+@@ -59,12 +70,27 @@ sem cartão. Ver `docs/GUIA-CLOUDFLARE-WORKER.md`.
+   auto-cadastro por IP no Worker; fila SMS/WhatsApp com janela de 10 min e
+   máx. 1/dia/membro.
+ 
++## Quota (plano Spark, sem cartão)
++
++O cron do Worker corre **todos os minutos**; cada tarefa corre isolada
++(`runJob`) e o recálculo de contribuições só corre 1 minuto em cada 5 — o
++cliente já actualiza o estado ao registar um pagamento e a viragem para
++«em atraso» é diária. Na v1.19.0 (P3) corrigiu-se uma comparação
++string-vs-número que fazia o cron reescrever `paidAmount` em **todas** as
++contribuições abertas, **todos os minutos** (~28.800 escritas/dia contra um
++tecto de 20.000). O heartbeat (`settings/worker_cron`) grava `jobsOk` e
++`lastError`, expostos em `/__health` e em **Suporte → Diagnóstico**.
++
+ ## Datas, horas e dinheiro
+ 
+ - **Luanda (UTC+1)**: datas guardadas como strings locais `AAAA-MM-DD`, horas
+   `HH:MM` — nada de epoch/ISO com fuso (um evento às 23:30 não muda de dia
+   noutro aparelho). «Hoje/Amanhã/Faltam N dias» pelo dia de Luanda
+-  (`lib/luanda.ts`).
++  (`lib/luanda.ts`). **Desde a v1.19.0 (P3) não há outro caminho**: «hoje»,
++  «este mês», «este ano», aniversários, gráficos de meses, nomes de ficheiros e
++  rodapés de PDF saem todos de `lib/luanda.ts` — `new Date().getMonth()` e
++  `toISOString().slice(0,10)` foram eliminados da UI (em UTC+1 guardavam o dia
++  anterior entre as 00:00 e as 01:00, e as datas vindas do Excel recuavam um dia).
+ - **Dinheiro**: inteiros de **cêntimos**; apresentação única `formatKz`
+   («1.500,00 Kz»); parsing estrito (`lib/money.ts`).
+ 
+@@ -77,9 +103,10 @@ git clone https://github.com/cadupaulino99/Gestao_IESA_Emanuel_App.git
+ cd Gestao_IESA_Emanuel_App
+ npm ci               # de preferência com --ignore-scripts em sandboxes pequenas
+ npm run dev          # web em http://localhost:3000
+-npm test             # 191 testes (puros + componentes)
++npm test             # 282 testes (app + Worker + regras)
+ npm run lint         # tsc --noEmit (raiz)
+ npm run lint:lib     # tsc STRICT de src/lib
++npm run lint:rules   # verificador estático de firestore.rules/storage.rules
+ ```
+ 
+ - Credenciais Firebase: `firebase-applet-config.json` (config pública web —
+@@ -97,7 +124,9 @@ npm run lint:lib     # tsc STRICT de src/lib
+    `CF_DEPLOY_ENABLED=true`) ou **Via A**: Cloudflare → Workers → `iesa-ai` →
+    *Edit code* → colar `worker/ai-worker.js` → Deploy. **Cron**: Via A não
+    leva triggers — confirmar `* * * * *` em Settings → Triggers. Verificar em
+-   `https://iesa-ai.cadupaulino99.workers.dev/__health` (versão + `cron.ageMinutes`).
++   `https://iesa-ai.cadupaulino99.workers.dev/__health` (versão + `cron.ageMinutes`
++   + `cron.ok`/`cron.error`: o cron corre cada tarefa isolada desde o 2.10.0 e
++   grava qual falhou).
+ 3. **APK**: automático no push ao `main` (Release com `app-release.apk`);
+    a app avisa os utilizadores (banner de atualização).
+ 
+@@ -111,16 +140,18 @@ npm run lint:lib     # tsc STRICT de src/lib
+ ## Documentação
+ 
+ `docs/MUDANCAS.md` (histórico completo por versão) ·
+-`docs/AUDITORIA-2026-10-25.md` (auditoria P0/P1/P2) ·
+-`docs/VERIFICACAO-*` (guiões de teste: moeda, cartão, auto-cadastro,
+-memberEmail, avisos/agenda/eventos…) · `docs/INICIO-RAPIDO.md` ·
++`docs/AUDITORIA-2026-10-31.md` (**P3**: datas de Luanda, quota do cron, token,
++regras) · `docs/AUDITORIA-2026-10-25.md` (auditoria P0/P1/P2) ·
++`docs/VERIFICACAO-*` (guiões de teste: **v1.19.0**, moeda, cartão,
++auto-cadastro, memberEmail, avisos/agenda/eventos…) · `docs/INICIO-RAPIDO.md` ·
+ `docs/COMO-INSTALAR-NO-TELEMOVEL.md`.
+ 
+ ## Dependências — plano de majors (adiado com motivo)
+ 
+ - `vite` 6.4.5 (último 6.x) e `vitest` 3.2.7: a subida para vite 7/vitest 4
+   esbarra num **bug do npm 10.8.2** (`edgesOut` no arborist com peers do
+-  vitest 4). São dev-only — sem risco para o APK. Tentar de novo com npm ≥ 11.
++  vitest 4). São dev-only — sem risco para o APK. O npm 12 já saiu: vale a pena
++  acrescentar `npm i -g npm@12` ao workflow `ci` e tentar de novo (P4-29).
+ - `firebase` 12 → 13: exige validação ponta-a-ponta em aparelho (auth/
+   firestore/storage) — agendar com calma.
+ - Restantes advisories: dev-only ou fora do bundle web (documentados em
+diff --git a/docs/AUDITORIA-2026-10-31.md b/docs/AUDITORIA-2026-10-31.md
+new file mode 100644
+index 0000000..686ef2d
+--- /dev/null
++++ b/docs/AUDITORIA-2026-10-31.md
+@@ -0,0 +1,130 @@
++# 🔎 Auditoria profunda — 2026-10-31 (estado na v1.18.0) → **P3**
++
++Segunda auditoria geral. Linha de base: **191 testes** verdes, `tsc` limpo (raiz)
++e strict em `src/lib`, Worker **2.9.1** no ar com cron activo, P0/P1/P2 da
++auditoria de 2026-10-25 fechados.
++
++Método: leitura integral de `firestore.rules` (663 linhas), `storage.rules`,
++`worker/ai-worker.js` (1465 linhas), `src/lib/*` e de todas as chamadas a
++`new Date()`/`getDocs`/`addDoc` da UI. Cada achado tem **evidência** (ficheiro e
++comportamento) e **correcção**. Tudo o que é corrigível sem dependências novas
++foi corrigido nesta versão (**v1.19.0 / Worker 2.10.0**).
++
++---
++
++## 🔴 P3-A — Datas: o fuso do aparelho e o UTC ainda mandavam em ~50 sítios
++
++`lib/luanda.ts` existe desde a v1.13.0 e o README diz que «datas são strings
++locais de Luanda», mas só os módulos de Avisos/Agenda/Eventos a usavam. O resto
++da aplicação continuava em `new Date().getMonth()` (fuso do **aparelho**) e
++`new Date().toISOString().slice(0,10)` (**UTC**). Em Luanda (UTC+1) isto não é
++teórico:
++
++| # | Achado | Evidência | Correcção |
++|---|---|---|---|
++| 1 | **Todas as datas de nascimento importadas do Excel recuavam 1 dia** | `Members.tsx:103` — `new Date(y, m-1, d).toISOString().split('T')[0]`: meia-noite *local* em UTC+1 são 23:00 UTC do **dia anterior** | `isoFromParts(y, m, d)` (pura, sem fuso) |
++| 2 | **Lançamentos feitos entre as 00:00 e as 01:00 guardavam o dia ANTERIOR** | 24 sítios com `new Date().toISOString().slice(0,10)/.split('T')[0]/.substring(0,10)`: prazo e entrega de contribuições, referência de ofertas/despesas, período dos relatórios, donativos/renovações do cartão, nomes de ficheiros de backup e Excel | `luandaDayKey()` |
++| 3 | **«Mês corrente»/«ano corrente» dependiam do fuso do aparelho** | 15 sítios: Dashboard, Finanças, Relatórios, Orçamento, Obrigações, Portal do Membro, cartão, dízimos | `luandaYear()` / `luandaMonth()` / `luandaMonthIdx()` / `luandaMonthStr()` |
++| 4 | **Aniversariantes errados** (dia do aparelho + formato legado ignorado) | `Dashboard.tsx` e `useNotifications.ts` comparavam `getMonth()/getDate()` locais; `birthDate.split('-')` devolve `NaN` para `'DD/MM/AAAA'` e o membro **desaparecia** da lista | `isBirthdayToday()` / `normalizeBirthDate()` (aceitam ISO, `DD/MM/AAAA`, `DD-MM-AAAA` e epoch) |
++| 5 | **Gráficos «últimos 6 meses» partiam-se na viragem do ano** | `new Date(currentYear, currentMonth - i, 1)` em `Members.tsx`, `MemberPortal.tsx`, `MemberTithesTracker.tsx` | `lastMonthsLuanda(n)` — pura, testada, atravessa o ano |
++| 6 | 🐛 **Pizza «Dizimistas do Mês» estava SEMPRE vazia** | `Dashboard.tsx:176` — `where('month','==', 10)` (número) contra o valor guardado `'10'` (string canónica desde a migração v1.9.3): a query nunca devolvia nada, portanto homens/mulheres = 0 e o gráfico dizia «Sem dados suficientes» | `where('month','==', luandaMonthStr())` |
++| 7 | **Exportações com o dia anterior** | `new Date(birthDate).toLocaleDateString('pt-AO')` (Excel e PDF de membros) faz parse como **UTC** | `fmtDatePT(normalizeBirthDate(...))` |
++| 8 | Rodapés de PDF («Emitido em», «Gerado em», «Data:», relatórios) no fuso do aparelho | `pdfUtils.ts:108`, `MemberPortal.tsx:258`, `Finances.tsx:349`, `Reports.tsx:174/391`, `Contributions.tsx:333` | `fmtTodayPT()` / `fmtTodayTimePT()` |
++| 9 | Nome das gravações da Rádio com o dia/hora do aparelho | `radio.ts:170` | `luandaParts()` |
++
++**Regra que passa a valer (e está testada):** «hoje», «este mês», «este ano» e
++qualquer conversão de data só saem de `lib/luanda.ts`. As 13 funções novas são
++puras (`now` injectável) e têm 19 testes dedicados.
++
++---
++
++## 🔴 P3-B — Worker: quota, resiliência e validação
++
++| # | Achado | Evidência | Correcção |
++|---|---|---|---|
++| 10 | **QUOTA: o cron reescrevia `paidAmount` em TODAS as contribuições abertas, TODOS os minutos** | `recomputeContributions`: `fv(f,'paidAmount') !== Math.round(paid*100)/100` compara uma **string** (a REST API devolve `integerValue: "1500"`) com um **número** (`1500`) — `'1500' !== 1500` é sempre `true`, logo o PATCH corria sempre. Com 20 contribuições abertas: **≈28.800 escritas/dia**; o plano Spark permite **20.000/dia**. O sistema ia começar a falhar escritas sem causa aparente | comparação numérica (`fnum`) + dinheiro tratado como inteiro de cêntimos de ponta a ponta (removido o `Math.round(x*100)/100` herdado dos valores decimais pré-v1.12) |
++| 11 | **Cron frágil: uma tarefa partida rebentava com as outras três E com o heartbeat** | `scheduled()` tinha UM try/catch para `processOutbox → recomputeContributions → runReminders → processEventReminders`. Um 400 do Firestore (índice em falta) na 1.ª tarefa impedia as restantes **e** o heartbeat — a app passava a dizer «✗ Cron SEM pulsar» com o agendador vivo, e nada dizia qual tarefa falhava | `runJob(nome, fn)` por tarefa; heartbeat gravado **mesmo com erros** (`jobsOk`, `lastError`); `/__health` expõe `cron.ok`, `cron.error`, `cron.counts`; Suporte → Diagnóstico mostra qual tarefa falha |
++| 12 | **Prazos decididos em UTC** | `now > new Date(due + 'T23:59:59Z')` = 00:59 do **dia seguinte** em Luanda: uma contribuição só passava a «em atraso» uma hora depois do dia acabar | `luandaEndOfDayMs(due)` (22:59:59.999 UTC), espelho de `luandaEndOfDay()` da app |
++| 13 | **Verificação do token do Firebase incompleta** | `verifyFirebaseIdToken`: (a) `header.alg` nunca era verificado; (b) `if (claims.exp && claims.exp < now)` — um token **sem `exp`** passava; (c) sem verificação de `sub`; (d) sem verificação de `iat` futurista | `alg === 'RS256'` obrigatório, `exp` obrigatório e no passado, `iat ≤ now+60`, `sub` não vazio (≤128), token com 32–4096 caracteres, JSON malformado recusado sem rebentar |
++| 14 | **Palavra-passe temporária sem política** | `/admin/create-auth-account` e `/admin/reset-temp-password` usavam `tempPassword || genTempPassword()` sem validar — o Firebase só recusa <6 caracteres, portanto `'123456'` ficava activa 7 dias | `validateTempPassword()`: 8–200, sem espaços, letras **e** números, lista de óbvias; email validado e normalizado (minúsculas) antes de criar a conta |
++| 15 | **`genTempPassword()` podia gerar passwords que a própria política recusa** | alfabeto com 48 letras e 10 dígitos: ≈10% das passwords de 12 caracteres saíam **sem nenhum dígito** → o admin recebia um erro ao criar a conta | garante 1 letra + 1 dígito (posição aleatória), mantendo o alfabeto sem `0/O/1/l` |
++| 16 | **Datas impossíveis no auto-cadastro** | `validateSignup` usava `^\d{4}-\d{2}-\d{2}$`: `'1990-13-45'` (mês 13, dia 45) era aceite, gravado em `member_signups` e depois copiado para a ficha do membro — partindo aniversariantes, cartão e relatórios | `isRealIsoDate()` (calendário real, bissextos, anos 1850…ano+1). *Apanhado pelo primeiro teste escrito para o Worker* |
++| 17 | **Rate limits sem poda** | `signupBuckets`/`rateBuckets` são `Map` por IP/email que nunca eram limpos — crescimento sem limite no isolate | `pruneBuckets()` (tecto 2000 entradas; limpa as expiradas e, em último caso, repõe a zero) |
++| 18 | **Recálculo de contribuições a cada minuto era desnecessário** | o cliente já grava `status`/`paidAmount` ao registar um pagamento (`Contributions.tsx:232/238`) e a viragem para «em atraso» é diária | `isRecomputeMinute()` — corre 1 minuto em cada 5 (−80% das leituras/escritas desta tarefa, sem estado no isolate) |
++| 19 | **O ficheiro mais crítico do sistema não tinha UM teste** | 1465 linhas (validação do cadastro, token, rate limits, moeda, Luanda, fila SMS, lembretes, estados) e o CI só fazia `node --check` | superfície `export const __test` (só funções puras; o `export default` do Cloudflare não muda) + **50 testes** em `worker/__tests__/ai-worker.test.js`, incluindo testes de coerência contra `lib/money.ts` e `lib/luanda.ts` (o Worker duplica essa lógica — agora a divergência apanha-se) |
++
++---
++
++## 🟠 P3-C — Regras: o que faltava fechar
++
++| # | Achado | Evidência | Correcção |
++|---|---|---|---|
++| 20 | **Qualquer sessão podia abrir pedidos de atualização sobre a ficha de OUTRO membro** | `match /pedidos_atualizacao`: `allow create: if isAuthenticated() && incoming().memberId != null` — sem qualquer verificação de dono. Um cadastro **rejeitado** (que continua com conta Auth) podia encher a fila da liderança com pedidos sobre membros arbitrários e propor-lhes dados | `ownsMemberRecord(memberId)` — `get()` do documento do membro comparado com o email do token (`get()`/`exists()` nas regras **não contam** para a quota); `memberEmail` coerente; `requestedData` limitado aos 3 campos que a aprovação realmente aplica (`telefone`, `endereco`, `estadoCivil`); `status == 'pendente'` obrigatório |
++| 21 | **Filas de saída sem validação de conteúdo** | `whatsapp_outbox`: `allow create: if hasFinancialWriteAccess()` — qualquer documento. `message_outbox`: idem para `kind == 'board'`. O Worker envia o que lá estiver (número e texto arbitrários) assim que os fornecedores pagos forem ligados (`PROVIDERS`) | `isValidWhatsAppOutboxDoc()` / `isValidOutboxDoc()` com os payloads reais de `Finances.tsx`, `lib/notify.ts` e `lib/board.ts` (tipos, tamanhos, estados permitidos) |
++| 22 | **`notifications` e `audit_logs` sem validação** | create só exigia o papel — tamanho/forma livres | `isValidNotificationDoc()` (9 campos máx., `read` bool, `body` ≤ 4000) e `isValidAuditDoc()` (aceita os **dois** esquemas que coexistem desde a v1.14.4) |
++| 23 | **Bloco `match /settings/{…}` duplicado** | dois blocos equivalentes (`{docId}` e `{settingId}`): o Firestore avalia os dois e basta um `allow` para conceder — editar um não mudava nada | removido o duplicado (o checker abaixo passa a impedir que volte) |
++| 24 | **Datas de Avisos/Eventos validadas só pelo formato** | `isDateIsoStr` = `^\d{4}-\d{2}-\d{2}$`: `'2026-13-45'` entrava em `events.date` e o lembrete do Worker (que compara strings) nunca casava | regex com mês `01-12` e dia `01-31` (o calendário fino vive no cliente/Worker: `isCalendarDateIso`) |
++| 25 | **Nada verificava as regras automaticamente** | o emulador exige Java (não há no CI) e o deploy é manual — um parêntesis a mais ou uma função mal escrita só aparecia no deploy; um validador escrito e **não ligado** a nenhum `allow` não aparecia nunca (foi o que aconteceu a `isValidMemberCreate` até à v1.18) | **`scripts/check-rules.mjs`** + `npm run lint:rules` + passo no CI + 15 testes: equilíbrio de `(){}[]`, chamadas a funções inexistentes, funções definidas e nunca usadas, `match` duplicados (wildcards normalizados), `match` sem `allow`, operações inválidas em `allow`, cabeçalho em falta |
++
++---
++
++## ✅ Verificações que passaram (nada a corrigir)
++
++- **Índices compostos**: todos os `runQuery` do Worker com igualdade+desigualdade
++  têm índice em `firestore.indexes.json` (`message_outbox` status+cancelUntil,
++  memberId+dedupeDay; `contribution_payments` contributionId+deliveryDate…).
++  As queries só com igualdades usam os índices de campo único.
++- **`/auth/self-register`**: duplicados conferidos no servidor (email, BI,
++  telefone, pedido anterior), allowlist de campos, `<`/`>` recusados, telefone
++  normalizado para `+244`, BI para maiúsculas, palavra-passe **nunca** gravada
++  no Firestore (`const { password: _pw, ...docFields } = s`), rate limit 5/10 min por IP.
++- **Rotas `/admin/*`**: papel e `isSuper` lidos do documento `admins/` (sem
++  emails hardcoded desde a v1.14.5); conta desativada e palavra-passe por trocar
++  bloqueadas **também** no servidor; o alvo de reset/disable não pode ser super.
++- **`/__health` público**: não revela segredos — só booleanos de presença.
++- **Colecções no código vs. regras**: todas as colecções escritas pela app têm
++  bloco `match` (agora verificado automaticamente pelo checker).
++- **XSS**: as 3 camadas mantêm-se (editor saneia → `richtext.ts` re-saneia →
++  `isSafeRichText` no servidor); nenhum `dangerouslySetInnerHTML` novo.
++- **Dinheiro**: fonte única (`formatKz`/cêntimos) sem fugas novas; o `fmtKz` do
++  Worker passa a ser testado **contra** o `formatKz` da app.
++- **Bundle**: `esbuild` empacota a aplicação inteira sem erros (o `vite build`
++  precisa de >1 GB de RAM — não cabe na sandbox de revisão; no CI corre normal).
++
++---
++
++## 🟡 P4 — sugerido, **não** feito nesta versão
++
++26. **Digest de avisos lê todos os membros**: `mergeBoardDigest` faz
++    `fsList('members', 1000)` e 1 PATCH por membro em cada lembrete de evento.
++    Com a congregação a crescer, paginar (ou guardar a lista de
++    `memberEmail`/`id` num documento `settings/board_recipients`) e escrever em
++    lote. Hoje: ~500 leituras + ~500 escritas por evento com lembrete.
++27. **Storage**: qualquer conta autenticada pode **tentar** escrever em
++    `posters/**` (as regras do Storage não conseguem ler o Firestore — limitação
++    documentada em P2-13). Mitigação real só com custom claims (exige
++    Functions/Blaze) ou upload via Worker.
++28. **Testes de regras com o emulador** (`@firebase/rules-unit-testing` +
++    `firebase emulators:exec`) quando houver Java no CI — o checker estático é o
++    mínimo aceitável, não o ideal: valida forma, não semântica.
++29. **Dependências**: `vite` 7 / `vitest` 4 continuam bloqueados pelo bug do
++    **npm 10.8.2** (`edgesOut`); o npm 12.2.1 já existe — vale a pena pôr
++    `npm i -g npm@12` no workflow e tentar de novo. `firebase` 12 → 13 exige
++    validação ponta-a-ponta em aparelho (auth/firestore/storage).
++30. **TypeScript strict na UI**: estender o padrão do `tsconfig.lib.json` a
++    `src/hooks` e `src/context` (é onde vive a lógica de sessão e notificações).
++31. **Aceites por desenho** (mantêm-se): rate limits do Worker por isolate
++    (P2-14) e mensagens específicas de duplicado no auto-cadastro (P2-16).
++
++---
++
++## Números desta versão
++
++| | antes (v1.18.0) | depois (v1.19.0) |
++|---|---|---|
++| Testes | 191 | **282** (+91) |
++| Testes do Worker | 0 | **50** |
++| Testes das regras | 0 | **15** (+ passo no CI) |
++| `new Date()` fora de `lib/luanda.ts` | ~50 sítios | 2 (instantes, não dias: `lib/trash.ts`) |
++| Escritas/dia do cron (20 contribuições abertas) | ~28.800 | ~0 em regime estacionário |
++| Worker | 2.9.1 | **2.10.0** |
+diff --git a/docs/MUDANCAS.md b/docs/MUDANCAS.md
+index 13c5b01..d4db7ae 100644
+--- a/docs/MUDANCAS.md
++++ b/docs/MUDANCAS.md
+@@ -1,5 +1,150 @@
+ # 🔧 MUDANÇAS face ao repositório original
+ 
++## v1.19.0 — P3: Luanda em todo o lado, Worker 2.10.0 (quota/cron/token), regras sem buracos, testes do Worker e das regras
++
++Auditoria nova em `docs/AUDITORIA-2026-10-31.md` (25 achados, todos com
++evidência e correcção). Guião de teste: `docs/VERIFICACAO-V1.19.0.md`.
++
++### Datas — «hoje», «este mês» e «este ano» passam a vir SÓ de `lib/luanda.ts`
++
++A biblioteca existia desde a v1.13.0, mas ~50 sítios da UI continuavam no fuso
++do APARELHO (`new Date().getMonth()`) ou em UTC (`toISOString().slice(0,10)`).
++Bugs reais que isto causava e que agora estão fechados:
++
++- **Datas de nascimento importadas do Excel recuavam SEMPRE 1 dia**
++  (`new Date(y,m-1,d).toISOString()`: meia-noite local em UTC+1 = 23:00 UTC do
++  dia anterior) → `isoFromParts()`.
++- **Lançamentos feitos entre as 00:00 e as 01:00 guardavam o dia anterior**
++  (prazo/entrega de contribuições, referência de ofertas e despesas, período dos
++  relatórios, donativos/renovações do cartão, nomes de ficheiros de backup e
++  Excel — 24 sítios) → `luandaDayKey()`.
++- **Pizza «Dizimistas do Mês» do Painel estava SEMPRE vazia**: a query comparava
++  `month == 10` (número) com o valor guardado `'10'` (string canónica da
++  migração v1.9.3) → nunca devolvia nada. Agora compara com `luandaMonthStr()`.
++- **Aniversariantes**: contados pelo dia do aparelho e com `split('-')`, que
++  devolve `NaN` para o formato legado `'DD/MM/AAAA'` (o membro desaparecia da
++  lista) → `isBirthdayToday()` + `normalizeBirthDate()` (ISO, `DD/MM/AAAA`,
++  `DD-MM-AAAA`, epoch). Vale para o Painel e para a notificação local do APK.
++- **Gráficos dos «últimos 6 meses»** (ficha do membro, Portal, Dízimos) faziam
++  `new Date(year, month - i, 1)` e partiam-se na viragem do ano →
++  `lastMonthsLuanda(n)`, pura e testada.
++- **Exportações e rodapés de PDF** («Emitido em», «Gerado em», «Data:»,
++  relatórios, nome de campanhas) usavam `toLocaleDateString` do aparelho →
++  `fmtTodayPT()` / `fmtTodayTimePT()`; nascimento no Excel/PDF de membros →
++  `fmtDatePT(normalizeBirthDate(...))`.
++- Nome das gravações da Rádio Maranata com partes de Luanda.
++
++Novas funções (puras, `now` injectável, 19 testes novos): `luandaYear`,
++`luandaMonth`, `luandaMonthIdx`, `luandaDayOfMonth`, `luandaMonthStr`,
++`luandaMonthKey`, `luandaEndOfDay`, `isoFromParts`, `luandaDateOf`,
++`monthNamePT`, `luandaMonthNamePT`, `fmtTodayPT`, `fmtTodayTimePT`,
++`lastMonthsLuanda`, `isBirthdayToday`, `ageToday`, `normalizeBirthDate`,
++`isCalendarDateIso`, `isLeapYear`.
++
++### Worker 2.10.0 — quota, resiliência, token e validação
++
++- **QUOTA (o achado mais caro da auditoria)**: o cron reescrevia `paidAmount`
++  em TODAS as contribuições abertas, TODOS os minutos. `fv(f,'paidAmount')`
++  devolve uma STRING (`integerValue: "1500"`) e era comparada com um NÚMERO
++  (`1500`) — `'1500' !== 1500` é sempre verdade, logo o PATCH corria sempre.
++  Com 20 contribuições abertas: **≈28.800 escritas/dia** contra **20.000/dia**
++  do plano Spark (o sistema começaria a falhar escritas sem causa aparente).
++  Comparação passa a ser numérica e o dinheiro volta a ser inteiro de cêntimos
++  de ponta a ponta.
++- **Cron resiliente**: cada tarefa (`outbox`, `contributions`, `reminders`,
++  `events`) corre no seu `runJob()` com try/catch próprio. Antes, UMA falha na
++  primeira rebentava com as outras três **e** com o heartbeat — a app dizia
++  «✗ Cron SEM pulsar» com o agendador vivo e nada dizia o que estava partido.
++- **Heartbeat mais rico**: `jobsOk` + `lastError` («contributions: runQuery
++  contributions: 400») + contagens por tarefa; `/__health` expõe
++  `cron.ok/error/counts`; **Suporte → Diagnóstico** mostra qual tarefa falha
++  (`cronHealthLines()`, pura e testada).
++- **Recálculo de contribuições de 5 em 5 minutos** (`isRecomputeMinute`): o
++  cliente já grava `status`/`paidAmount` ao registar um pagamento e a viragem
++  para «em atraso» é diária → −80% das leituras/escritas do cron.
++- **Prazos em Luanda**: `em_atraso` era decidido por `due + 'T23:59:59Z'`
++  (= 00:59 do dia seguinte em Luanda) → `luandaEndOfDayMs()`.
++- **Token do Firebase endurecido**: `alg === 'RS256'` obrigatório (recusa
++  `none`/`HS256` antes de procurar a chave), `exp` **obrigatório** (antes um
++  token sem `exp` passava), `iat` não futurista (60 s), `sub` não vazio,
++  comprimento 32–4096, JSON malformado recusado sem excepção.
++- **Palavra-passe temporária com política**: `validateTempPassword()` (8–200,
++  sem espaços, letras **e** números, lista de óbvias) aplicada em
++  `/admin/create-auth-account` e `/admin/reset-temp-password`; email validado e
++  normalizado. `genTempPassword()` garante 1 letra + 1 dígito — antes, ≈10% das
++  geradas saíam só com letras e seriam recusadas pela política nova.
++- **Datas impossíveis no auto-cadastro**: `'1990-13-45'` passava o regex
++  `^\d{4}-\d{2}-\d{2}$` e seguia para `member_signups` → ficha do membro
++  (aniversariantes, cartão, relatórios). Agora `isRealIsoDate()` valida o
++  calendário (bissextos incluídos) e o intervalo de anos. *Foi o primeiro teste
++  escrito para o Worker que apanhou isto.*
++- **Rate limits com poda**: `signupBuckets`/`rateBuckets` cresciam sem limite no
++  isolate → `pruneBuckets()` (tecto 2000).
++- **Testes do Worker: 0 → 50.** Superfície `export const __test` no fim do
++  ficheiro (só funções puras; o `export default` que o Cloudflare usa não muda,
++  nenhuma rota nova, nenhum segredo exposto) + `worker/__tests__/ai-worker.test.js`.
++  Inclui testes de COERÊNCIA com a app: `fmtKz` ≡ `formatKz` (`lib/money.ts`) e
++  `luandaNow`/`luandaEndOfDayMs` ≡ `luandaParts`/`luandaEndOfDay` (`lib/luanda.ts`)
++  — o Worker duplica essa lógica e a divergência passa a apanhar-se.
++  O `vitest.config.ts` inclui agora `worker/**/*.test.js`.
++
++### Regras do Firestore — fechar o resto
++
++- 🐛 **`pedidos_atualizacao`: QUALQUER sessão podia abrir pedidos sobre a ficha
++  de OUTRO membro** (`allow create: if isAuthenticated() &&
++  incoming().memberId != null`) — incluindo um cadastro rejeitado, que continua
++  com conta Auth: poluição da fila da liderança e propostas de dados alheios.
++  Agora exige `ownsMemberRecord()` (`get()` do documento do membro comparado com
++  o email do token — `get()`/`exists()` nas regras não contam para a quota),
++  `memberEmail` coerente, `status == 'pendente'` e `requestedData` limitado aos
++  três campos que a aprovação realmente aplica (`telefone`, `endereco`,
++  `estadoCivil`).
++- **Filas de saída validadas**: `whatsapp_outbox` (recibos por WhatsApp) e
++  `message_outbox` (fila SMS/WhatsApp) aceitavam qualquer documento de qualquer
++  liderança — o Worker enviaria o que lá estivesse quando os fornecedores pagos
++  forem ligados. Validadores escritos a partir dos payloads reais
++  (`Finances.tsx`, `lib/notify.ts`, `lib/board.ts`).
++- **`notifications` e `audit_logs` validados** (a auditoria aceita os DOIS
++  esquemas que coexistem desde a v1.14.4).
++- **Bloco `match /settings/{…}` duplicado removido** — havia dois equivalentes
++  (`{docId}` e `{settingId}`); o Firestore avalia os dois e basta um `allow`
++  para conceder, portanto editar um não mudava nada.
++- **Datas de Avisos/Eventos**: `isDateIsoStr` aceitava `'2026-13-45'` (e o
++  lembrete do Worker, que compara strings, nunca casava) → mês `01-12`, dia
++  `01-31`.
++- **Verificador estático das regras** (`scripts/check-rules.mjs`,
++  `npm run lint:rules`, passo novo no CI, 15 testes): sem Java no CI não há
++  emulador, e o deploy é manual — um parêntesis a mais ou uma função mal escrita
++  só aparecia no deploy; um validador escrito e **não ligado** a nenhum `allow`
++  não aparecia nunca (foi o que aconteceu a `isValidMemberCreate` até à v1.18).
++  Apanha: `(){}[]` desequilibrados, funções chamadas e inexistentes, funções
++  definidas e nunca usadas, blocos `match` duplicados (wildcards normalizados),
++  `match` sem `allow`, operações inválidas em `allow`, cabeçalho em falta.
++
++### Números
++
++Testes **191 → 282** (+91: 50 do Worker, 15 das regras, 19 de Luanda, 7 do
++diagnóstico do cron). `tsc` raiz 0 erros · `tsc` strict em `src/lib` 0 erros ·
++`npm run lint:rules` 0 erros/0 avisos nos dois ficheiros de regras · `node
++--check` do Worker ok · bundle completo validado com `esbuild` (o `vite build`
++precisa de >1 GB de RAM e não coube na sandbox de revisão).
++
++### Deploy desta versão
++
++1. **Regras**: Actions → «Deploy Firebase» (manual) — leva `firestore.rules`
++   (validadores novos) e `storage.rules` (inalterado).
++2. **Worker 2.10.0**: Actions → «deploy-ai-worker» **ou** Cloudflare → Workers →
++   `iesa-ai` → *Edit code* → colar `worker/ai-worker.js` → Deploy. Confirmar em
++   `https://iesa-ai.cadupaulino99.workers.dev/__health` (versão **2.10.0** e
++   `cron.ok`). O cron continua `* * * * *`.
++3. **APK**: automático no push ao `main` (Release `v1.19.0` com `app-release.apk`);
++   a app avisa os utilizadores.
++4. Não há migrações de dados nesta versão. Quem importou membros do Excel com
++   datas de nascimento pode querer rever os aniversários: as datas gravadas
++   ANTES desta versão continuam com o dia anterior (o corrector só afecta
++   importações novas).
++
++
+ ## v1.18.0 — P2: sermões para membros, validação no servidor, strict em lib/, backup Android, cron visível, README
+ 
+ - **Rádio — biblioteca para os membros**: a liderança publica gravações da
+diff --git a/docs/VERIFICACAO-V1.19.0.md b/docs/VERIFICACAO-V1.19.0.md
+new file mode 100644
+index 0000000..028d5cd
+--- /dev/null
++++ b/docs/VERIFICACAO-V1.19.0.md
+@@ -0,0 +1,213 @@
++# Verificação v1.19.0 — datas de Luanda, Worker 2.10.0, regras, testes
++
++> **Antes de começar**, por esta ordem:
++> 1. **Regras**: GitHub → Actions → **«Deploy Firebase»** → *Run workflow*
++>    (leva o `firestore.rules` novo). Espere ficar verde.
++> 2. **Worker 2.10.0**: Actions → **«deploy-ai-worker»** *ou* Cloudflare →
++>    Workers & Pages → `iesa-ai` → *Edit code* → apagar tudo → colar
++>    `worker/ai-worker.js` → **Save and Deploy**.
++>    Confirme em `https://iesa-ai.cadupaulino99.workers.dev/__health`:
++>    `"version": "2.10.0"`.
++> 3. **APK v1.19.0**: sai sozinho no push ao `main` (Release com
++>    `app-release.apk`). Instale-o no telemóvel.
++> 4. **Não há migrações de dados** nesta versão. Faça na mesma uma cópia de
++>    segurança (Admin → Gestão de Dados → Backup) antes de começar.
++>
++> Regra de ouro de sempre: cada passo tem um **«Esperado»**. Se aparecer outra
++> coisa, pare nesse passo e envie a captura — não continue «para ver se passa».
++
++---
++
++## 1. Diagnóstico da IA (o passo que confirma o Worker novo)
++
++App → **Suporte → Diagnóstico/Testar ligação**.
++
++**Esperado**, por esta ordem:
++
++- `✓ Servidor de IA online — versão 2.10.0 (build 2026-10-31 …).`
++- `✓ Leitura de documentos (visão) disponível.`
++- `✓ Cron vivo (fila SMS, lembretes, estados) — última execução há X min, v2.10.0.`
++- **`✓ As tarefas do cron terminaram sem erros (fila, contribuições, lembretes, eventos).`** ← linha NOVA
++- `· Última execução: fila 0 · contribuições 0 · lembretes 0 · eventos 0.` ← linha NOVA
++- `✓ Segredo GEMINI_API_KEY presente.` / `✓ Segredo FIREBASE_SA_JSON presente.`
++
++**Se aparecer** `✗ O cron está a correr, mas uma tarefa falha: <nome>: <erro>`:
++não é um problema novo — é um problema antigo que **agora se vê** (antes uma
++tarefa partida rebentava com as outras três e só aparecia «Cron SEM pulsar»).
++Envie a linha inteira; ela diz exactamente qual tarefa e qual erro.
++
++**Se aparecer** `⚠ Sem heartbeat do cron`: o Worker no ar é antigo (publique o
++2.10.0) ou o Trigger `* * * * *` não está configurado.
++
++---
++
++## 2. «Hoje» é hoje (o bug das 00:00–01:00)
++
++Este é o teste que prova a mudança de fundo. Faça-o **de preferência perto da
++meia-noite**, ou mude temporariamente o fuso do telemóvel.
++
++1. Definições do telemóvel → Data e hora → desligar «automático» → fuso
++   **GMT-03:00 (Brasília)** e hora **23:30 do dia de ontem**.
++2. Abra a app → **Finanças → Nova despesa** (ou Contribuições → Nova).
++3. Olhe para o campo **Data/Referência**.
++
++**Esperado:** a data de **hoje em Luanda** — não a de ontem, não a do fuso que
++definiu. (Antes desta versão aparecia o dia do aparelho/UTC.)
++
++4. Repita em **Contribuições → Nova contribuição → Prazo** e em
++   **Membros → cartão → Donativo/Renovação**.
++5. Volte a pôr a data/hora em automático. **Não mexer:** não grave nenhum destes
++   registos de teste — feche as janelas.
++
++---
++
++## 3. Painel → «Dizimistas do Mês» (estava sempre vazio)
++
++**Painel/Dashboard → separador do mês → cartão «Dizimistas do Mês (Género)».**
++
++**Esperado:** se houve dízimos lançados **este mês**, a pizza mostra
++Homens/Mulheres com números — antes mostrava sempre «Sem dados suficientes»,
++mesmo com lançamentos, porque a consulta comparava o mês como número (`10`) com
++o valor guardado como texto (`'10'`).
++
++Confirmação cruzada: **Finanças → Dízimos**, filtre o mês corrente — o número de
++pessoas distintas deve bater certo com a pizza.
++
++---
++
++## 4. Aniversariantes (lista e notificação local)
++
++1. **Painel → separador «Aniversariantes»**.
++   **Esperado:** título «Aniversariantes do Mês (Novembro)» com o mês **certo**;
++   lista ordenada por dia; os de hoje com o selo laranja **«Hoje!»**.
++2. Escolha um membro cujo aniversário seja **amanhã** e, na ficha dele, corrija a
++   data de nascimento para **hoje** (guarde). Volte ao Painel.
++   **Esperado:** aparece na lista com «Hoje!». (Desfaça a alteração depois.)
++3. Um membro com data de nascimento no formato antigo `25/10/1990` (se existir):
++   **Esperado:** aparece na lista — antes desaparecia, porque o código só lia o
++   formato `AAAA-MM-DD`.
++
++---
++
++## 5. Importar membros do Excel (as datas recuavam 1 dia)
++
++**Membros → Importar Excel** com um ficheiro em que a coluna «Nascimento» seja
++**data do Excel** (não texto) — ex.: `01/01/2000`.
++
++**Esperado:** na ficha do membro importado, Nascimento = **01/01/2000**.
++Antes desta versão ficava **31/12/1999** (sempre menos um dia).
++
++Se não quiser importar nada a sério: faça a importação, confira a data, e apague
++o membro de teste (fica na Lixeira).
++
++---
++
++## 6. Portal do Membro → «Pedir atualização» (buraco fechado)
++
++1. Entre com uma **conta de membro** (não de liderança) → Portal →
++   **Pedir atualização** → mude o telefone → **Enviar**.
++   **Esperado:** «Pedido de atualização enviado com sucesso!»; em
++   **«Os meus pedidos»** aparece como *pendente*.
++2. Na liderança → **Admin → Pedidos** → o pedido está lá, **Aprovar**.
++   **Esperado:** o telefone do membro fica actualizado e o membro recebe a
++   notificação «Pedido de atualização aprovado».
++3. *(Só se quiser confirmar a segurança, e com alguém de confiança)*: com uma
++   conta de membro, tente criar um pedido sobre a ficha de **outro** membro.
++   **Esperado:** **recusado** pelo servidor («Sem permissão para esta operação»).
++   Antes desta versão era aceite — qualquer sessão, incluindo um cadastro
++   rejeitado, podia abrir pedidos em nome de outra pessoa.
++
++---
++
++## 7. Auto-cadastro recusa datas impossíveis
++
++Ecrã de **Cadastro** (fora da app) → preencha e, em **Data de nascimento**,
++force um valor impossível se o campo o permitir (ou peça a alguém para tentar
++`1990-13-45` via formulário).
++
++**Esperado:** `Data inválida: birthDate (use AAAA-MM-DD, com dia e mês reais).`
++Antes o servidor aceitava mês 13 e dia 45.
++
++Confirme também o que **não** mudou: um cadastro válido continua a criar o
++pedido e a mostrar o ecrã «à espera de aprovação».
++
++---
++
++## 8. Conta de liderança: palavra-passe temporária com política
++
++**Admin → Utilizadores → Gerar nova palavra-passe temporária** para uma conta de
++teste; na caixa de palavra-passe (se a deixar escolher), experimente:
++
++| Escrever | Esperado |
++|---|---|
++| `123456` | recusada: «precisa de 8 a 200 caracteres» |
++| `Iesa 2026` | recusada: «não pode conter espaços» |
++| `password` | recusada: «demasiado óbvia» |
++| `so-letras-aqui` | recusada: «deve misturar letras e números» |
++| (deixar vazio) | aceite — o servidor gera uma de 12 caracteres, **sempre** com letras e números |
++
++**Esperado:** a gerada automaticamente entra sempre (antes, ~10% das geradas
++saíam só com letras e dariam erro ao entrar). **Não mexer:** não faça reset à
++sua própria conta de super administrador — o servidor recusa de propósito.
++
++---
++
++## 9. Quota do Firestore (a correcção invisível mas mais importante)
++
++Não há nada para carregar: confirme só que o sistema deixa de queimar escritas.
++
++1. Firebase Console → **Firestore → Usage** → gráfico **Documents written**.
++2. Compare o dia de hoje com um dia da semana passada.
++
++**Esperado:** a linha base (sem ninguém a usar a app) desce muito — o cron
++deixou de reescrever `paidAmount` em todas as contribuições abertas a cada
++minuto (eram ~20 escritas/minuto = **28.800/dia**, acima do limite de 20.000 do
++plano gratuito). Se quiser ver o efeito depressa: anote o número de escritas,
++espere 10 minutos sem tocar na app, e confirme que subiu apenas umas dezenas
++(heartbeat + fila), não milhares.
++
++---
++
++## 10. Contribuições: estados continuam certos
++
++**Contribuições** → escolha uma contribuição **Em curso** com prazo **ontem**.
++
++**Esperado:** passa a **«Em atraso»** no prazo de **5 minutos** (o recálculo
++automático passou de 1 em 1 minuto para 5 em 5 minutos, para poupar quota).
++Registe um pagamento que complete o valor → **Esperado:** passa **imediatamente**
++a «Concluída» (isso é feito pela app, não pelo cron), com notificação ao membro.
++
++---
++
++## 11. Avisos e Eventos continuam a publicar
++
++**Admin → Avisos** → publicar um aviso com data «visível até» e **Eventos** →
++marcar um evento para amanhã com «lembrar 1 dia antes».
++
++**Esperado:** ambos publicam sem erros e aparecem no **Portal do Membro**.
++(As regras passaram a exigir mês `01-12` e dia `01-31` nas datas; um evento com
++data inválida seria recusado com «Sem permissão para esta operação».)
++
++---
++
++## 12. Rádio Maranata (nome das gravações)
++
++**Rádio → gravar** (30 segundos chegam) → parar.
++
++**Esperado:** o ficheiro chama-se `Maranata_AAAA-MM-DD_HHhMM.aac` com a **data e
++hora de Luanda**. Se gravar mesmo depois da meia-noite, o nome já é do dia novo.
++
++---
++
++## Se algo correr mal
++
++| Sintoma | Primeiro gesto |
++|---|---|
++| Diagnóstico diz «versão 2.9.1» | O Worker não foi publicado — repita o passo 2 do topo |
++| «✗ O cron está a correr, mas uma tarefa falha» | Envie a linha completa; as outras tarefas continuam a funcionar |
++| Um formulário recusa guardar com «Sem permissão» | Capture o ecrã e o que estava a preencher — pode ser um validador novo a apanhar dados que já estavam mal |
++| Pedido de atualização de um membro falha | Confirme que a ficha do membro tem **o mesmo email** da conta dele (Admin → ficha → Email); sem isso o servidor não sabe que o pedido é dele |
++| Pizza «Dizimistas» continua vazia | Confirme que existem dízimos com **mês de referência/entrega = mês corrente** (Finanças → Dízimos) |
++
++**Documentos desta versão:** `docs/AUDITORIA-2026-10-31.md` (o que se encontrou
++e porquê) · `docs/MUDANCAS.md` → v1.19.0 (o que mudou, ponto por ponto).
+diff --git a/firestore.rules b/firestore.rules
+index aa5b79d..25c303d 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -128,6 +128,92 @@ service cloud.firestore {
+       return resource.data;
+     }
+ 
++    // ─── v1.19.0 (P3 «regras: fechar o resto») ─────────────────────────────
++    // Quatro colecções tinham escrita «só liderança» mas SEM validação de
++    // campos: qualquer conta de liderança comprometida (ou um bug de UI) podia
++    // gravar lixo — ou, nas filas SMS/WhatsApp, mensagens arbitrárias para
++    // números arbitrários que o Worker enviaria em nome da igreja.
++    // Os validadores espelham EXACTAMENTE os payloads que a app já envia
++    // (lib/notify.ts, lib/board.ts, lib/audit.ts, Finances, Admin, Portal).
++    function isStr(d, k, max) {
++      return !hasField(d, k) || d[k] == null || (d[k] is string && d[k].size() <= max);
++    }
++
++    function isValidNotificationDoc(d) {
++      return d.keys().hasAll(['userEmail', 'kind', 'title', 'body', 'read', 'createdAt']) &&
++        d.keys().size() <= 9 &&
++        d.userEmail is string && d.userEmail.size() > 0 && d.userEmail.size() <= 200 &&
++        d.kind is string && d.kind.size() <= 40 &&
++        d.title is string && d.title.size() > 0 && d.title.size() <= 200 &&
++        d.body is string && d.body.size() <= 4000 &&
++        d.read is bool && d.createdAt is number &&
++        isStr(d, 'refId', 100) && isStr(d, 'byEmail', 200) &&
++        (!hasField(d, 'updatedAt') || d.updatedAt is number);
++    }
++
++    function isValidOutboxDoc(d) {
++      return d.keys().hasAll(['memberId', 'kind', 'body', 'status', 'createdAt']) &&
++        d.keys().size() <= 20 &&
++        d.memberId is string && d.memberId.size() > 0 && d.memberId.size() <= 100 &&
++        d.kind is string && d.kind.size() <= 40 &&
++        d.body is string && d.body.size() > 0 && d.body.size() <= 1600 &&
++        d.status in ['pending', 'done', 'held', 'cancelled'] &&
++        d.createdAt is number &&
++        isStr(d, 'phone', 20) && isStr(d, 'memberEmail', 200) && isStr(d, 'memberName', 200) &&
++        isStr(d, 'smsState', 20) && isStr(d, 'waState', 20) &&
++        isStr(d, 'dedupeDay', 10) && isStr(d, 'refId', 100) && isStr(d, 'campaignId', 100) &&
++        (!hasField(d, 'acceptsMessages') || d.acceptsMessages == null || d.acceptsMessages is bool) &&
++        (!hasField(d, 'cancelUntil') || d.cancelUntil is number) &&
++        (!hasField(d, 'updatedAt') || d.updatedAt is number);
++    }
++
++    function isValidWhatsAppOutboxDoc(d) {
++      return d.keys().hasAll(['memberPhone', 'receiptNumber', 'amount', 'status', 'createdAt']) &&
++        d.keys().size() <= 10 &&
++        d.memberPhone is string && d.memberPhone.size() <= 20 &&
++        d.receiptNumber is string && d.receiptNumber.size() <= 60 &&
++        d.amount is int && d.amount >= 0 &&
++        d.status in ['pending', 'sent', 'failed', 'done'] &&
++        d.createdAt is number &&
++        isStr(d, 'memberName', 200);
++    }
++
++    function isValidAuditDoc(d) {
++      // Dois esquemas coexistem (v1.14.4): {action,targetEmail,byEmail,at} e
++      // {adminEmail,action,collectionName,createdAt,...}. Aceitam-se ambos.
++      return d.keys().hasAll(['action']) && d.keys().size() <= 12 &&
++        d.action is string && d.action.size() > 0 && d.action.size() <= 80 &&
++        (hasField(d, 'at') || hasField(d, 'createdAt')) &&
++        (!hasField(d, 'at') || d.at is number) &&
++        (!hasField(d, 'createdAt') || d.createdAt is number) &&
++        isStr(d, 'byEmail', 200) && isStr(d, 'adminEmail', 200) &&
++        isStr(d, 'targetEmail', 200) && isStr(d, 'collectionName', 60) &&
++        isStr(d, 'detail', 2000);
++    }
++
++    function isValidUpdateRequestDoc(d) {
++      // Portal do Membro → «Pedir atualização»: só os três campos que a
++      // liderança realmente aplica (Admin.tsx) — nada de `status`, `name`,
++      // `documentNumber` ou `isSuper` apanhados de surpresa na aprovação.
++      return d.keys().hasAll(['memberId', 'requestedData', 'status', 'createdAt']) &&
++        d.keys().size() <= 10 &&
++        d.memberId is string && d.memberId.size() > 0 && d.memberId.size() <= 100 &&
++        d.status == 'pendente' && d.createdAt is number &&
++        d.requestedData is map &&
++        d.requestedData.keys().hasOnly(['telefone', 'endereco', 'estadoCivil']) &&
++        isStr(d, 'memberName', 200) && isStr(d, 'memberEmail', 200) &&
++        (!hasField(d, 'currentData') || d.currentData == null || d.currentData is map);
++    }
++
++    // O pedido tem de ser sobre a ficha do PRÓPRIO (a app compara com o email
++    // do token; aqui confirma-se no documento de membros — `get()` nas regras
++    // não conta para a quota de leituras).
++    function ownsMemberRecord(memberId) {
++      return isAuthenticated() &&
++        exists(/databases/$(database)/documents/members/$(memberId)) &&
++        get(/databases/$(database)/documents/members/$(memberId)).data.get('email', '') == request.auth.token.email;
++    }
++
+     // --- Admin Collection ---
+     function isValidAdmin(data) {
+       return data.keys().hasAll(['email', 'role', 'createdAt']) && data.keys().size() <= 10 &&
+@@ -155,10 +241,10 @@ service cloud.firestore {
+       allow list: if isSuperAdmin();
+     }
+ 
+-    match /settings/{docId} {
+-      allow read: if isAuthenticated();
+-      allow write: if isAdmin();
+-    }
++    // v1.19.0 (P3): havia DOIS blocos `match /settings/...` (este e o de
++    // baixo, idênticos). Removido o duplicado — menos regras para avaliar em
++    // cada pedido e menos uma armadilha para quem editar (mudar só um dos
++    // blocos não mudava nada).
+ 
+     // --- v1.11.0: orçamento único, contribuições, pagamentos ---
+     // Escrita: só liderança (servidor). Leitura: o próprio membro ou liderança.
+@@ -196,7 +282,9 @@ service cloud.firestore {
+     // --- Notificações por utilizador: cada um vê só as suas; liderança cria ---
+     match /notifications/{docId} {
+       allow read, list: if isAuthenticated() && resource.data.userEmail == request.auth.token.email;
+-      allow create: if hasFinancialWriteAccess() || (isAuthenticated() && incoming().userEmail == request.auth.token.email);
++      // v1.19.0 (P3): campos validados (antes: qualquer forma/tamanho).
++      allow create: if isValidNotificationDoc(incoming()) &&
++                    (hasFinancialWriteAccess() || (isAuthenticated() && incoming().userEmail == request.auth.token.email));
+       // O dono marca como lida; a liderança (v1.13) actualiza APENAS os
+       // documentos do digest do módulo (kind == 'board'), campos limitados.
+       allow update: if (isAuthenticated() && resource.data.userEmail == request.auth.token.email
+@@ -209,10 +297,11 @@ service cloud.firestore {
+     // --- Fila de mensagens externas (SMS/WhatsApp) e campanhas ---
+     match /message_outbox/{docId} {
+       allow read, list: if hasFinancialWriteAccess();
+-      allow create: if (isAdmin() && isValidId(docId))
++      allow create: if isValidOutboxDoc(incoming()) &&
++                    ((isAdmin() && isValidId(docId))
+                     // v1.13: a liderança enfileira o digest «board» (avisos/
+                     // eventos) quando marca «enviar também por SMS/WhatsApp».
+-                    || (hasFinancialWriteAccess() && incoming().kind == 'board');
++                    || (hasFinancialWriteAccess() && incoming().kind == 'board'));
+       allow update: if isAdmin() && isValidId(docId);
+       allow delete: if hasFinancialWriteAccess();
+     }
+@@ -500,8 +589,12 @@ service cloud.firestore {
+     function hasField(d, k) {
+       return d.keys().hasAny([k]);
+     }
++    // v1.19.0 (P3): o formato não chegava — '2026-13-45' era aceite e aparecia
++    // nos Avisos/Eventos como data impossível (e partia os lembretes do Worker,
++    // que compara strings). Mês 01-12 e dia 01-31; o calendário fino (30/31,
++    // bissextos) é validado no cliente e no Worker (isCalendarDateIso).
+     function isDateIsoStr(s) {
+-      return s is string && s.matches('^\\d{4}-\\d{2}-\\d{2}$');
++      return s is string && s.matches('^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+     }
+     function isTimeHHMMStr(s) {
+       return s is string && s.matches('^(0\\d|1\\d|2[0-3]):[0-5]\\d$');
+@@ -616,14 +709,24 @@ service cloud.firestore {
+       allow read, list: if hasFinancialWriteAccess() ||
+         (isAuthenticated() && resource.data.keys().hasAll(['memberEmail']) &&
+          resource.data.memberEmail == request.auth.token.email);
+-      allow create: if isAuthenticated() && incoming().memberId != null;
++      // v1.19.0 (P3) — BURACO FECHADO: era `isAuthenticated() &&
++      // incoming().memberId != null`, ou seja QUALQUER sessão (incluindo um
++      // cadastro rejeitado) podia abrir pedidos de atualização em nome de
++      // OUTRO membro — poluindo a fila da liderança e permitindo propor dados
++      // alheios. Agora: liderança, ou o próprio dono da ficha (verificado no
++      // documento members/), com `memberEmail` coerente e campos limitados.
++      allow create: if isAuthenticated() && isValidId(reqId) && isValidUpdateRequestDoc(incoming()) &&
++        (hasFinancialWriteAccess() ||
++         (ownsMemberRecord(incoming().memberId) &&
++          (!hasField(incoming(), 'memberEmail') || incoming().memberEmail == null ||
++           incoming().memberEmail == request.auth.token.email)));
+       allow update, delete: if isAdmin();
+     }
+ 
+     // --- Audit Logs Collection ---
+     match /audit_logs/{logId} {
+       allow read, list: if isAdmin();
+-      allow create: if hasFinancialWriteAccess();
++      allow create: if hasFinancialWriteAccess() && isValidAuditDoc(incoming());
+       allow update, delete: if false;
+     }
+ 
+@@ -657,7 +760,8 @@ service cloud.firestore {
+ 
+     match /whatsapp_outbox/{msgId} {
+       allow read, list: if isAdmin();
+-      allow create: if hasFinancialWriteAccess();
++      // v1.19.0 (P3): validado — o Worker/extensão envia o que aqui estiver.
++      allow create: if hasFinancialWriteAccess() && isValidId(msgId) && isValidWhatsAppOutboxDoc(incoming());
+       allow update, delete: if isAdmin();
+     }
+   }
+diff --git a/package.json b/package.json
+index 4437824..8fe730c 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "gestao-iesa-emanuel-xangongo",
+   "private": true,
+-  "version": "1.18.0",
++  "version": "1.19.0",
+   "type": "module",
+   "scripts": {
+     "dev": "tsx server.ts",
+@@ -11,6 +11,7 @@
+     "clean": "rm -rf dist",
+     "lint": "tsc --noEmit",
+     "lint:lib": "tsc -p tsconfig.lib.json --noEmit",
++    "lint:rules": "node scripts/check-rules.mjs",
+     "build:android": "vite build && cap sync android",
+     "build:web": "vite build",
+     "open:android": "cap open android",
+diff --git a/scripts/__tests__/checkRules.test.mjs b/scripts/__tests__/checkRules.test.mjs
+new file mode 100644
+index 0000000..44c363d
+--- /dev/null
++++ b/scripts/__tests__/checkRules.test.mjs
+@@ -0,0 +1,125 @@
++/* v1.19.0 (P3) — testes do verificador estático das regras.
++   Sem Java/emulador no CI, é isto que impede um `firestore.rules` partido de
++   chegar ao deploy manual. */
++import { describe, expect, it } from 'vitest';
++import { readFileSync } from 'node:fs';
++import { resolve } from 'node:path';
++import { checkRules, stripCommentsAndStrings, findMatchBlocks } from '../check-rules.mjs';
++
++const ok = (src) => checkRules(src, 't.rules');
++const MINIMO = `rules_version = '2';
++service cloud.firestore {
++  match /databases/{database}/documents {
++    function isAdmin() { return request.auth != null; }
++    match /members/{id} {
++      allow read: if isAdmin();
++      allow write: if false;
++    }
++  }
++}
++`;
++
++describe('checkRules — ficheiro mínimo válido', () => {
++  it('não dá erros nem avisos', () => {
++    const { errors, warnings } = ok(MINIMO);
++    expect(errors).toEqual([]);
++    expect(warnings).toEqual([]);
++  });
++});
++
++describe('checkRules — erros que têm de ser apanhados', () => {
++  it('chaveta/parêntesis por fechar', () => {
++    const { errors } = ok(MINIMO.replace('allow write: if false;', 'allow write: if false;'));
++    expect(errors).toEqual([]);
++    const partida = MINIMO.replace(/}\s*}\s*}\s*$/, '} }');
++    expect(ok(partida).errors.join(' ')).toMatch(/nunca fecha/);
++    const paren = MINIMO.replace('if isAdmin();', 'if isAdmin(;', 1);
++    expect(ok(paren).errors.length).toBeGreaterThan(0);
++  });
++
++  it('chamada a função inexistente (o erro que só aparecia no deploy)', () => {
++    const { errors } = ok(MINIMO.replace('allow read: if isAdmin();', 'allow read: if isAdmn();'));
++    expect(errors.join(' ')).toMatch(/isAdmn/);
++    expect(errors.join(' ')).toMatch(/não está definida/);
++  });
++
++  it('get()/exists() são builtins das regras e não dão erro', () => {
++    const src = MINIMO.replace('return request.auth != null;',
++      'return exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) && get(/databases/$(database)/documents/admins/x).data.role == "admin";');
++    expect(ok(src).errors).toEqual([]);
++  });
++
++  it('blocos match DUPLICADOS para o mesmo caminho (o caso real de /settings)', () => {
++    const dup = MINIMO.replace(
++      '    match /members/{id} {',
++      '    match /members/{docId} {\n      allow read: if false;\n    }\n    match /members/{id} {');
++    const { errors } = ok(dup);
++    expect(errors.join(' ')).toMatch(/DUPLICADO/);
++  });
++
++  it('wildcards com nomes diferentes contam como o mesmo caminho', () => {
++    const { masked } = stripCommentsAndStrings(MINIMO);
++    const blocks = findMatchBlocks(masked).map((b) => b.key);
++    expect(blocks).toContain('/members/{}');
++    expect(blocks).toContain('/databases/{}/documents');
++  });
++
++  it('match sem allow → aviso (colecção inacessível)', () => {
++    const { warnings } = ok(MINIMO.replace('      allow read: if isAdmin();\n      allow write: if false;\n', ''));
++    expect(warnings.join(' ')).toMatch(/nenhuma regra allow/);
++  });
++
++  it('função definida e nunca usada → aviso (o «isValidMemberCreate desligado»)', () => {
++    const { warnings } = ok(MINIMO.replace('    function isAdmin()', '    function isValidThing(d) { return d.keys().size() < 3; }\n    function isAdmin()'));
++    expect(warnings.join(' ')).toMatch(/isValidThing/);
++    expect(warnings.join(' ')).toMatch(/NUNCA é usada/);
++  });
++
++  it('operação desconhecida em allow', () => {
++    const { errors } = ok(MINIMO.replace('allow read: if', 'allow reada: if'));
++    expect(errors.join(' ')).toMatch(/reada/);
++  });
++
++  it('cabeçalho em falta → avisos', () => {
++    const semVersao = MINIMO.replace("rules_version = '2';\n", '');
++    expect(ok(semVersao).warnings.join(' ')).toMatch(/rules_version/);
++    const semService = MINIMO.replace('service cloud.firestore {', 'service outra.coisa {');
++    expect(ok(semService).warnings.join(' ')).toMatch(/service/);
++  });
++
++  it('strings e comentários não confundem a análise', () => {
++    const src = MINIMO.replace('    match /members/{id} {',
++      '    // allow read: if nada(); { } ) (\n    /* match /fake/{x} { allow read: if falso(); } */\n    match /members/{id} {');
++    const { errors, warnings } = ok(src);
++    expect(errors).toEqual([]);
++    expect(warnings).toEqual([]);
++  });
++});
++
++describe('checkRules — os ficheiros reais do projecto', () => {
++  for (const f of ['firestore.rules', 'storage.rules']) {
++    it(`${f} passa sem erros nem avisos`, () => {
++      const src = readFileSync(resolve(process.cwd(), f), 'utf8');
++      const { errors, warnings } = checkRules(src, f);
++      expect(errors).toEqual([]);
++      expect(warnings).toEqual([]);
++    });
++  }
++
++  it('firestore.rules já não tem o bloco /settings duplicado', () => {
++    const src = readFileSync(resolve(process.cwd(), 'firestore.rules'), 'utf8');
++    const { masked } = stripCommentsAndStrings(src);
++    const settings = findMatchBlocks(masked).filter((b) => b.key === '/settings/{}');
++    expect(settings).toHaveLength(1);
++  });
++
++  it('os validadores novos do P3 estão LIGADOS a um allow (não podem ficar decorativos)', () => {
++    const src = readFileSync(resolve(process.cwd(), 'firestore.rules'), 'utf8');
++    for (const fn of ['isValidNotificationDoc', 'isValidOutboxDoc', 'isValidWhatsAppOutboxDoc',
++      'isValidAuditDoc', 'isValidUpdateRequestDoc', 'ownsMemberRecord', 'isStr',
++      'isValidMemberCreate', 'isValidMemberUpdate']) {
++      const uses = (src.match(new RegExp(`${fn}\\(`, 'g')) || []).length;
++      expect(uses, `${fn} deve aparecer na definição e num allow`).toBeGreaterThanOrEqual(2);
++    }
++  });
++});
+diff --git a/scripts/check-rules.mjs b/scripts/check-rules.mjs
+new file mode 100644
+index 0000000..2ba0fdf
+--- /dev/null
++++ b/scripts/check-rules.mjs
+@@ -0,0 +1,227 @@
++#!/usr/bin/env node
++import fs from 'node:fs';
++import { fileURLToPath } from 'node:url';
++
++/* ═══════════════════════════════════════════════════════════════════════════
++   v1.19.0 (P3) — VERIFICADOR ESTÁTICO DAS REGRAS (firestore.rules/storage.rules)
++   ───────────────────────────────────────────────────────────────────────────
++   As regras são a AUTORIDADE de segurança do sistema e não tinham testes: o
++   emulador do Firebase exige Java e o deploy é manual, portanto um erro de
++   sintaxe (ou uma função mal escrita) só aparecia no deploy — ou pior, ficava
++   em silêncio a permitir o que devia negar.
++
++   Este script não substitui o emulador; faz as verificações baratas que
++   apanham os defeitos que ESTE repositório já teve:
++     · parêntesis/chavetas desequilibrados (cortar-e-colar em 770 linhas);
++     · chamadas a funções que NÃO existem (o Firestore só avisa no deploy);
++     · funções definidas e nunca usadas — foi assim que `isValidMemberCreate`
++       passou meses desligado (v1.18: os deploys avisavam «Unused function»);
++     · blocos `match` duplicados para o mesmo caminho (havia DOIS
++       `match /settings/{…}`: editar um não mudava nada — removido na v1.19);
++     · blocos `match` sem nenhuma regra `allow` (colecção ficaria inacessível);
++     · `allow` com operações desconhecidas (typos do tipo `allow createa:`);
++     · cabeçalho em falta (`rules_version`, `service …`).
++
++   Uso:  npm run lint:rules            (passo «Regras» no CI)
++   Testes: scripts/__tests__/checkRules.test.mjs
++   ═══════════════════════════════════════════════════════════════════════════ */
++
++const BUILTIN_CALLS = new Set(['get', 'exists']);
++const KEYWORDS = new Set(['if', 'return', 'match', 'allow', 'service', 'function', 'rules_version', 'in', 'is', 'true', 'false', 'null']);
++const ALLOW_OPS = new Set(['read', 'write', 'create', 'update', 'delete', 'get', 'list']);
++
++/** Tira comentários e mascara strings (mantendo posições/linhas) para análise segura. */
++export function stripCommentsAndStrings(src) {
++  let out = '';
++  let i = 0;
++  const lineStarts = [0];
++  while (i < src.length) {
++    const c = src[i];
++    const next = src[i + 1];
++    if (c === '\n') { out += c; i++; lineStarts.push(out.length); continue; }
++    if (c === '/' && next === '/') { while (i < src.length && src[i] !== '\n') { out += ' '; i++; } continue; }
++    if (c === '/' && next === '*') {
++      i += 2; out += '  ';
++      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
++        if (src[i] === '\n') { out += '\n'; i++; lineStarts.push(out.length); } else { out += ' '; i++; }
++      }
++      i += 2; out += '  ';
++      continue;
++    }
++    if (c === "'" || c === '"') {
++      const quote = c; out += ' '; i++;
++      while (i < src.length && src[i] !== quote) {
++        if (src[i] === '\\') { out += '  '; i += 2; continue; }
++        if (src[i] === '\n') { out += '\n'; i++; lineStarts.push(out.length); } else { out += ' '; i++; }
++      }
++      out += ' '; i++;
++      continue;
++    }
++    out += c; i++;
++  }
++  return { masked: out, lineStarts };
++}
++
++function lineOf(index, lineStarts) {
++  let lo = 0;
++  for (let l = 0; l < lineStarts.length; l++) {
++    if (lineStarts[l] <= index) lo = l; else break;
++  }
++  return lo + 1;
++}
++
++/** Localiza os blocos `match <caminho> { … }` (incl. wildcard `{id}` e aninhados). */
++export function findMatchBlocks(masked) {
++  const blocks = [];
++  const re = /\bmatch\b/g;
++  let m;
++  while ((m = re.exec(masked)) !== null) {
++    let i = m.index + 5;
++    while (i < masked.length && /\s/.test(masked[i])) i++;
++    const pathStart = i;
++    // caminho, com eventuais wildcards {…} pelo meio
++    while (i < masked.length) {
++      if (masked[i] === '{') {
++        const close = masked.indexOf('}', i);
++        if (close < 0) break;
++        i = close + 1;
++        continue;
++      }
++      if (/\s/.test(masked[i])) break;
++      i++;
++    }
++    const path = masked.slice(pathStart, i).trim();
++    while (i < masked.length && masked[i] !== '{') i++;
++    if (i >= masked.length || !path) continue;
++    let depth = 0;
++    let end = -1;
++    for (let j = i; j < masked.length; j++) {
++      if (masked[j] === '{') depth++;
++      else if (masked[j] === '}') { depth--; if (depth === 0) { end = j; break; } }
++    }
++    blocks.push({
++      path,
++      /** caminho normalizado: `{adminId}` → `{}` (para detectar duplicados) */
++      key: path.replace(/\{[^}]*\}/g, '{}'),
++      start: m.index,
++      bodyStart: i,
++      end,
++      body: masked.slice(i, end < 0 ? masked.length : end),
++    });
++  }
++  return blocks;
++}
++
++/**
++ * Analisa o texto de um ficheiro .rules.
++ * @returns {{errors: string[], warnings: string[]}}
++ */
++export function checkRules(src, filename = 'rules') {
++  const errors = [];
++  const warnings = [];
++  const { masked, lineStarts } = stripCommentsAndStrings(src);
++  const at = (idx) => `${filename}:${lineOf(idx, lineStarts)}`;
++
++  /* 1) equilíbrio de (), {}, [] */
++  const pairs = { ')': '(', ']': '[', '}': '{' };
++  const stack = [];
++  for (let i = 0; i < masked.length; i++) {
++    const c = masked[i];
++    if (c === '(' || c === '[' || c === '{') stack.push({ c, i });
++    else if (c === ')' || c === ']' || c === '}') {
++      const top = stack.pop();
++      if (!top || top.c !== pairs[c]) {
++        errors.push(`${at(i)}: «${c}» a mais ou fora do sítio.`);
++        break;
++      }
++    }
++  }
++  if (stack.length) {
++    errors.push(`${at(stack[0].i)}: «${stack[0].c}» nunca fecha (faltam ${stack.length}).`);
++  }
++
++  /* 2) funções definidas vs. chamadas */
++  const defined = new Map();
++  for (const fm of masked.matchAll(/\bfunction\s+([A-Za-z_]\w*)\s*\(/g)) defined.set(fm[1], fm.index);
++  const called = new Map();
++  for (const cm of masked.matchAll(/([.])?\b([A-Za-z_]\w*)\s*\(/g)) {
++    if (cm[1] === '.') continue;                       // método: x.size(), d.keys()
++    const name = cm[2];
++    if (KEYWORDS.has(name)) continue;
++    /* A DEFINIÇÃO («function foo(…)») também casa com o padrão de chamada —
++       sem este corte, nenhuma função parecia «nunca usada». */
++    if (/\bfunction\s+$/.test(masked.slice(Math.max(0, cm.index - 16), cm.index))) continue;
++    if (!called.has(name)) called.set(name, cm.index);
++  }
++  for (const [name, idx] of called) {
++    if (defined.has(name) || BUILTIN_CALLS.has(name)) continue;
++    errors.push(`${at(idx)}: chama «${name}()», que não está definida neste ficheiro.`);
++  }
++  for (const [name, idx] of defined) {
++    if (!called.has(name)) {
++      warnings.push(`${at(idx)}: «${name}()» está definida mas NUNCA é usada — foi assim que um validador ficou meses desligado (v1.18).`);
++    }
++  }
++
++  /* 3) blocos match: duplicados e sem allow */
++  const seen = new Map();
++  for (const b of findMatchBlocks(masked)) {
++    if (seen.has(b.key)) {
++      errors.push(`${at(b.start)}: bloco «match ${b.path}» DUPLICADO (já existe na linha ${lineOf(seen.get(b.key).start, lineStarts)}). ` +
++        'O Firestore avalia os dois e basta um allow para conceder — editar só um não muda nada.');
++    } else {
++      seen.set(b.key, b);
++    }
++    if (!/\ballow\b/.test(b.body)) {
++      warnings.push(`${at(b.start)}: «match ${b.path}» não tem nenhuma regra allow — o deny por omissão aplica-se (colecção inacessível).`);
++    }
++  }
++
++  /* 4) operações em allow */
++  for (const am of masked.matchAll(/\ballow\s+([^:;{}]+):/g)) {
++    for (const raw of am[1].split(',')) {
++      const op = raw.trim();
++      if (!op) continue;
++      if (!ALLOW_OPS.has(op)) {
++        errors.push(`${at(am.index)}: operação desconhecida «allow ${op}:» (válidas: read, write, create, update, delete, get, list).`);
++      }
++    }
++  }
++
++  /* 5) cabeçalho */
++  if (!/^\s*rules_version\s*=/m.test(src)) warnings.push(`${filename}: falta «rules_version = '2';» no topo.`);
++  if (!/\bservice\s+(cloud\.firestore|firebase\.storage)\b/.test(masked)) {
++    warnings.push(`${filename}: não encontrei nenhum bloco «service cloud.firestore» ou «service firebase.storage».`);
++  }
++
++  return { errors, warnings };
++}
++
++/** CLI: verifica os ficheiros passados (por omissão, os dois do projecto). */
++export function main(argv = process.argv.slice(2)) {
++  const files = argv.length ? argv : ['firestore.rules', 'storage.rules'];
++  let bad = 0;
++  for (const f of files) {
++    let src;
++    try {
++      src = fs.readFileSync(f, 'utf8');
++    } catch (e) {
++      console.error(`✗ ${f}: não consegui ler (${e.message})`);
++      bad++;
++      continue;
++    }
++    const { errors, warnings } = checkRules(src, f);
++    for (const w of warnings) console.log(`⚠ ${w}`);
++    for (const e of errors) console.error(`✗ ${e}`);
++    if (errors.length) {
++      bad++;
++      console.error(`✗ ${f}: ${errors.length} erro(s).`);
++    } else {
++      console.log(`✓ ${f}: ${src.split('\n').length} linhas, ${errors.length} erros${warnings.length ? `, ${warnings.length} aviso(s)` : ''}.`);
++    }
++  }
++  if (bad) process.exitCode = 1;
++  return bad;
++}
++
++if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+diff --git a/src/components/admin/AnnouncementsAdmin.tsx b/src/components/admin/AnnouncementsAdmin.tsx
+index 5097531..8068dd9 100644
+--- a/src/components/admin/AnnouncementsAdmin.tsx
++++ b/src/components/admin/AnnouncementsAdmin.tsx
+@@ -21,7 +21,7 @@ import {
+   publishBoardNotification, type NormalizedAnnouncement,
+ } from '../../lib/board';
+ import { validateRichText, hasDangerousPattern } from '../../lib/richtext';
+-import { luandaDayKey, fmtDatePT } from '../../lib/luanda';
++import { luandaDayKey, fmtDatePT, luandaDateOf } from '../../lib/luanda';
+ 
+ const EMPTY = { title: '', html: '', level: 'normal' as 'normal' | 'urgente', pinned: false, visibleUntil: '', alsoSms: false };
+ 
+@@ -31,7 +31,7 @@ const EMPTY = { title: '', html: '', level: 'normal' as 'normal' | 'urgente', pi
+ function audit(a: NormalizedAnnouncement) {
+   return (
+     <p className="mt-1 text-[10px] text-slate-400">
+-      Criado por {a.createdBy || a.adminId || '—'}{(a.updatedBy && a.updatedAt) ? ` · editado por ${a.updatedBy} em ${fmtDatePT(new Date(a.updatedAt).toISOString().slice(0, 10))}` : ''}
++      Criado por {a.createdBy || a.adminId || '—'}{(a.updatedBy && a.updatedAt) ? ` · editado por ${a.updatedBy} em ${fmtDatePT(luandaDateOf(a.updatedAt))}` : ''}
+     </p>
+   );
+ }
+diff --git a/src/components/members/CommunionTracker.tsx b/src/components/members/CommunionTracker.tsx
+index d73745a..6d14fda 100644
+--- a/src/components/members/CommunionTracker.tsx
++++ b/src/components/members/CommunionTracker.tsx
+@@ -12,8 +12,9 @@ import CommunionGrid from './CommunionGrid';
+ import { fetchCommunion, cycleCommunionMark } from '../../lib/communion';
+ import { useAuth } from '../../context/AuthContext';
+ import { CommunionMark, Member } from '../../types';
++import { luandaYear } from '../../lib/luanda';
+ 
+-const THIS_YEAR = new Date().getFullYear();
++const THIS_YEAR = luandaYear();
+ 
+ /**
+  * Aba «Comunhão» dos Membros: a liderança localiza o membro pelo nome e
+diff --git a/src/components/members/MemberCardModal.tsx b/src/components/members/MemberCardModal.tsx
+index 1aabe1b..692276d 100644
+--- a/src/components/members/MemberCardModal.tsx
++++ b/src/components/members/MemberCardModal.tsx
+@@ -15,6 +15,7 @@ import { fetchCommunion, cycleCommunionMark } from '../../lib/communion';
+ import { computeStatus } from '../../lib/contrib';
+ import { generateMemberCardPdf } from '../../lib/pdfUtils';
+ import { useAuth } from '../../context/AuthContext';
++import { luandaDayKey, luandaYear } from '../../lib/luanda';
+ import {
+   Member,
+   CommunionMark,
+@@ -32,7 +33,7 @@ interface Props {
+   onOpenChange: (open: boolean) => void;
+ }
+ 
+-const THIS_YEAR = new Date().getFullYear();
++const THIS_YEAR = luandaYear();
+ 
+ /**
+  * Cartão de membro (vista da liderança): mostra as duas faces tal como no papel
+@@ -48,9 +49,9 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
+   const [comYear, setComYear] = useState<number>(THIS_YEAR);
+ 
+   const [donAmount, setDonAmount] = useState('');
+-  const [donDate, setDonDate] = useState(new Date().toISOString().slice(0, 10));
++  const [donDate, setDonDate] = useState(luandaDayKey());
+ 
+-  const [renDate, setRenDate] = useState(new Date().toISOString().slice(0, 10));
++  const [renDate, setRenDate] = useState(luandaDayKey());
+   const [renSign, setRenSign] = useState('');
+ 
+   const [busy, setBusy] = useState(false);
+diff --git a/src/components/members/MemberCardView.tsx b/src/components/members/MemberCardView.tsx
+index f0ba94a..2b09031 100644
+--- a/src/components/members/MemberCardView.tsx
++++ b/src/components/members/MemberCardView.tsx
+@@ -1,4 +1,5 @@
+ import { formatKz } from '../../lib/money';
++import { luandaDateOf } from '../../lib/luanda';
+ import MemberPhoto from './MemberPhoto';
+ import { Check, X } from 'lucide-react';
+ import { aggregateByMonth, sumYear, cardYears } from '../../lib/finance';
+@@ -174,7 +175,7 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
+                   <span className="text-blue-900 dark:text-blue-300">{money(c.paid)} / {money(c.amount)}</span>
+                   <span>prazo {fmtDate(c.dueDate)}</span>
+                   <span className={c.status === 'concluida' ? 'text-emerald-700 font-semibold' : c.status === 'em_atraso' ? 'text-red-600 font-semibold' : 'text-slate-600'}>
+-                    {c.status === 'concluida' ? `Contribuição concluída${c.completedAt ? ` em ${fmtDate(new Date(c.completedAt).toISOString().slice(0, 10))}` : ''}` : c.status === 'em_atraso' ? 'Em atraso' : 'Em curso'}
++                    {c.status === 'concluida' ? `Contribuição concluída${c.completedAt ? ` em ${fmtDate(luandaDateOf(c.completedAt))}` : ''}` : c.status === 'em_atraso' ? 'Em atraso' : 'Em curso'}
+                   </span>
+                 </div>
+               ))}
+diff --git a/src/components/members/MemberTithesTracker.tsx b/src/components/members/MemberTithesTracker.tsx
+index e353962..3947db2 100644
+--- a/src/components/members/MemberTithesTracker.tsx
++++ b/src/components/members/MemberTithesTracker.tsx
+@@ -14,12 +14,13 @@ import { Check, X, Search, Download, Loader2 } from 'lucide-react';
+ import { toast } from 'sonner';
+ import { saveXlsx } from '../../lib/download';
+ import * as XLSX from 'xlsx';
++import { luandaDayKey, luandaMonthIdx, luandaYear } from '../../lib/luanda';
+ 
+ const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+ 
+ export function MemberTithesTracker() {
+-  const currentYear = new Date().getFullYear();
+-  const currentMonthIdx = new Date().getMonth();
++  const currentYear = luandaYear();
++  const currentMonthIdx = luandaMonthIdx();
+   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+   const [searchTerm, setSearchTerm] = useState('');
+   const [sortBy, setSortBy] = useState<'name' | 'most_tithes' | 'least_tithes'>('name');
+@@ -198,7 +199,7 @@ export function MemberTithesTracker() {
+       const wb = XLSX.utils.book_new();
+       XLSX.utils.book_append_sheet(wb, ws, "Dízimos");
+       
+-      const dateStr = new Date().toISOString().split('T')[0];
++      const dateStr = luandaDayKey();
+       const fileName = `Dizimos_${selectedYear}_${dateStr}.xlsx`;
+       
+       await saveXlsx(XLSX, wb, fileName);
+diff --git a/src/hooks/useNotifications.ts b/src/hooks/useNotifications.ts
+index 7cec321..dbbddef 100644
+--- a/src/hooks/useNotifications.ts
++++ b/src/hooks/useNotifications.ts
+@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
+ import { collection, query, where, getDocs } from 'firebase/firestore';
+ import { db } from '../lib/firebase';
+ import { useDevice } from './useDevice';
++import { isBirthdayToday } from '../lib/luanda';
+ 
+ export function useNotifications() {
+   const { userRole } = useAuth();
+@@ -42,21 +43,12 @@ export function useNotifications() {
+           }
+         }
+ 
+-        // Aniversariantes do dia
++        // Aniversariantes do dia (P3: pelo dia de LUANDA — o fuso do aparelho
++        // mudava o contador; e o split('-') ignorava o legado 'DD/MM/AAAA').
+         const membersSnapshot = await getDocs(collection(db, 'members'));
+-        const d = new Date();
+-        const currentMonth = d.getMonth() + 1;
+-        const currentDay = d.getDate();
+-        
+         let aniversariantes = 0;
+         membersSnapshot.forEach(doc => {
+-            const m = doc.data();
+-            if (m.birthDate) {
+-              const [y, mm, dd] = m.birthDate.split('-');
+-              if (parseInt(mm, 10) === currentMonth && parseInt(dd, 10) === currentDay) {
+-                  aniversariantes++;
+-              }
+-            }
++            if (isBirthdayToday(doc.data().birthDate)) aniversariantes++;
+         });
+ 
+         if (aniversariantes > 0 && !hasChecked) {
+diff --git a/src/lib/__tests__/luanda.test.ts b/src/lib/__tests__/luanda.test.ts
+index 962a87d..56c3bd0 100644
+--- a/src/lib/__tests__/luanda.test.ts
++++ b/src/lib/__tests__/luanda.test.ts
+@@ -68,3 +68,148 @@ describe('formatadores e validadores', () => {
+     expect(isTimeHHMM('23:60')).toBe(false);
+   });
+ });
++
++/* ═══════════════════ v1.19.0 (P3 «Luanda em todo o lado») ═══════════════════ */
++import {
++  luandaYear, luandaMonth, luandaMonthIdx, luandaDayOfMonth, luandaMonthStr, luandaMonthKey,
++  luandaEndOfDay, isoFromParts, luandaDateOf, monthNamePT, luandaMonthNamePT, isCalendarDateIso, isLeapYear,
++  fmtTodayPT, fmtTodayTimePT, lastMonthsLuanda, isBirthdayToday, ageToday, normalizeBirthDate,
++} from '../luanda';
++
++describe('P3 — hoje/mês/ano de Luanda (não do aparelho, não do UTC)', () => {
++  // 25/10/2026 23:30 UTC = 26/10/2026 00:30 em Luanda: o caso que fazia os
++  // formulários guardarem a data de ONTEM entre as 00:00 e as 01:00.
++  const meiaNoiteLuanda = at(2026, 10, 25, 23, 30);
++  it('devolve o dia/mês/ano de Luanda', () => {
++    expect(luandaDayKey(meiaNoiteLuanda)).toBe('2026-10-26');
++    expect(luandaYear(meiaNoiteLuanda)).toBe(2026);
++    expect(luandaMonth(meiaNoiteLuanda)).toBe(10);
++    expect(luandaMonthIdx(meiaNoiteLuanda)).toBe(9);
++    expect(luandaDayOfMonth(meiaNoiteLuanda)).toBe(26);
++    expect(luandaMonthStr(meiaNoiteLuanda)).toBe('10');
++    expect(luandaMonthKey(meiaNoiteLuanda)).toBe('2026-10');
++  });
++  it('muda de ano à meia-noite de Luanda, não à meia-noite UTC', () => {
++    const reveillon = at(2026, 12, 31, 23, 30); // 01/01/2027 00:30 em Luanda
++    expect(luandaYear(reveillon)).toBe(2027);
++    expect(luandaMonth(reveillon)).toBe(1);
++    expect(luandaMonthKey(reveillon)).toBe('2027-01');
++  });
++  it('luandaEndOfDay cobre o dia inteiro de Luanda (prazos de contribuição)', () => {
++    const fim = luandaEndOfDay('2026-10-31');
++    expect(luandaDayKey(fim)).toBe('2026-10-31');
++    expect(luandaDayKey(fim + 1)).toBe('2026-11-01');
++    // 23:59:59 de Luanda = 22:59:59 UTC (o Worker usava 23:59:59Z = 00:59 do dia seguinte)
++    expect(new Date(fim).toISOString()).toBe('2026-10-31T22:59:59.999Z');
++  });
++});
++
++describe('P3 — isoFromParts (o bug do Excel/AI: aniversário um dia antes)', () => {
++  it('não desloca pelo fuso do aparelho', () => {
++    expect(isoFromParts(2000, 1, 1)).toBe('2000-01-01');
++    expect(isoFromParts(1998, 7, 31)).toBe('1998-07-31');
++    // o código antigo fazia new Date(2000,0,1).toISOString() → '1999-12-31' em UTC+1
++    expect(isoFromParts(2000, 1, 1)).not.toBe('1999-12-31');
++  });
++  it('valida as partes', () => {
++    expect(isoFromParts(2000, 13, 1)).toBe('');
++    expect(isoFromParts(2000, 0, 1)).toBe('');
++    expect(isoFromParts(2000, 1, 32)).toBe('');
++    expect(isoFromParts(NaN, 1, 1)).toBe('');
++  });
++  it('luandaDateOf converte epoch ms em dia de Luanda', () => {
++    expect(luandaDateOf(at(2026, 10, 25, 23, 30))).toBe('2026-10-26');
++    expect(luandaDateOf(null)).toBe('');
++    expect(luandaDateOf(0)).toBe('');
++  });
++});
++
++describe('P3 — nomes de meses e gráficos dos últimos N meses', () => {
++  it('monthNamePT / luandaMonthNamePT', () => {
++    expect(monthNamePT(10)).toBe('Outubro');
++    expect(monthNamePT(10, true)).toBe('out.');
++    expect(monthNamePT(13)).toBe('');
++    expect(luandaMonthNamePT(at(2026, 3, 5, 12))).toBe('Março');
++  });
++  it('lastMonthsLuanda devolve 6 meses, do mais antigo para o corrente', () => {
++    const slots = lastMonthsLuanda(6, at(2026, 10, 25, 12));
++    expect(slots.map((s) => s.label)).toEqual(['mai./26', 'jun./26', 'jul./26', 'ago./26', 'set./26', 'out./26']);
++    expect(slots[5]).toMatchObject({ year: 2026, month: 10, monthStr: '10' });
++  });
++  it('atravessa o ano sem meses duplicados nem fora de ordem', () => {
++    const slots = lastMonthsLuanda(4, at(2027, 1, 15, 12));
++    expect(slots.map((s) => `${s.year}-${s.monthStr}`)).toEqual(['2026-10', '2026-11', '2026-12', '2027-01']);
++  });
++  it('conta = 1 devolve só o mês corrente', () => {
++    expect(lastMonthsLuanda(1, at(2026, 10, 25, 12))).toHaveLength(1);
++  });
++});
++
++describe('P3 — aniversários (Luanda) e normalização de datas de nascimento', () => {
++  const hoje = at(2026, 10, 25, 12); // 25/10/2026 em Luanda
++  it('isBirthdayToday aceita o formato canónico e o legado DD/MM/AAAA', () => {
++    expect(isBirthdayToday('1990-10-25', hoje)).toBe(true);
++    expect(isBirthdayToday('25/10/1990', hoje)).toBe(true);
++    expect(isBirthdayToday('1990-10-26', hoje)).toBe(false);
++    expect(isBirthdayToday('', hoje)).toBe(false);
++    expect(isBirthdayToday(null, hoje)).toBe(false);
++    expect(isBirthdayToday(undefined, hoje)).toBe(false);
++  });
++  it('o dia de Luanda decide (23:30 UTC de 24/10 já é 25/10)', () => {
++    expect(isBirthdayToday('1990-10-25', at(2026, 10, 24, 23, 30))).toBe(true);
++  });
++  it('ageToday conta anos completos', () => {
++    expect(ageToday('1990-10-25', hoje)).toBe(36);
++    expect(ageToday('1990-10-26', hoje)).toBe(35); // ainda não fez anos
++    expect(ageToday('1990-01-01', hoje)).toBe(36);
++    expect(ageToday('lixo', hoje)).toBe(null);
++  });
++  it('normalizeBirthDate cobre ISO, dd/mm/aaaa e epoch', () => {
++    expect(normalizeBirthDate('1990-10-25')).toBe('1990-10-25');
++    expect(normalizeBirthDate('1990-10-25T00:00:00.000Z')).toBe('1990-10-25');
++    expect(normalizeBirthDate('25/10/1990')).toBe('1990-10-25');
++    expect(normalizeBirthDate('25-10-1990')).toBe('1990-10-25');
++    expect(normalizeBirthDate(at(1990, 10, 24, 23, 30))).toBe('1990-10-25');
++    expect(normalizeBirthDate('')).toBe('');
++  });
++});
++
++describe('P3 — apresentação de «hoje» (rodapés de PDF, relatórios)', () => {
++  it('fmtTodayPT / fmtTodayTimePT usam Luanda', () => {
++    expect(fmtTodayPT(at(2026, 10, 25, 23, 30))).toBe('26/10/2026');
++    expect(fmtTodayTimePT(at(2026, 10, 25, 23, 30))).toBe('26/10/2026 00:30');
++    expect(fmtTodayTimePT(at(2026, 1, 5, 8, 5))).toBe('05/01/2026 09:05');
++  });
++});
++
++describe('P3 — datas com calendário válido (não só o formato)', () => {
++  it('isCalendarDateIso recusa o que isDateIso aceitava', () => {
++    expect(isDateIso('1990-13-45')).toBe(true);       // só o formato
++    expect(isCalendarDateIso('1990-13-45')).toBe(false);
++    expect(isCalendarDateIso('1990-02-30')).toBe(false);
++    expect(isCalendarDateIso('2026-04-31')).toBe(false);
++    expect(isCalendarDateIso('1990-10-25')).toBe(true);
++    expect(isCalendarDateIso('2024-02-29')).toBe(true);
++    expect(isCalendarDateIso('2026-02-29')).toBe(false);
++    expect(isCalendarDateIso('0001-01-01')).toBe(false); // antes de 1850
++    expect(isCalendarDateIso(null)).toBe(false);
++    expect(isCalendarDateIso('25/10/1990')).toBe(false);
++  });
++  it('isLeapYear', () => {
++    expect(isLeapYear(2024)).toBe(true);
++    expect(isLeapYear(2000)).toBe(true);
++    expect(isLeapYear(1900)).toBe(false);
++    expect(isLeapYear(2026)).toBe(false);
++  });
++  it('isoFromParts valida o dia do mês', () => {
++    expect(isoFromParts(1990, 2, 30)).toBe('');
++    expect(isoFromParts(2024, 2, 29)).toBe('2024-02-29');
++    expect(isoFromParts(2026, 2, 29)).toBe('');
++    expect(isoFromParts(2026, 4, 31)).toBe('');
++  });
++  it('normalizeBirthDate devolve vazio para datas impossíveis', () => {
++    expect(normalizeBirthDate('1990-13-45')).toBe('');
++    expect(normalizeBirthDate('1990-02-30')).toBe('');
++    expect(isBirthdayToday('1990-13-45')).toBe(false);
++  });
++});
+diff --git a/src/lib/__tests__/workerHealth.test.ts b/src/lib/__tests__/workerHealth.test.ts
+new file mode 100644
+index 0000000..fc878bd
+--- /dev/null
++++ b/src/lib/__tests__/workerHealth.test.ts
+@@ -0,0 +1,54 @@
++import { describe, expect, it } from 'vitest';
++import { cronHealthLines } from '../ai';
++
++/* v1.19.0 (P3): o diagnóstico do cron passa a distinguir três estados —
++   sem heartbeat, vivo, vivo mas com uma tarefa a falhar (Worker 2.10.0). */
++describe('cronHealthLines (Suporte → Diagnóstico)', () => {
++  it('sem heartbeat avisa que o Worker pode ser antigo', () => {
++    const lines = cronHealthLines(undefined);
++    expect(lines).toHaveLength(1);
++    expect(lines[0]).toMatch(/Sem heartbeat do cron/);
++    expect(cronHealthLines(null)[0]).toMatch(/Sem heartbeat/);
++    expect(cronHealthLines({})[0]).toMatch(/Sem heartbeat/);
++  });
++
++  it('cron vivo e saudável', () => {
++    const lines = cronHealthLines({ ageMinutes: 3, version: '2.10.0', ok: true });
++    expect(lines[0]).toBe('✓ Cron vivo (fila SMS, lembretes, estados) — última execução há 3 min, v2.10.0.');
++    expect(lines.some((l) => l.startsWith('✓ As tarefas'))).toBe(true);
++    expect(lines.some((l) => l.includes('✗'))).toBe(false);
++  });
++
++  it('cron sem pulsar há muito tempo', () => {
++    const lines = cronHealthLines({ ageMinutes: 120, version: '2.10.0', ok: true });
++    expect(lines[0]).toMatch(/✗ Cron SEM pulsar há 120 min/);
++    expect(lines[0]).toMatch(/Triggers/);
++  });
++
++  it('P3 — o pulso existe mas UMA tarefa falha (o caso que era invisível)', () => {
++    const lines = cronHealthLines({
++      ageMinutes: 2, version: '2.10.0', ok: false, error: 'contributions: runQuery contributions: 400',
++    });
++    expect(lines[0]).toMatch(/✓ Cron vivo/);
++    expect(lines[1]).toBe('✗ O cron está a correr, mas uma tarefa falha: contributions: runQuery contributions: 400.');
++    expect(lines[2]).toMatch(/cada tarefa corre isolada/i);
++  });
++
++  it('erro ausente não rebenta', () => {
++    const lines = cronHealthLines({ ageMinutes: 1, ok: false });
++    expect(lines[1]).toMatch(/sem detalhe/);
++  });
++
++  it('mostra a contagem da última execução quando o Worker a envia', () => {
++    const lines = cronHealthLines({
++      ageMinutes: 1, ok: true, counts: { outbox: 2, contributions: 1, reminders: 0, events: 3 },
++    });
++    expect(lines[lines.length - 1]).toBe('· Última execução: fila 2 · contribuições 1 · lembretes 0 · eventos 3.');
++  });
++
++  it('Worker antigo (sem ok/counts) continua a dar o essencial', () => {
++    const lines = cronHealthLines({ ageMinutes: 5, version: '2.9.1' });
++    expect(lines).toHaveLength(1);
++    expect(lines[0]).toMatch(/✓ Cron vivo/);
++  });
++});
+diff --git a/src/lib/ai.ts b/src/lib/ai.ts
+index 273e4a0..02d474b 100644
+--- a/src/lib/ai.ts
++++ b/src/lib/ai.ts
+@@ -241,6 +241,25 @@ export async function compressImageFile(
+ /* Diagnóstico do Worker                                              */
+ /* ------------------------------------------------------------------ */
+ 
++export interface CronCounts {
++  outbox?: number;
++  contributions?: number;
++  reminders?: number;
++  events?: number;
++}
++
++/** Heartbeat do cron do Worker (settings/worker_cron, exposto em /__health).
++ *  v1.19.0 (P3): `ok`/`error`/`counts` vêm do Worker 2.10.0 — o cron passou a
++ *  correr cada tarefa no seu próprio try/catch e a gravar qual falhou. */
++export interface CronHealth {
++  lastRunAt?: number | null;
++  ageMinutes?: number | null;
++  version?: string | null;
++  ok?: boolean | null;
++  error?: string | null;
++  counts?: CronCounts | null;
++}
++
+ export interface WorkerHealth {
+   ok: boolean;
+   version?: string;
+@@ -249,9 +268,42 @@ export interface WorkerHealth {
+   routes?: string[];
+   models?: string[];
+   config?: { GEMINI_API_KEY?: boolean; FIREBASE_SA_JSON?: boolean; PROJECT_ID?: string | null };
++  cron?: CronHealth | null;
+   error?: string;
+ }
+ 
++/**
++ * Linhas de diagnóstico do cron (v1.19.0 / P3). Função PURA — testada em
++ * `__tests__/workerHealth.test.ts`. Antes só dizia «vivo / sem pulsar»; agora
++ * distingue «o cron corre mas UMA tarefa falha» (com o erro gravado no
++ * heartbeat), que era exactamente o caso que ficava invisível: com o try/catch
++ * único do Worker ≤2.9.1, uma tarefa partida rebentava com as outras três.
++ */
++export function cronHealthLines(cron: unknown): string[] {
++  const out: string[] = [];
++  const c = (cron || {}) as CronHealth;
++  if (typeof c.ageMinutes !== 'number') {
++    out.push('⚠ Sem heartbeat do cron — Worker pode ser anterior à v2.9.1 ou o Trigger não está configurado.');
++    return out;
++  }
++  if (c.ageMinutes <= 15) {
++    out.push(`✓ Cron vivo (fila SMS, lembretes, estados) — última execução há ${c.ageMinutes} min, v${c.version || '?'}.`);
++  } else {
++    out.push(`✗ Cron SEM pulsar há ${c.ageMinutes} min — verifique Workers → iesa-ai → Settings → Triggers (Cron «* * * * *»).`);
++  }
++  if (c.ok === false) {
++    out.push(`✗ O cron está a correr, mas uma tarefa falha: ${c.error || 'sem detalhe'}.`);
++    out.push('→ Desde o Worker 2.10.0 cada tarefa corre isolada: as outras continuam a trabalhar. Corrija a causa (índice, regra, quota) e o aviso some.');
++  } else if (c.ok === true) {
++    out.push('✓ As tarefas do cron terminaram sem erros (fila, contribuições, lembretes, eventos).');
++  }
++  const k = c.counts;
++  if (k && typeof k === 'object') {
++    out.push(`· Última execução: fila ${k.outbox ?? 0} · contribuições ${k.contributions ?? 0} · lembretes ${k.reminders ?? 0} · eventos ${k.events ?? 0}.`);
++  }
++  return out;
++}
++
+ /** GET /__health — não precisa de sessão. Serve para confirmar qual versão do
+  *  Worker está publicada (se der 404, o Worker é anterior à v2.0.0). */
+ export async function checkWorkerHealth(): Promise<WorkerHealth> {
+@@ -307,14 +359,8 @@ export async function runAiDiagnostics(): Promise<{ lines: string[]; ok: boolean
+   lines.push(h.vision ? '✓ Leitura de documentos (visão) disponível.' : '✗ Esta versão NÃO tem leitura de documentos.');
+   if (Array.isArray(h.models)) lines.push(`✓ Modelos configurados: ${h.models.join(' → ')}.`);
+ 
+-  /* v1.18: cron vivo? (heartbeat gravado pelo agendador do Worker) */
+-  const cron = (h as any).cron;
+-  if (cron && typeof cron.ageMinutes === 'number') {
+-    if (cron.ageMinutes <= 15) lines.push(`✓ Cron vivo (fila SMS, lembretes, estados) — última execução há ${cron.ageMinutes} min, v${cron.version || '?'}.`);
+-    else lines.push(`✗ Cron SEM pulsar há ${cron.ageMinutes} min — verifique Workers → iesa-ai → Settings → Triggers (Cron «* * * * *»).`);
+-  } else {
+-    lines.push('⚠ Sem heartbeat do cron — Worker pode ser anterior à v2.9.1 ou o Trigger não está configurado.');
+-  }
++  /* v1.18: cron vivo? v1.19 (P3): e as tarefas, correram bem? */
++  lines.push(...cronHealthLines(h.cron));
+ 
+   const cfg = h.config || {};
+   if (cfg.GEMINI_API_KEY === false) lines.push('✗ Falta o segredo GEMINI_API_KEY no Worker (Settings → Variables and Secrets).');
+diff --git a/src/lib/finance.ts b/src/lib/finance.ts
+index 924fac3..497655b 100644
+--- a/src/lib/finance.ts
++++ b/src/lib/finance.ts
+@@ -4,6 +4,7 @@
+  * ano) tenha uma única fonte de verdade.
+  */
+ import { deliveryOf, referenceOf } from './tithes';
++import { luandaYear } from './luanda';
+ 
+ export interface MoneyRow {
+   referenceMonth?: string;
+@@ -111,6 +112,6 @@ export function cardYears(data: CardYearsData, max = 4): number[] {
+     const y = Number(String(r?.date || '').slice(0, 4));
+     if (y > 0) ys.add(y);
+   }
+-  if (ys.size === 0) ys.add(new Date().getFullYear());
++  if (ys.size === 0) ys.add(luandaYear());
+   return [...ys].sort((a, b) => a - b).slice(-max);
+ }
+diff --git a/src/lib/luanda.ts b/src/lib/luanda.ts
+index de30c23..15b4d5e 100644
+--- a/src/lib/luanda.ts
++++ b/src/lib/luanda.ts
+@@ -51,6 +51,26 @@ export function isDateIso(v: unknown): v is string {
+   return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+ }
+ 
++const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
++
++/** Ano bissexto (gregoriano). */
++export function isLeapYear(year: number): boolean {
++  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
++}
++
++/**
++ * v1.19.0 (P3): 'AAAA-MM-DD' com CALENDÁRIO válido — `isDateIso` só confere o
++ * formato e deixava passar '1990-13-45' (foi assim que o auto-cadastro gravou
++ * datas impossíveis). `minYear`/`maxYear` travam disparates (1 a.C., 9999).
++ */
++export function isCalendarDateIso(v: unknown, minYear = 1850, maxYear = luandaYear() + 1): v is string {
++  if (!isDateIso(v)) return false;
++  const [y, m, d] = (v as string).split('-').map(Number);
++  if (y < minYear || y > maxYear) return false;
++  if (m < 1 || m > 12 || d < 1) return false;
++  return d <= (m === 2 && isLeapYear(y) ? 29 : DAYS_IN_MONTH[m - 1]);
++}
++
+ /** 'HH:MM' 24 h válido? */
+ export function isTimeHHMM(v: unknown): v is string {
+   return typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+@@ -116,3 +136,184 @@ export function weekdayNameOfDate(dateIso: string): string {
+   const [y, m, d] = dateIso.split('-').map(Number);
+   return WEEKDAY_NAMES[(new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7];
+ }
++
++/* ═══════════════════════════════════════════════════════════════════
++   v1.19.0 (P3 «Luanda em todo o lado»)
++   ───────────────────────────────────────────────────────────────────────
++   A biblioteca já existia, mas ~50 sítios da UI continuavam a usar
++   `new Date().getMonth()` (fuso do APARELHO) e
++   `new Date().toISOString().slice(0,10)` (UTC). Em Luanda (UTC+1) isto
++   partia coisas reais:
++     · um lançamento feito entre as 00:00 e as 01:00 guardava a data de
++       ONTEM (o UTC ainda está no dia anterior);
++     · uma data vinda do Excel/AI (`new Date(y, m-1, d).toISOString()`)
++       recuava SEMPRE um dia (meia-noite local = 23:00 UTC do dia anterior);
++     · filtros de «mês corrente» num aparelho com fuso errado (ou de um
++       irmão em viagem) mostravam o mês errado.
++   As funções abaixo são PURAS (`now` injectável) e passam a ser a única
++   forma de obter «hoje», «este mês» e «este ano» na aplicação.
++   ═══════════════════════════════════════════════════════════════════ */
++
++const p2n = (n: number) => String(n).padStart(2, '0');
++
++/** Ano corrente em Luanda (ex.: 2026). */
++export function luandaYear(now: number = Date.now()): number {
++  return luandaParts(now).year;
++}
++
++/** Mês corrente em Luanda, 1-12. */
++export function luandaMonth(now: number = Date.now()): number {
++  return luandaParts(now).month;
++}
++
++/** Índice do mês corrente em Luanda, 0-11 (para arrays de 12 posições). */
++export function luandaMonthIdx(now: number = Date.now()): number {
++  return luandaParts(now).month - 1;
++}
++
++/** Dia do mês corrente em Luanda, 1-31. */
++export function luandaDayOfMonth(now: number = Date.now()): number {
++  return luandaParts(now).day;
++}
++
++/** Mês corrente em Luanda no formato CANÓNICO do sistema: '01'..'12'. */
++export function luandaMonthStr(now: number = Date.now()): string {
++  return p2n(luandaParts(now).month);
++}
++
++/** 'AAAA-MM' de Luanda (chaves de mês, nomes de ficheiro). */
++export function luandaMonthKey(now: number = Date.now()): string {
++  const p = luandaParts(now);
++  return `${p.year}-${p2n(p.month)}`;
++}
++
++/** Instante (epoch ms) do FIM do dia de Luanda (23:59:59.999) — prazos. */
++export function luandaEndOfDay(dayKey: string): number {
++  return luandaStartOfDay(dayKey) + 86400000 - 1;
++}
++
++/**
++ * 'AAAA-MM-DD' a partir de partes de calendário, SEM passar pelo fuso do
++ * aparelho (o bug do Excel/AI: `new Date(y,m-1,d).toISOString()` recua um
++ * dia em UTC+1). Partes inválidas → ''.
++ */
++export function isoFromParts(year: number, month: number, day: number): string {
++  const y = Math.trunc(Number(year));
++  const m = Math.trunc(Number(month));
++  const d = Math.trunc(Number(day));
++  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return '';
++  if (m < 1 || m > 12 || d < 1 || y < 1) return '';
++  if (d > (m === 2 && isLeapYear(y) ? 29 : DAYS_IN_MONTH[m - 1])) return '';
++  return `${y}-${p2n(m)}-${p2n(d)}`;
++}
++
++/** Época (ms) → 'AAAA-MM-DD' de Luanda. Entrada inválida → ''. */
++export function luandaDateOf(ms: unknown): string {
++  const n = Number(ms);
++  if (!Number.isFinite(n) || n <= 0) return '';
++  return luandaDayKey(n);
++}
++
++const MONTH_NAMES_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
++  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
++const MONTH_SHORT_PT = ['jan.', 'fev.', 'mar.', 'abr.', 'mai.', 'jun.',
++  'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.'];
++
++/** Nome do mês em português (1-12). `short` → 'out.'. Inválido → ''. */
++export function monthNamePT(month: number, short = false): string {
++  const i = Math.trunc(Number(month)) - 1;
++  if (i < 0 || i > 11) return '';
++  return short ? MONTH_SHORT_PT[i] : MONTH_NAMES_PT[i];
++}
++
++/** Nome do mês corrente em Luanda ('Outubro'). */
++export function luandaMonthNamePT(now: number = Date.now(), short = false): string {
++  return monthNamePT(luandaParts(now).month, short);
++}
++
++/** '31/10/2026' — data de Luanda (rodapés de PDF, «gerado em»). */
++export function fmtTodayPT(now: number = Date.now()): string {
++  return fmtDatePT(luandaDayKey(now));
++}
++
++/** '31/10/2026 14:05' — data+hora de Luanda. */
++export function fmtTodayTimePT(now: number = Date.now()): string {
++  const p = luandaParts(now);
++  return `${fmtDatePT(luandaDayKey(now))} ${p2n(p.hour)}:${p2n(p.minute)}`;
++}
++
++export interface MonthSlot {
++  year: number;
++  /** 1-12 */
++  month: number;
++  /** '01'..'12' — o formato canónico guardado no Firestore */
++  monthStr: string;
++  /** 'out.' (pt, minúsculo, como o `toLocaleString` devolvia) */
++  name: string;
++  /** 'out./26' — rótulo de eixo de gráfico */
++  label: string;
++}
++
++/**
++ * Os últimos `count` meses (inclusive o corrente), do mais antigo para o
++ * mais recente, vistos de Luanda. Substitui os ciclos
++ * `new Date(year, month - i, 1)` dos gráficos — que dependiam do fuso do
++ * aparelho e produziam meses duplicados/errados em Dezembro/Janeiro.
++ */
++export function lastMonthsLuanda(count = 6, now: number = Date.now()): MonthSlot[] {
++  const n = Math.max(1, Math.min(60, Math.trunc(Number(count)) || 1));
++  const p = luandaParts(now);
++  const out: MonthSlot[] = [];
++  for (let i = n - 1; i >= 0; i--) {
++    const total = p.year * 12 + (p.month - 1) - i;
++    const y = Math.floor(total / 12);
++    const m = (total % 12) + 1;
++    const short = monthNamePT(m, true);
++    out.push({ year: y, month: m, monthStr: p2n(m), name: short, label: `${short}/${String(y).slice(2)}` });
++  }
++  return out;
++}
++
++/**
++ * Aniversário hoje, em Luanda? Aceita 'AAAA-MM-DD' (canónico), 'DD/MM/AAAA'
++ * (legado/Excel) e Date. `birthDate` ausente/inválida → false.
++ */
++export function isBirthdayToday(birthDate: unknown, now: number = Date.now()): boolean {
++  const iso = normalizeBirthDate(birthDate);
++  if (!iso) return false;
++  const p = luandaParts(now);
++  return Number(iso.slice(5, 7)) === p.month && Number(iso.slice(8, 10)) === p.day;
++}
++
++/** Idade (anos completos) que a pessoa faz no dia de hoje em Luanda. */
++export function ageToday(birthDate: unknown, now: number = Date.now()): number | null {
++  const iso = normalizeBirthDate(birthDate);
++  if (!iso) return null;
++  const p = luandaParts(now);
++  const by = Number(iso.slice(0, 4));
++  const bm = Number(iso.slice(5, 7));
++  const bd = Number(iso.slice(8, 10));
++  if (!by) return null;
++  let age = p.year - by;
++  if (p.month < bm || (p.month === bm && p.day < bd)) age -= 1;
++  return age >= 0 && age < 150 ? age : null;
++}
++
++/**
++ * Normaliza uma data de nascimento para 'AAAA-MM-DD'. Aceita o formato
++ * canónico, 'DD/MM/AAAA' (exportações Excel) e epoch ms. Sem conversões por
++ * `new Date(...)` locais — que eram a causa do «aniversário um dia antes».
++ */
++export function normalizeBirthDate(v: unknown): string {
++  if (v === null || v === undefined || v === '') return '';
++  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return luandaDayKey(v);
++  const s = String(v).trim();
++  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
++    const iso = s.slice(0, 10);
++    /* P3: '1990-13-45' devolve '' (antes entrava na lista de aniversariantes). */
++    return isCalendarDateIso(iso, 1850, 9999) ? iso : '';
++  }
++  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
++  if (m) return isoFromParts(Number(m[3]), Number(m[2]), Number(m[1]));
++  return '';
++}
+diff --git a/src/lib/pdfUtils.ts b/src/lib/pdfUtils.ts
+index a10b842..5d12611 100644
+--- a/src/lib/pdfUtils.ts
++++ b/src/lib/pdfUtils.ts
+@@ -105,7 +105,7 @@ export const generateMembershipCard = async (member: Member) => {
+   docPdf.setFont("helvetica", "normal");
+   docPdf.setTextColor(100, 100, 100);
+   docPdf.text('ID: ' + member.id.substring(0, 8).toUpperCase(), 5, 49);
+-  docPdf.text('Emitido em: ' + new Date().toLocaleDateString('pt-AO'), 45, 49);
++  docPdf.text('Emitido em: ' + fmtTodayPT(), 45, 49);
+ 
+   await savePdf(docPdf, `Cartao_Membro_${member.name.replace(/\s+/g,'_')}.pdf`);
+ };
+@@ -118,6 +118,7 @@ export const generateMembershipCard = async (member: Member) => {
+ import autoTable from 'jspdf-autotable';
+ import { aggregateByMonth, sumYear, cardYears } from './finance';
+ import { toMonthIdx } from './months';
++import { fmtTodayPT } from './luanda';
+ import {
+   CommunionMark,
+   Donation,
+diff --git a/src/lib/radio.ts b/src/lib/radio.ts
+index 2b68e1b..99849bf 100644
+--- a/src/lib/radio.ts
++++ b/src/lib/radio.ts
+@@ -167,9 +167,12 @@ export interface Recording {
+   mtime: number;
+ }
+ 
+-export function recordingName(d = new Date()): string {
++export function recordingName(now: number = Date.now()): string {
++  /* P3: partes de LUANDA — uma gravação às 00:20 do dia 1 ficava com o nome do
++     dia anterior em qualquer aparelho cujo fuso não fosse UTC+1. */
+   const p = (n: number) => String(n).padStart(2, '0');
+-  return `Maranata_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}.aac`;
++  const d = luandaParts(now);
++  return `Maranata_${d.year}-${p(d.month)}-${p(d.day)}_${p(d.hour)}h${p(d.minute)}.aac`;
+ }
+ 
+ export async function listRecordings(): Promise<Recording[]> {
+@@ -326,6 +329,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'fi
+ import { storage, db } from './firebase';
+ import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+ import { dataUrlToBlob } from './download';
++import { luandaParts } from './luanda';
+ 
+ export interface PublishedRecording {
+   id: string;
+diff --git a/src/pages/Admin.tsx b/src/pages/Admin.tsx
+index 740a775..d87a8b4 100644
+--- a/src/pages/Admin.tsx
++++ b/src/pages/Admin.tsx
+@@ -33,6 +33,7 @@ import { NOTIF_SETTINGS_DEFAULT } from '../types';
+ import { writeBatch } from 'firebase/firestore';
+ import { orderBy } from 'firebase/firestore';
+ import { formatKz } from '../lib/money';
++import { luandaDayKey } from '../lib/luanda';
+ 
+ export default function Admin() {
+   const { user, userRole, isSuperAdmin } = useAuth();
+@@ -513,7 +514,7 @@ export default function Admin() {
+       }
+       
+       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
+-      const fname = `backup_igreja_${new Date().toISOString().split('T')[0]}.json`;
++      const fname = `backup_igreja_${luandaDayKey()}.json`;
+       await saveBlob(blob, fname);
+       /* v1.18: no telemóvel, além da folha de partilha, fica SEMPRE uma cópia
+          directa em Documents/Backup/ + marcador (data/tamanho/caminho). */
+@@ -814,7 +815,7 @@ export default function Admin() {
+       const ws = XLSX.utils.json_to_sheet(rows);
+       const wb = XLSX.utils.book_new();
+       XLSX.utils.book_append_sheet(wb, ws, "Utilizadores");
+-      await saveXlsx(XLSX, wb, `utilizadores_${new Date().toISOString().substring(0, 10)}.xlsx`);
++      await saveXlsx(XLSX, wb, `utilizadores_${luandaDayKey()}.xlsx`);
+       toast.success("Ficheiro exportado com sucesso.");
+     }).catch(err => {
+       console.error(err);
+diff --git a/src/pages/Assets.tsx b/src/pages/Assets.tsx
+index 57c97cd..74d6cba 100644
+--- a/src/pages/Assets.tsx
++++ b/src/pages/Assets.tsx
+@@ -31,6 +31,7 @@ type AssetForm = z.infer<typeof assetSchema>;
+ 
+ import { useAuth } from '../context/AuthContext';
+ import { formatKz } from '../lib/money';
++import { luandaDayKey } from '../lib/luanda';
+ 
+ export default function Assets() {
+   const { user, isAdmin } = useAuth();
+@@ -38,7 +39,7 @@ export default function Assets() {
+   const [isDialogOpen, setIsDialogOpen] = useState(false);
+   const [editingItem, setEditingItem] = useState<any>(null);
+   const confirmDialog = useConfirm();
+-  const today = new Date().toISOString().substring(0, 10);
++  const today = luandaDayKey();
+ 
+   const { register, handleSubmit, control, formState: { errors }, reset, setValue, clearErrors } = useForm({
+     resolver: zodResolver(assetSchema),
+diff --git a/src/pages/Budget.tsx b/src/pages/Budget.tsx
+index c98cf99..8d6a5b1 100644
+--- a/src/pages/Budget.tsx
++++ b/src/pages/Budget.tsx
+@@ -10,9 +10,10 @@ import { toast } from 'sonner';
+ import { Pencil, Save, X } from 'lucide-react';
+ import { formatKz } from '../lib/money';
+ import MoneyInput from '../components/MoneyInput';
++import { luandaYear } from '../lib/luanda';
+ 
+ export default function Budget() {
+-  const currentYear = new Date().getFullYear();
++  const currentYear = luandaYear();
+   const queryClient = useQueryClient();
+   const [isEditing, setIsEditing] = useState(false);
+   const [editData, setEditData] = useState({ 
+diff --git a/src/pages/BuildingFund.tsx b/src/pages/BuildingFund.tsx
+index f743acc..54d8187 100644
+--- a/src/pages/BuildingFund.tsx
++++ b/src/pages/BuildingFund.tsx
+@@ -33,6 +33,7 @@ const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Jul
+ 
+ import { useAuth } from '../context/AuthContext';
+ import { formatKz } from '../lib/money';
++import { luandaDayKey } from '../lib/luanda';
+ 
+ export default function BuildingFund() {
+   const { user, isAdmin } = useAuth();
+@@ -40,7 +41,7 @@ export default function BuildingFund() {
+   const [isDialogOpen, setIsDialogOpen] = useState(false);
+   const [editingItem, setEditingItem] = useState<any>(null);
+   const confirmDialog = useConfirm();
+-  const today = new Date().toISOString().substring(0, 10);
++  const today = luandaDayKey();
+ 
+   const { register, handleSubmit, control, formState: { errors }, reset, setValue, watch, clearErrors } = useForm({
+     resolver: zodResolver(fundSchema),
+diff --git a/src/pages/Contributions.tsx b/src/pages/Contributions.tsx
+index 2e47abb..5e71951 100644
+--- a/src/pages/Contributions.tsx
++++ b/src/pages/Contributions.tsx
+@@ -24,8 +24,9 @@ import { openExternal } from '../lib/download';
+ import { aiBulkTemplates } from '../lib/ai';
+ import { idxToName } from '../lib/months';
+ import { formatKz, parseKzInput, editValue } from '../lib/money';
++import { fmtTodayTimePT, luandaDayKey, luandaYear } from '../lib/luanda';
+ 
+-const THIS_YEAR = new Date().getFullYear();
++const THIS_YEAR = luandaYear();
+ // v1.12: moeda única — valores em CÊNTIMOS, formato 1.500,00 Kz (lib/money)
+ const fmtKz = formatKz;
+ const fmtDate = (iso?: string | null) => (iso ? iso.split('-').reverse().join('/') : '—');
+@@ -47,9 +48,9 @@ export default function Contributions() {
+ 
+   const [memberPick, setMemberPick] = useState<Member | null>(null);
+   const [contribDialog, setContribDialog] = useState(false);
+-  const [cForm, setCForm] = useState({ description: '', amount: '', dueDate: new Date().toISOString().slice(0, 10) });
++  const [cForm, setCForm] = useState({ description: '', amount: '', dueDate: luandaDayKey() });
+   const [payDialog, setPayDialog] = useState<Contribution | null>(null);
+-  const [pForm, setPForm] = useState({ amount: '', deliveryDate: new Date().toISOString().slice(0, 10) });
++  const [pForm, setPForm] = useState({ amount: '', deliveryDate: luandaDayKey() });
+   const [reasonDialog, setReasonDialog] = useState<{ c: Contribution; action: 'close' | 'reopen' } | null>(null);
+   const [reason, setReason] = useState('');
+ 
+@@ -206,7 +207,7 @@ export default function Contributions() {
+         body: `Paz, ${memberPick.name}. Foi registada a contribuição «${cForm.description}» no valor de ${fmtKz(amount)}, com prazo ${fmtDate(cForm.dueDate)}. Obrigado!`,
+       });
+       toast.success('Contribuição criada e membro notificado (fila com janela de 10 min).');
+-      setContribDialog(false); setCForm({ description: '', amount: '', dueDate: new Date().toISOString().slice(0, 10) });
++      setContribDialog(false); setCForm({ description: '', amount: '', dueDate: luandaDayKey() });
+       qc.invalidateQueries({ queryKey: ['contributions'] });
+     } catch (e: any) { toast.error(e?.message || 'Erro ao criar.'); } finally { setBusy(false); }
+   };
+@@ -237,7 +238,7 @@ export default function Contributions() {
+         await updateDoc(doc(db, 'contributions', payDialog.id), { paidAmount: newPaid });
+         toast.success(`Pagamento registado (${fmtKz(newPaid)} de ${fmtKz(payDialog.amount)}).`);
+       }
+-      setPayDialog(null); setPForm({ amount: '', deliveryDate: new Date().toISOString().slice(0, 10) });
++      setPayDialog(null); setPForm({ amount: '', deliveryDate: luandaDayKey() });
+       qc.invalidateQueries({ queryKey: ['contrib_payments'] }); qc.invalidateQueries({ queryKey: ['contributions'] });
+     } catch (e: any) { toast.error(e?.message || 'Erro ao registar.'); } finally { setBusy(false); }
+   };
+@@ -330,7 +331,7 @@ export default function Contributions() {
+         if (!yes) { setBusy(false); return; }
+       }
+       const campRef = await addDoc(collection(db, 'campaigns'), {
+-        name: `${audience} — ${new Date().toLocaleString('pt-AO')}`,
++        name: `${audience} — ${fmtTodayTimePT()}`,
+         audience, templates, groupCounts: Object.fromEntries(g.map((x) => [x.id, x.members.length])),
+         createdBy: user?.email || 'unknown', createdAt: Date.now(), status: 'sent', recipientCount: plan.length,
+       });
+@@ -529,7 +530,7 @@ export default function Contributions() {
+                     {c.closeReason && <p className="text-[11px] text-muted-foreground">Fecho manual: {c.closeReason}</p>}
+                     {c.reopenReason && <p className="text-[11px] text-muted-foreground">Reaberta: {c.reopenReason}</p>}
+                     <div className="flex flex-wrap gap-2">
+-                      <Button size="sm" variant="outline" onClick={() => { setPayDialog(c); setPForm({ amount: '', deliveryDate: new Date().toISOString().slice(0, 10) }); }}>Registar pagamento</Button>
++                      <Button size="sm" variant="outline" onClick={() => { setPayDialog(c); setPForm({ amount: '', deliveryDate: luandaDayKey() }); }}>Registar pagamento</Button>
+                       {c.status !== 'concluida' && (
+                         <Button size="sm" variant="ghost" onClick={() => { setReasonDialog({ c, action: 'close' }); setReason(''); }}>Concluir c/ motivo</Button>
+                       )}
+diff --git a/src/pages/Dashboard.tsx b/src/pages/Dashboard.tsx
+index 6428d52..7167fb5 100644
+--- a/src/pages/Dashboard.tsx
++++ b/src/pages/Dashboard.tsx
+@@ -8,22 +8,28 @@ import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
+ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+ import { collection, query, getDocs, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
+-import { format } from 'date-fns';
+-import { ptBR } from 'date-fns/locale';
+ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+ import { useAuth } from '../context/AuthContext';
+ import { Badge } from '../components/ui/badge';
+ import { useDevice } from '../hooks/useDevice';
+ import { AIExecutiveAnalysis } from '../components/finances/AIExecutiveAnalysis';
+ import { formatKz } from '../lib/money';
++/* v1.19.0 (P3 «Luanda em todo o lado»): «hoje», «este mês» e «este ano» vêm
++   de lib/luanda.ts — o fuso do aparelho (e o UTC do toISOString) deslocava
++   aniversários e lançamentos feitos entre as 00:00 e as 01:00. */
++import {
++  luandaYear, luandaMonth, luandaDayOfMonth, luandaMonthStr, luandaMonthNamePT,
++  monthNamePT, normalizeBirthDate, isBirthdayToday,
++} from '../lib/luanda';
+ 
+ export default function Dashboard() {
+   const { userRole } = useAuth();
+   const { isMobile, isTablet } = useDevice();
+-  const d = new Date();
+-  const year = d.getFullYear();
+-  const currentMonth = d.getMonth() + 1;
+-  const currentDay = d.getDate();
++  /* P3: dia/mês/ano de LUANDA (eram do fuso do aparelho — os aniversariantes
++     e os dízimos «deste mês» mudavam conforme o telemóvel). */
++  const year = luandaYear();
++  const currentMonth = luandaMonth();
++  const currentDay = luandaDayOfMonth();
+ 
+   const isFinancialStaff = userRole === 'admin' || userRole === 'treasurer';
+ 
+@@ -39,7 +45,7 @@ export default function Dashboard() {
+         let offerings = 0;
+         let expenses = 0;
+         const monthlyData = Array.from({ length: 12 }, (_, i) => ({
+-          name: format(new Date(year, i), 'MMM', { locale: ptBR }),
++          name: monthNamePT(i + 1, true),
+           Entradas: 0,
+           Saídas: 0,
+           Dízimos: 0,
+@@ -171,9 +177,12 @@ export default function Dashboard() {
+         let tithingMembersSet = new Set<string>();
+ 
+         if (isFinancialStaff) {
+-          const currentMonth = new Date().getMonth() + 1; // 1-12
+-          const currentYear = new Date().getFullYear();
+-          const currentMonthTithes = await getDocs(query(collection(db, 'tithes'), where('month', '==', currentMonth), where('year', '==', currentYear)));
++          /* P3: o campo `month` dos dízimos é a string canónica '01'..'12'
++             (v1.9.3). Comparava-se com um NÚMERO — a query nunca devolvia nada
++             e o gráfico «Dizimistas do Mês» estava sempre vazio. */
++          const currentMonthStr = luandaMonthStr();
++          const currentYear = luandaYear();
++          const currentMonthTithes = await getDocs(query(collection(db, 'tithes'), where('month', '==', currentMonthStr), where('year', '==', currentYear)));
+           currentMonthTithes.forEach(doc => {
+             if (doc.data().memberId) {
+               tithingMembersSet.add(doc.data().memberId);
+@@ -220,8 +229,10 @@ export default function Dashboard() {
+         const birthdays = membersData
+           .filter((m: any) => m.birthDate)
+           .map((m: any) => {
+-            const [y, mm, dd] = m.birthDate.split('-');
+-            return { ...m, bMonth: parseInt(mm, 10), bDay: parseInt(dd, 10) };
++            /* P3: normalizeBirthDate aceita 'AAAA-MM-DD' e o legado 'DD/MM/AAAA'
++               (o split('-') anterior produzia NaN e o membro desaparecia). */
++            const iso = normalizeBirthDate(m.birthDate);
++            return { ...m, bIso: iso, bMonth: Number(iso.slice(5, 7)), bDay: Number(iso.slice(8, 10)) };
+           })
+           .filter((m: any) => m.bMonth === currentMonth)
+           .sort((a: any, b: any) => a.bDay - b.bDay);
+@@ -657,7 +668,7 @@ export default function Dashboard() {
+               <Card>
+                 <CardHeader>
+                   <CardTitle>Dizimistas do Mês (Género)</CardTitle>
+-                  <CardDescription>Membros que contribuíram com dízimos {format(new Date(), 'MMMM', { locale: ptBR })}</CardDescription>
++                  <CardDescription>Membros que contribuíram com dízimos em {luandaMonthNamePT()}</CardDescription>
+                 </CardHeader>
+                 <CardContent className={isMobile ? "h-[250px] flex items-center justify-center relative" : "h-[300px] flex items-center justify-center relative"}>
+                     {!isLoading && stats?.genders && stats.genders.every(d => d.value === 0) ? (
+@@ -750,7 +761,7 @@ export default function Dashboard() {
+         <TabsContent value="birthdays" className="m-0 space-y-6">
+           <Card>
+             <CardHeader>
+-              <CardTitle>Aniversariantes do Mês ({format(d, 'MMMM', { locale: ptBR })})</CardTitle>
++              <CardTitle>Aniversariantes do Mês ({luandaMonthNamePT()})</CardTitle>
+               <CardDescription>Membros que celebram aniversário este mês.</CardDescription>
+             </CardHeader>
+             <CardContent>
+@@ -761,7 +772,7 @@ export default function Dashboard() {
+                   <div className="text-muted-foreground border-2 border-dashed p-8 rounded text-center">Nenhum aniversariante este mês.</div>
+                 ) : (
+                   stats?.birthdays?.map((m: any) => {
+-                    const isToday = m.bDay === currentDay;
++                    const isToday = isBirthdayToday(m.bIso) || m.bDay === currentDay;
+                     return (
+                       <div key={m.id} className={`flex justify-between items-center p-3 rounded-lg border ${isToday ? 'bg-orange-50 border-orange-200' : 'bg-card'}`}>
+                         <div className="flex items-center gap-3">
+diff --git a/src/pages/Finances.tsx b/src/pages/Finances.tsx
+index 2856cf4..8b093c1 100644
+--- a/src/pages/Finances.tsx
++++ b/src/pages/Finances.tsx
+@@ -32,6 +32,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTo
+ import { useDevice } from '../hooks/useDevice';
+ 
+ import { YearlyStats } from '../components/finances/YearlyStats';
++import { fmtTodayPT, luandaDayKey, luandaMonthNamePT, luandaMonthStr, luandaYear } from '../lib/luanda';
+ 
+ const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+ 
+@@ -41,9 +42,9 @@ const amtCents = (t?: string) => { const r = parseKzInput(t || '', { required: f
+ 
+ export default function Finances() {
+   const { user, isAdmin, userRole } = useAuth();
+-  const d = new Date();
+-  const [selectedMonth, setSelectedMonth] = useState(MONTHS[d.getMonth()]);
+-  const [selectedYear, setSelectedYear] = useState(d.getFullYear().toString());
++  /* P3: mês/ano correntes de LUANDA (era o fuso do aparelho). */
++  const [selectedMonth, setSelectedMonth] = useState(luandaMonthNamePT());
++  const [selectedYear, setSelectedYear] = useState(String(luandaYear()));
+   
+   const [members, setMembers] = useState<{id: string, name: string, email?: string, phone?: string}[]>([]);
+   const [memberLookup, setMemberLookup] = useState<Record<string, string>>({});
+@@ -79,23 +80,23 @@ export default function Finances() {
+     memberId: '',
+     amount: '',
+     receiptNumber: '',
+-    selectedMonths: [String(new Date().getMonth() + 1).padStart(2, '0')],
++    selectedMonths: [luandaMonthStr()],
+     manualSplit: false,
+     manualValues: {},
+     year: selectedYear,
+-    deliveryMonth: String(new Date().getMonth() + 1).padStart(2, '0'),
++    deliveryMonth: luandaMonthStr(),
+     deliveryYear: selectedYear,
+     contributionType: 'Dízimo',
+     contributionDetail: ''
+   });
+-  const [oD, setOD] = useState({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: new Date().toISOString().split('T')[0], sinodPercentage: '0' });
++  const [oD, setOD] = useState({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: luandaDayKey(), sinodPercentage: '0' });
+   /* v1.14.6: tipo explícito — o estado ganha receiptBase64/receiptMime no
+      upload do recibo e o openEditExpense não repõe customCategory. */
+   const [eD, setED] = useState<{
+     description: string; category: string; amount: string; responsible: string;
+     customCategory?: string; referenceDate: string;
+     receiptBase64?: string; receiptMime?: string;
+-  }>({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: new Date().toISOString().split('T')[0] });
++  }>({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: luandaDayKey() });
+   const [isCustomCategory, setIsCustomCategory] = useState(false);
+ 
+   const [isTOpen, setIsTOpen] = useState(false);
+@@ -346,7 +347,7 @@ export default function Finances() {
+       docPdf.text(`Recibo Nº: ${receiptNum}`, 20, 35);
+       docPdf.text(`Membro: ${mem.name}`, 20, 45);
+       docPdf.text(`Valor: ${formatKz(amount)}`, 20, 55);
+-      docPdf.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 20, 65);
++      docPdf.text(`Data: ${fmtTodayPT()}`, 20, 65);
+       const b64 = docPdf.output('datauristring');
+       
+       // Save for Webhook/Extension
+@@ -745,7 +746,7 @@ export default function Finances() {
+          await updateDoc(doc(db, 'offerings', editingOffering.id), newData);
+          await logAudit('UPDATE', 'offerings', editingOffering, newData);
+          toast.success("Oferta actualizada.");
+-         setIsOOpen(false); setEditingOffering(null); setOD({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: new Date().toISOString().split('T')[0], sinodPercentage: '0' }); loadData(false);
++         setIsOOpen(false); setEditingOffering(null); setOD({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: luandaDayKey(), sinodPercentage: '0' }); loadData(false);
+       } catch (error) { 
+          toast.error("Falha ao actualizar."); 
+          handleFirestoreError(error, OperationType.WRITE, 'offerings'); 
+@@ -794,7 +795,7 @@ export default function Finances() {
+        }
+ 
+        toast.success("Oferta registada.");
+-       setIsOOpen(false); setOD({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: new Date().toISOString().split('T')[0], sinodPercentage: '0' }); loadData(false);
++       setIsOOpen(false); setOD({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: luandaDayKey(), sinodPercentage: '0' }); loadData(false);
+     } catch (error) { 
+        toast.error("Falha ao guardar."); 
+        handleFirestoreError(error, OperationType.WRITE, 'offerings');
+@@ -842,7 +843,7 @@ export default function Finances() {
+            category: finalCategory,
+            amount: eParsedEdit.cents,
+            responsible: eD.responsible,
+-           date: eD.referenceDate || new Date().toISOString().split('T')[0],
++           date: eD.referenceDate || luandaDayKey(),
+            updatedAt: Date.now()
+          };
+          if (eD.receiptBase64) newData.hasReceipt = true;
+@@ -858,7 +859,7 @@ export default function Finances() {
+ 
+          await logAudit('UPDATE', 'expenses', editingExpense, newData);
+          toast.success("Saída actualizada.");
+-         setIsEOpen(false); setEditingExpense(null); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', receiptBase64: '', receiptMime: '', referenceDate: new Date().toISOString().split('T')[0] }); setIsCustomCategory(false); loadData(false);
++         setIsEOpen(false); setEditingExpense(null); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', receiptBase64: '', receiptMime: '', referenceDate: luandaDayKey() }); setIsCustomCategory(false); loadData(false);
+       } catch (error) { 
+          toast.error("Falha ao actualizar."); 
+          handleFirestoreError(error, OperationType.WRITE, 'expenses'); 
+@@ -874,7 +875,7 @@ export default function Finances() {
+          category: finalCategory,
+          amount: eParsedEdit.cents,
+          responsible: eD.responsible,
+-         date: eD.referenceDate || new Date().toISOString().split('T')[0],
++         date: eD.referenceDate || luandaDayKey(),
+          month: selectedMonth,
+          year: parseInt(selectedYear),
+          adminId: auth.currentUser?.uid,
+@@ -892,7 +893,7 @@ export default function Finances() {
+        }
+ 
+        toast.success("Saída registada.");
+-       setIsEOpen(false); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: new Date().toISOString().split('T')[0], receiptBase64: '', receiptMime: '' }); setIsCustomCategory(false); loadData(false);
++       setIsEOpen(false); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: luandaDayKey(), receiptBase64: '', receiptMime: '' }); setIsCustomCategory(false); loadData(false);
+     } catch (error) { 
+        toast.error("Falha ao guardar."); 
+        handleFirestoreError(error, OperationType.WRITE, 'expenses');
+@@ -948,7 +949,7 @@ export default function Finances() {
+       type: o.type,
+       amount: o.amount.toString(),
+       receiptNumber: o.receiptNumber || '',
+-      referenceDate: o.referenceDate || new Date().toISOString().split('T')[0],
++      referenceDate: o.referenceDate || luandaDayKey(),
+       sinodPercentage: '0'
+     });
+     setIsOOpen(true);
+@@ -961,7 +962,7 @@ export default function Finances() {
+       category: e.category,
+       amount: e.amount.toString(),
+       responsible: e.responsible || '',
+-      referenceDate: e.date || new Date().toISOString().split('T')[0]
++      referenceDate: e.date || luandaDayKey()
+     });
+     setIsEOpen(true);
+   };
+diff --git a/src/pages/MemberPortal.tsx b/src/pages/MemberPortal.tsx
+index 5590936..e7d299e 100644
+--- a/src/pages/MemberPortal.tsx
++++ b/src/pages/MemberPortal.tsx
+@@ -78,6 +78,7 @@ import {
+ } from "../types";
+ import { computeStatus } from "../lib/contrib";
+ import { formatKz } from '../lib/money';
++import { fmtTodayTimePT, lastMonthsLuanda } from '../lib/luanda';
+ 
+ export default function MemberPortal() {
+   const { memberData, signOut } = useAuth();
+@@ -255,7 +256,7 @@ export default function MemberPortal() {
+     docPdf.setFontSize(12);
+     docPdf.text(`Extrato de Dízimos: ${memberData.name}`, 14, 28);
+     docPdf.setFontSize(10);
+-    docPdf.text(`Gerado em: ${new Date().toLocaleDateString("pt-AO")}`, 14, 34);
++    docPdf.text(`Gerado em: ${fmtTodayTimePT()}`, 14, 34);
+ 
+     const tableData = tithes.map((t) => [
+       `${t.month}/${t.year || "-"}`,
+@@ -272,24 +273,13 @@ export default function MemberPortal() {
+     await savePdf(docPdf, `Extrato_${memberData.name.replace(/\s+/g, "_")}.pdf`);
+   };
+ 
+-  const currentMonth = new Date().getMonth();
+-  const currentYear = new Date().getFullYear();
+-  const chartData = [];
+-  for (let i = 5; i >= 0; i--) {
+-    let mDate = new Date(currentYear, currentMonth - i, 1);
+-    const mName = mDate.toLocaleString("pt-AO", { month: "short" });
+-    const mMonth = String(mDate.getMonth() + 1).padStart(2, "0");
+-    const yYear = mDate.getFullYear();
+-
+-    const tithesSum = tithes
+-      .filter((t: any) => t.month === mMonth && t.year === yYear)
+-      .reduce((acc, curr) => acc + curr.amount, 0);
+-
+-    chartData.push({
+-      name: `${mName}/${yYear.toString().substring(2)}`,
+-      valor: tithesSum,
+-    });
+-  }
++  /* P3: meses de Luanda (era o fuso do aparelho). */
++  const chartData = lastMonthsLuanda(6).map((s) => ({
++    name: s.label,
++    valor: tithes
++      .filter((t: any) => t.month === s.monthStr && t.year === s.year)
++      .reduce((acc: number, curr: any) => acc + curr.amount, 0),
++  }));
+ 
+   return (
+     <div className="min-h-screen bg-slate-50 dark:bg-background p-4 md:p-8">
+diff --git a/src/pages/Members.tsx b/src/pages/Members.tsx
+index 5c8651b..9583ed1 100644
+--- a/src/pages/Members.tsx
++++ b/src/pages/Members.tsx
+@@ -45,6 +45,7 @@ import { memberSchema, type MemberForm } from '../lib/memberSchema';
+ 
+ import { useAuth } from '../context/AuthContext';
+ import { formatKz } from '../lib/money';
++import { fmtDatePT, isoFromParts, lastMonthsLuanda, normalizeBirthDate } from '../lib/luanda';
+ 
+ export default function Members() {
+   const { user, isAdmin } = useAuth();
+@@ -100,7 +101,10 @@ export default function Members() {
+                 // If the date is Excel serial number
+                 if (typeof row[birthIdx] === 'number') {
+                   const date = XLSX.SSF.parse_date_code(row[birthIdx]);
+-                  birthDate = new Date(date.y, date.m - 1, date.d).toISOString().split('T')[0];
++                  /* P3: era new Date(y,m-1,d).toISOString() — meia-noite LOCAL
++                     é 23:00 UTC do dia anterior em Luanda, portanto TODAS as
++                     datas de nascimento importadas do Excel recuavam um dia. */
++                  birthDate = isoFromParts(date.y, date.m, date.d);
+                 } else {
+                   birthDate = row[birthIdx].toString(); // Might need parsing based on format
+                 }
+@@ -450,7 +454,7 @@ export default function Members() {
+       'Nome': m.name,
+       'Estado': m.status,
+       'Telefone': m.phone || '-',
+-      'Nascimento': m.birthDate ? new Date(m.birthDate).toLocaleDateString('pt-AO') : '-',
++      'Nascimento': m.birthDate ? fmtDatePT(normalizeBirthDate(m.birthDate)) : '-',
+       'Célula': m.groupCell || '-'
+     }));
+     const worksheet = XLSX.utils.json_to_sheet(data);
+@@ -474,7 +478,7 @@ export default function Members() {
+       m.name,
+       m.status,
+       m.phone || '-',
+-      m.birthDate ? new Date(m.birthDate).toLocaleDateString('pt-AO') : '-',
++      m.birthDate ? fmtDatePT(normalizeBirthDate(m.birthDate)) : '-',
+       m.groupCell || '-'
+     ]);
+ 
+@@ -964,25 +968,15 @@ export default function Members() {
+                    ) : (
+                      <>
+                        {(() => {
+-                         const currentMonth = new Date().getMonth();
+-                         const currentYear = new Date().getFullYear();
+-                         
+-                         const chartData = [];
+-                         for (let i = 5; i >= 0; i--) {
+-                           let mDate = new Date(currentYear, currentMonth - i, 1);
+-                           const mName = mDate.toLocaleString('pt-AO', { month: 'short' });
+-                           const mMonth = String(mDate.getMonth() + 1).padStart(2, '0');
+-                           const yYear = mDate.getFullYear();
+-                           
+-                           const tithesSum = memberTithes
+-                             .filter(t => t.referenceMonth === mMonth && t.referenceYear === yYear)
+-                             .reduce((acc, curr) => acc + curr.amount, 0);
+-                             
+-                           chartData.push({
+-                             name: `${mName}/${yYear.toString().substring(2)}`,
+-                             valor: tithesSum
+-                           });
+-                         }
++                         /* P3: os últimos 6 meses vêm de lib/luanda.ts — o
++                            ciclo new Date(year, month - i, 1) dependia do fuso
++                            do aparelho e partia-se na viragem do ano. */
++                         const chartData = lastMonthsLuanda(6).map((s) => ({
++                           name: s.label,
++                           valor: memberTithes
++                             .filter(t => t.referenceMonth === s.monthStr && t.referenceYear === s.year)
++                             .reduce((acc: number, curr: any) => acc + curr.amount, 0),
++                         }));
+ 
+                          return (
+                            <div className="h-[200px] w-full mb-6">
+diff --git a/src/pages/Obligations.tsx b/src/pages/Obligations.tsx
+index 09dafd1..2365ee2 100644
+--- a/src/pages/Obligations.tsx
++++ b/src/pages/Obligations.tsx
+@@ -7,11 +7,12 @@ import { collection, query, getDocs, where } from 'firebase/firestore';
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+ import { formatKz } from '../lib/money';
++import { luandaYear } from '../lib/luanda';
+ 
+ const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+ 
+ export default function Obligations() {
+-  const currentYear = new Date().getFullYear();
++  const currentYear = luandaYear();
+   const [selectedYear, setSelectedYear] = useState(currentYear.toString());
+ 
+   const { data: obligationsData, isLoading } = useQuery({
+diff --git a/src/pages/Reports.tsx b/src/pages/Reports.tsx
+index 91f63d7..74589e5 100644
+--- a/src/pages/Reports.tsx
++++ b/src/pages/Reports.tsx
+@@ -18,17 +18,18 @@ import { collection, query, getDocs, where } from 'firebase/firestore';
+ import { toast } from 'sonner';
+ import { AIExecutiveAnalysis } from '../components/finances/AIExecutiveAnalysis';
+ import { formatKz } from '../lib/money';
++import { fmtTodayPT, luandaDayKey, luandaMonthNamePT, luandaYear } from '../lib/luanda';
+ 
+ const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+ 
+ export default function Reports() {
+-  const d = new Date();
+-  const [selectedMonth, setSelectedMonth] = useState(MONTHS[d.getMonth()]);
+-  const [selectedYear, setSelectedYear] = useState(d.getFullYear().toString());
++  /* P3: mês/ano correntes de LUANDA (era o fuso do aparelho). */
++  const [selectedMonth, setSelectedMonth] = useState(luandaMonthNamePT());
++  const [selectedYear, setSelectedYear] = useState(String(luandaYear()));
+   
+   const [filterType, setFilterType] = useState<'month' | 'period'>('month');
+-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
++  const [startDate, setStartDate] = useState(luandaDayKey());
++  const [endDate, setEndDate] = useState(luandaDayKey());
+ 
+   const [loadingPdf, setLoadingPdf] = useState(false);
+   const [loadingXlsx, setLoadingXlsx] = useState(false);
+@@ -171,7 +172,7 @@ export default function Reports() {
+       const footerY = (docPdf as any).lastAutoTable.finalY + 20;
+ 
+       docPdf.setFontSize(11);
+-      docPdf.text(`Igreja Local de Emanuel em Xangongo, ${new Date().toLocaleDateString('pt-AO')}`, 105, footerY, { align: 'center' });
++      docPdf.text(`Igreja Local de Emanuel em Xangongo, ${fmtTodayPT()}`, 105, footerY, { align: 'center' });
+       
+       docPdf.setFont("helvetica", "bold");
+       docPdf.text('O Tesoureiro', 40, footerY + 15, { align: 'center' });
+@@ -388,7 +389,7 @@ export default function Reports() {
+       const footerY = (docPdf as any).lastAutoTable.finalY + 20;
+ 
+       docPdf.setFontSize(11);
+-      docPdf.text(`Igreja Local de Emanuel em Xangongo, ${new Date().toLocaleDateString('pt-AO')}`, 105, footerY, { align: 'center' });
++      docPdf.text(`Igreja Local de Emanuel em Xangongo, ${fmtTodayPT()}`, 105, footerY, { align: 'center' });
+       
+       docPdf.setFont("helvetica", "bold");
+       docPdf.text('O Tesoureiro', 40, footerY + 15, { align: 'center' });
+diff --git a/vitest.config.ts b/vitest.config.ts
+index 9bb23e4..f268719 100644
+--- a/vitest.config.ts
++++ b/vitest.config.ts
+@@ -14,7 +14,9 @@ export default defineConfig({
+     // declaram `// @vitest-environment jsdom` no topo do ficheiro.
+     environment: 'node',
+     globals: true, // o auto-cleanup do Testing Library precisa do afterEach global
+-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
++    /* v1.19.0 (P3): também os testes do Worker (Cloudflare) — até aqui o
++       ficheiro mais crítico do sistema só tinha `node --check` no CI. */
++    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'worker/**/*.test.js', 'scripts/**/*.test.mjs'],
+     setupFiles: ['src/test/setup.ts'],
+     reporters: ['default'],
+   },
+diff --git a/worker/__tests__/ai-worker.test.js b/worker/__tests__/ai-worker.test.js
+new file mode 100644
+index 0000000..d04f871
+--- /dev/null
++++ b/worker/__tests__/ai-worker.test.js
+@@ -0,0 +1,395 @@
++/* ═══════════════════════════════════════════════════════════════════════════
++   v1.19.0 (P3) — TESTES DO WORKER (Cloudflare)
++   ───────────────────────────────────────────────────────────────────────────
++   O Worker é o ficheiro mais crítico do sistema: valida o auto-cadastro,
++   verifica o token do Firebase, aplica rate limits, cria contas Auth, trata da
++   fila SMS/WhatsApp, dos lembretes e dos estados das contribuições. Tinha
++   1500 linhas e ZERO testes (o CI só fazia `node --check`).
++
++   Aqui testam-se as funções PURAS através da superfície `__test` exportada no
++   fim de worker/ai-worker.js — sem rede, sem segredos, sem Cloudflare.
++   Correm em `node` (o ambiente por omissão do vitest.config.ts).
++   ═══════════════════════════════════════════════════════════════════════════ */
++import { describe, expect, it, beforeEach } from 'vitest';
++import { __test as W } from '../ai-worker.js';
++
++/* Implementações do lado da app, para provar que Worker e UI não divergem. */
++import { formatKz } from '../../src/lib/money.ts';
++import { luandaParts, luandaDayKey, luandaEndOfDay } from '../../src/lib/luanda.ts';
++
++const at = (y, m, d, hh = 0, mm = 0) => Date.UTC(y, m - 1, d, hh, mm);
++
++/* Token JWT falso (assinatura irrelevante: as recusas testadas acontecem ANTES
++   de o Worker procurar a chave pública). */
++const b64u = (obj) =>
++  Buffer.from(JSON.stringify(obj)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
++const fakeToken = (header, claims, sig = 'sig') => `${b64u(header)}.${b64u(claims)}.${sig}`;
++const PROJECT = 'iesa-emanuel-xangongo';
++const goodClaims = (over = {}) => ({
++  iss: `https://securetoken.google.com/${PROJECT}`,
++  aud: PROJECT,
++  sub: 'uid-123',
++  email: 'admin@iesa.ao',
++  iat: Math.floor(Date.now() / 1000) - 10,
++  exp: Math.floor(Date.now() / 1000) + 3600,
++  ...over,
++});
++const RS256 = { alg: 'RS256', kid: 'k1', typ: 'JWT' };
++
++describe('Worker — versão e configuração', () => {
++  it('a versão publicada no repositório é a 2.10.0 (P3)', () => {
++    expect(W.WORKER_VERSION).toBe('2.10.0');
++  });
++  it('os canais externos continuam em modo manual (sem contas pagas)', () => {
++    expect(W.PROVIDERS).toMatchObject({ sms: 'manual', whatsapp: 'manual', system: 'internal' });
++  });
++});
++
++describe('Worker — validateSignup (auto-cadastro: o servidor é a autoridade)', () => {
++  const base = {
++    name: 'Maria Domingos', email: 'Maria.Domingos@Exemplo.AO', password: 'SenhaForte1',
++    phone: '923 000 000', documentNumber: '004516745LA041', birthDate: '1990-10-25',
++  };
++  it('aceita um pedido válido e NORMALIZA (email minúsculo, telefone +244, BI maiúsculo)', () => {
++    const r = W.validateSignup(base);
++    expect(r.ok).toBe(true);
++    expect(r.clean.email).toBe('maria.domingos@exemplo.ao');
++    expect(r.clean.phone).toBe('+244923000000');
++    expect(r.clean.documentNumber).toBe('004516745LA041');
++    expect(r.clean.birthDate).toBe('1990-10-25');
++  });
++  it('NUNCA devolve a palavra-passe no `clean`... excepto para o Auth (o Firestore não a recebe)', () => {
++    /* O documento gravado em member_signups é construído com a password fora
++       (`const { password: _pw, ...docFields } = s`) — confirmado na rota. */
++    const r = W.validateSignup(base);
++    expect(typeof r.clean.password).toBe('string');
++    expect(r.clean.password).toBe('SenhaForte1');
++  });
++  it('recusa nome curto/longo e caracteres de marcação', () => {
++    expect(W.validateSignup({ ...base, name: 'A' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, name: 'x'.repeat(141) }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, name: '<script>Maria</script>' }).error).toMatch(/não permitidos/i);
++  });
++  it('recusa email inválido e palavra-passe fraca', () => {
++    expect(W.validateSignup({ ...base, email: 'maria@' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, email: 'sem-at' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, password: '1234567' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, password: 'x'.repeat(201) }).ok).toBe(false);
++  });
++  it('normaliza o telefone angolano (com/sem indicativo) e recusa o que não é 9XXXXXXXX', () => {
++    expect(W.validateSignup({ ...base, phone: '+244 923 000 000' }).clean.phone).toBe('+244923000000');
++    expect(W.validateSignup({ ...base, phone: '244923000000' }).clean.phone).toBe('+244923000000');
++    expect(W.validateSignup({ ...base, phone: '923000000' }).clean.phone).toBe('+244923000000');
++    expect(W.validateSignup({ ...base, phone: '222000000' }).ok).toBe(false); // fixo, não móvel
++    expect(W.validateSignup({ ...base, phone: '92300000' }).ok).toBe(false);  // 8 dígitos
++  });
++  it('recusa e normaliza o B.I. (9 dígitos + 2 letras + 3 dígitos)', () => {
++    expect(W.validateSignup({ ...base, documentNumber: '004516745la041' }).clean.documentNumber).toBe('004516745LA041');
++    expect(W.validateSignup({ ...base, documentNumber: '12345' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, documentNumber: '004516745LX0412' }).ok).toBe(false);
++  });
++  it('recusa datas fora de AAAA-MM-DD', () => {
++    expect(W.validateSignup({ ...base, birthDate: '25/10/1990' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, baptismDate: '' }).ok).toBe(true); // vazio = opcional
++  });
++  it('P3 — recusa datas IMPOSSÍVEIS (o regex antigo deixava passar 1990-13-45)', () => {
++    expect(W.validateSignup({ ...base, baptismDate: '1990-13-45' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, birthDate: '1990-02-30' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, birthDate: '0001-01-01' }).ok).toBe(false);
++    expect(W.isRealIsoDate('1990-13-45')).toBe(false);
++    expect(W.isRealIsoDate('1990-02-30')).toBe(false);
++    expect(W.isRealIsoDate('1990-10-25')).toBe(true);
++    expect(W.isRealIsoDate('24/10/1990')).toBe(false);
++    expect(W.isRealIsoDate('')).toBe(false);
++    expect(W.isRealIsoDate(null)).toBe(false);
++  });
++  it('P3 — anos bissextos (29/02 só quando existe)', () => {
++    expect(W.isLeapYear(2024)).toBe(true);
++    expect(W.isLeapYear(2026)).toBe(false);
++    expect(W.isLeapYear(2000)).toBe(true);   // divisível por 400
++    expect(W.isLeapYear(1900)).toBe(false);  // divisível por 100, não por 400
++    expect(W.isRealIsoDate('2024-02-29')).toBe(true);
++    expect(W.isRealIsoDate('2026-02-29')).toBe(false);
++    expect(W.isRealIsoDate('2026-04-31')).toBe(false); // Abril tem 30 dias
++    expect(W.isRealIsoDate('2026-12-31')).toBe(true);
++  });
++  it('limita a fotografia (tamanho e caracteres base64)', () => {
++    expect(W.validateSignup({ ...base, photoBase64: 'x'.repeat(900001) }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, photoBase64: 'não-é-base64!!' }).ok).toBe(false);
++    expect(W.validateSignup({ ...base, photoBase64: ' AAAA+BB/CC== ' }).clean.photoBase64).toBe('AAAA+BB/CC==');
++  });
++  it('é uma ALLOWLIST: campos desconhecidos não entram no documento', () => {
++    const r = W.validateSignup({ ...base, role: 'admin', isSuper: true, statusSignup: 'aprovado', status: 'Activo' });
++    expect(r.ok).toBe(true);
++    expect(r.clean.role).toBeUndefined();
++    expect(r.clean.isSuper).toBeUndefined();
++    expect(r.clean.statusSignup).toBeUndefined();
++    expect(r.clean.status).toBeUndefined();
++  });
++  it('recusa campos opcionais com tipo errado ou demasiado longos', () => {
++    expect(W.validateSignup({ ...base, address: 123 }).error).toMatch(/Campo inválido/);
++    expect(W.validateSignup({ ...base, address: 'a'.repeat(201) }).error).toMatch(/demasiado longo/);
++    expect(W.validateSignup({ ...base, fatherName: '<b>Pai</b>' }).error).toMatch(/não permitidos/i);
++  });
++  it('acceptsMessages só é false quando vem explicitamente false', () => {
++    expect(W.validateSignup({ ...base, acceptsMessages: false }).clean.acceptsMessages).toBe(false);
++    expect(W.validateSignup({ ...base, acceptsMessages: true }).clean.acceptsMessages).toBe(true);
++    expect(W.validateSignup({ ...base, acceptsMessages: 'não' }).clean.acceptsMessages).toBe(true);
++  });
++  it('recusa pedidos sem corpo', () => {
++    expect(W.validateSignup(null).ok).toBe(false);
++    expect(W.validateSignup('texto').ok).toBe(false);
++    expect(W.validateSignup({}).ok).toBe(false);
++  });
++});
++
++describe('Worker — validateTempPassword (política das contas da liderança)', () => {
++  it('aceita uma temporária razoável', () => {
++    expect(W.validateTempPassword('Iesa2026x').ok).toBe(true);
++    expect(W.validateTempPassword('SenhaForte1').value).toBe('SenhaForte1');
++  });
++  it('recusa curta, longa, com espaços, óbvia ou sem letras/números', () => {
++    expect(W.validateTempPassword('12a').ok).toBe(false);
++    expect(W.validateTempPassword('a'.repeat(201)).ok).toBe(false);
++    expect(W.validateTempPassword('Iesa 2026x').error).toMatch(/espaços/i);
++    expect(W.validateTempPassword('password').ok).toBe(false);
++    expect(W.validateTempPassword('IESAMANUEL').ok).toBe(false); // sem números + óbvia
++    expect(W.validateTempPassword('12345678').ok).toBe(false);
++    expect(W.validateTempPassword('soletissonumeros1').ok).toBe(true);
++    expect(W.validateTempPassword('123456789').ok).toBe(false); // só números
++    expect(W.validateTempPassword(null).ok).toBe(false);
++    expect(W.validateTempPassword(12345678).ok).toBe(false);
++  });
++  it('as palavras-passe GERADAS cumprem a própria política', () => {
++    for (let i = 0; i < 25; i++) {
++      const pwd = W.genTempPassword();
++      expect(pwd).toHaveLength(12);
++      expect(W.validateTempPassword(pwd).ok).toBe(true); // letras + números, sempre
++      expect(pwd).toMatch(/[0-9]/);
++      expect(pwd).toMatch(/[A-Za-z]/);
++      expect(pwd).toMatch(new RegExp(`^[${W.TEMP_PASS_ALPHABET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}]+$`));
++    }
++  });
++  it('as geradas não usam caracteres ambíguos (0/O/1/l) nem se repetem', () => {
++    const seen = new Set();
++    for (let i = 0; i < 200; i++) {
++      const pwd = W.genTempPassword();
++      expect(pwd).not.toMatch(/[0O1l]/);
++      seen.add(pwd);
++    }
++    expect(seen.size).toBeGreaterThan(195);
++  });
++});
++
++describe('Worker — rate limits (auto-cadastro 5/10 min por IP; IA 60/10 min por email)', () => {
++  beforeEach(() => W.resetBuckets());
++  it('deixa passar os primeiros 5 cadastros do mesmo IP e bloqueia o 6.º', () => {
++    for (let i = 0; i < W.SIGNUP_RATE_LIMIT; i++) expect(W.signupRateOk('1.2.3.4')).toBe(true);
++    expect(W.signupRateOk('1.2.3.4')).toBe(false);
++    expect(W.signupRateOk('1.2.3.4')).toBe(false);
++  });
++  it('IPs diferentes têm baldes diferentes', () => {
++    for (let i = 0; i < W.SIGNUP_RATE_LIMIT; i++) W.signupRateOk('5.5.5.5');
++    expect(W.signupRateOk('5.5.5.5')).toBe(false);
++    expect(W.signupRateOk('6.6.6.6')).toBe(true);
++  });
++  it('a IA tem um tecto muito mais alto (60/10 min)', () => {
++    expect(W.RATE_LIMIT).toBe(60);
++    for (let i = 0; i < W.RATE_LIMIT; i++) expect(W.rateOk('a@b.ao')).toBe(true);
++    expect(W.rateOk('a@b.ao')).toBe(false);
++  });
++  it('pruneBuckets limpa entradas antigas quando passa do tecto', () => {
++    const map = new Map();
++    const now = Date.now();
++    for (let i = 0; i < W.BUCKET_MAX + 10; i++) map.set('ip' + i, { start: now, count: 1 });
++    // metade já expirou
++    for (let i = 0; i < W.BUCKET_MAX / 2; i++) map.set('ip' + i, { start: now - W.RATE_WINDOW - 1, count: 1 });
++    const removed = W.pruneBuckets(map, now);
++    expect(removed).toBeGreaterThanOrEqual(W.BUCKET_MAX / 2);
++    expect(map.size).toBeLessThanOrEqual(W.BUCKET_MAX);
++  });
++  it('pruneBuckets não faz nada abaixo do tecto (custo zero no caminho quente)', () => {
++    const map = new Map([['a', { start: Date.now() - 999999999, count: 9 }]]);
++    expect(W.pruneBuckets(map, Date.now())).toBe(0);
++    expect(map.size).toBe(1);
++  });
++});
++
++describe('Worker — verifyFirebaseIdToken (recusas ANTES de procurar a chave)', () => {
++  const expectReject = async (token, msg) => {
++    await expect(W.verifyFirebaseIdToken(token, PROJECT)).rejects.toThrow(msg);
++  };
++  it('recusa tokens malformados', async () => {
++    await expectReject('', /malformado/);
++    await expectReject('abc', /malformado/);
++    await expectReject('a.b.c.d', /malformado/);
++    await expectReject('não-é-base64.nem-json.ass', /malformado/);
++    await expectReject(fakeToken(RS256, goodClaims()) + 'x'.repeat(5000), /malformado/);
++  });
++  it('recusa alg diferente de RS256 (incl. «none» e HS256)', async () => {
++    await expectReject(fakeToken({ alg: 'none' }, goodClaims()), /algoritmo/);
++    await expectReject(fakeToken({ alg: 'HS256', kid: 'k1' }, goodClaims()), /algoritmo/);
++    await expectReject(fakeToken({}, goodClaims()), /algoritmo/);
++  });
++  it('exige exp — um token sem expiração já não passa', async () => {
++    const { exp, ...semExp } = goodClaims();
++    void exp;
++    await expectReject(fakeToken(RS256, semExp), /expirado/);
++    await expectReject(fakeToken(RS256, goodClaims({ exp: 'amanhã' })), /expirado/);
++  });
++  it('recusa token expirado', async () => {
++    await expectReject(fakeToken(RS256, goodClaims({ exp: Math.floor(Date.now() / 1000) - 5 })), /expirado/);
++  });
++  it('recusa iat no futuro (relógio adulterado)', async () => {
++    await expectReject(fakeToken(RS256, goodClaims({ iat: Math.floor(Date.now() / 1000) + 600 })), /futura/);
++  });
++  it('recusa token sem sujeito (sub)', async () => {
++    await expectReject(fakeToken(RS256, goodClaims({ sub: '' })), /sujeito/);
++    const { sub, ...semSub } = goodClaims();
++    void sub;
++    await expectReject(fakeToken(RS256, semSub), /sujeito/);
++  });
++  it('recusa emissor/audiência de OUTRO projecto Firebase', async () => {
++    await expectReject(fakeToken(RS256, goodClaims({ iss: 'https://securetoken.google.com/outro-projecto' })), /emissor/);
++    await expectReject(fakeToken(RS256, goodClaims({ aud: 'outro-projecto' })), /audiencia/);
++  });
++});
++
++describe('Worker — Luanda (o cron decide «hoje» e «que horas são» em UTC+1)', () => {
++  it('23:30 UTC de 25/10 já é 00:30 de 26/10 em Luanda', () => {
++    const L = W.luandaNow(at(2026, 10, 25, 23, 30));
++    expect(L.dayKey).toBe('2026-10-26');
++    expect(L.hour).toBe(0);
++    expect(L.minute).toBe(30);
++  });
++  it('dow: 1=segunda … 7=domingo', () => {
++    expect(W.luandaNow(at(2026, 10, 26, 12)).dow).toBe(1); // segunda
++    expect(W.luandaNow(at(2026, 11, 1, 12)).dow).toBe(7);  // domingo
++  });
++  it('coincide com lib/luanda.ts da app (mesma fonte de verdade)', () => {
++    for (const ms of [at(2026, 1, 1, 0, 0), at(2026, 6, 15, 22, 59), at(2026, 12, 31, 23, 30)]) {
++      expect(W.luandaNow(ms).dayKey).toBe(luandaDayKey(ms));
++      expect(W.luandaNow(ms).hour).toBe(luandaParts(ms).hour);
++      expect(W.luandaNow(ms).dow).toBe(luandaParts(ms).dow);
++    }
++  });
++  it('luandaEndOfDayMs = fim do dia de Luanda (22:59:59.999 UTC)', () => {
++    expect(new Date(W.luandaEndOfDayMs('2026-10-31')).toISOString()).toBe('2026-10-31T22:59:59.999Z');
++    expect(W.luandaEndOfDayMs('2026-10-31')).toBe(luandaEndOfDay('2026-10-31'));
++    // o código antigo usava 23:59:59Z — uma hora a mais, já no dia seguinte
++    expect(W.luandaEndOfDayMs('2026-10-31')).toBeLessThan(Date.parse('2026-10-31T23:59:59Z'));
++  });
++  it('luandaEndOfDayMs devolve NaN para datas inválidas (o prazo fica «em curso»)', () => {
++    expect(Number.isNaN(W.luandaEndOfDayMs(''))).toBe(true);
++    expect(Number.isNaN(W.luandaEndOfDayMs('31/10/2026'))).toBe(true);
++    expect(Number.isNaN(W.luandaEndOfDayMs(null))).toBe(true);
++    expect(Number.isNaN(W.luandaEndOfDayMs('2026-1-1'))).toBe(true);
++  });
++});
++
++describe('Worker — moeda (espelha src/lib/money.ts)', () => {
++  it('formata cêntimos como «1.500,00 Kz»', () => {
++    expect(W.fmtKz(150000)).toBe('1.500,00 Kz');
++    expect(W.fmtKz(0)).toBe('0,00 Kz');
++    expect(W.fmtKz(99)).toBe('0,99 Kz');
++    expect(W.fmtKz(-25050)).toBe('-250,50 Kz');
++    expect(W.fmtKz(1234567890)).toBe('12.345.678,90 Kz');
++  });
++  it('não diverge da apresentação da app', () => {
++    const casos = [0, 1, 99, 100, 150000, 999999, 1000000, 1234567890, -50, -150000];
++    for (const c of casos) expect(W.fmtKz(c)).toBe(formatKz(c));
++  });
++  it('tolera lixo (null/undefined/texto) sem rebentar', () => {
++    expect(W.fmtKz(null)).toBe('0,00 Kz');
++    expect(W.fmtKz(undefined)).toBe('0,00 Kz');
++    expect(W.fmtKz('abc')).toBe('0,00 Kz');
++    expect(W.fmtKz('1500')).toBe('15,00 Kz');
++  });
++});
++
++describe('Worker — helpers do Firestore REST (valores, filtros)', () => {
++  it('fv lê string/integer/boolean/double e devolve null quando falta', () => {
++    expect(W.fv({ a: { stringValue: 'x' } }, 'a')).toBe('x');
++    expect(W.fv({ a: { integerValue: '1500' } }, 'a')).toBe('1500');
++    expect(W.fv({ a: { booleanValue: false } }, 'a')).toBe(false);
++    expect(W.fv({ a: { doubleValue: 1.5 } }, 'a')).toBe(1.5);
++    expect(W.fv({}, 'a')).toBe(null);
++    expect(W.fv({ a: { nullValue: null } }, 'a')).toBe(null);
++  });
++  it('fnum/fvInt convertem para número (o integerValue chega como TEXTO)', () => {
++    /* É exactamente aqui que estava o bug do paidAmount: comparar "1500" (texto)
++       com 1500 (número) dava sempre «diferente» → escrita todos os minutos. */
++    expect(W.fnum({ amount: { integerValue: '1500' } }, 'amount')).toBe(1500);
++    expect(W.fnum({ amount: { doubleValue: 1500.5 } }, 'amount')).toBe(1500.5);
++    expect(W.fnum({}, 'amount')).toBe(0);
++    expect(W.fvInt({ integerValue: '42' })).toBe(42);
++    expect(W.fvStr({ stringValue: 'ola' })).toBe('ola');
++    expect(W.fvStr(undefined)).toBe('');
++    expect('1500' !== 1500).toBe(true); // o bug antigo, documentado
++  });
++  it('eq/le constroem filtros REST correctos', () => {
++    expect(W.eq('status', 'pending')).toEqual({
++      fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'pending' } },
++    });
++    expect(W.eq('n', 5)).toEqual({
++      fieldFilter: { field: { fieldPath: 'n' }, op: 'EQUAL', value: { integerValue: '5' } },
++    });
++    expect(W.eq('ok', true)).toEqual({
++      fieldFilter: { field: { fieldPath: 'ok' }, op: 'EQUAL', value: { booleanValue: true } },
++    });
++    expect(W.le('cancelUntil', 123)).toEqual({
++      fieldFilter: { field: { fieldPath: 'cancelUntil' }, op: 'LESS_THAN_OR_EQUAL', value: { integerValue: '123' } },
++    });
++  });
++  it('b64urlDecode descodifica base64url sem padding', () => {
++    expect(W.b64urlDecode('eyJhIjoxfQ')).toBe('{"a":1}');
++  });
++  it('isRetryable: 400/404 também significam «tenta o modelo seguinte» (fallback Gemini)', () => {
++    /* Nota: aqui «retryable» NÃO é «repetir o mesmo pedido» — é «este modelo
++       falhou ou já não existe, experimenta o próximo da lista». */
++    expect(W.isRetryable({ status: 429 })).toBe(true);
++    expect(W.isRetryable({ status: 503 })).toBe(true);
++    expect(W.isRetryable({ status: 400 })).toBe(true);
++    expect(W.isRetryable({ status: 404 })).toBe(true);
++    expect(W.isRetryable({ status: 403 })).toBe(false);
++    expect(W.isRetryable({ retryable: true })).toBe(true);
++    expect(W.isRetryable(null)).toBe(false);
++  });
++});
++
++describe('Worker — cron resiliente (P3)', () => {
++  it('runJob devolve o resultado e o tempo quando corre bem', async () => {
++    const r = await W.runJob('outbox', async () => 7);
++    expect(r).toMatchObject({ name: 'outbox', ok: true, n: 7, error: null });
++    expect(typeof r.ms).toBe('number');
++  });
++  it('runJob captura o erro em vez de rebentar com o cron inteiro', async () => {
++    const r = await W.runJob('contributions', async () => { throw new Error('runQuery contributions: 400'); });
++    expect(r.ok).toBe(false);
++    expect(r.error).toBe('runQuery contributions: 400');
++    expect(r.n).toBe(0);
++  });
++  it('runJob não deixa fugir promessas: o erro vira texto curto', async () => {
++    const r = await W.runJob('x', async () => { throw 'boom'; });
++    expect(r.error).toBe('boom');
++    const r2 = await W.runJob('y', async () => { throw new Error('e'.repeat(500)); });
++    expect(r2.error.length).toBeLessThanOrEqual(200);
++  });
++  it('heartbeat: grava na primeira vez, respeita o throttle de 10 min e volta a gravar depois', () => {
++    const now = at(2026, 10, 31, 12, 0);
++    expect(W.heartbeatThrottled(0, now)).toBe(true);          // nunca gravou
++    expect(W.heartbeatThrottled(null, now)).toBe(true);
++    expect(W.heartbeatThrottled(now - 60000, now)).toBe(false); // há 1 min
++    expect(W.heartbeatThrottled(now - 11 * 60000, now)).toBe(true); // há 11 min
++  });
++  it('o recálculo de contribuições só corre 1 minuto em cada 5 (poupa quota)', () => {
++    const bloco = at(2026, 10, 31, 12, 0); // minuto divisível por 5
++    expect(W.isRecomputeMinute(bloco)).toBe(true);
++    expect(W.isRecomputeMinute(bloco + 60000)).toBe(false);
++    expect(W.isRecomputeMinute(bloco + 4 * 60000)).toBe(false);
++    expect(W.isRecomputeMinute(bloco + 5 * 60000)).toBe(true);
++    let corridas = 0;
++    for (let m = 0; m < 60; m++) if (W.isRecomputeMinute(bloco + m * 60000)) corridas++;
++    expect(corridas).toBe(12); // 60 min / 5
++  });
++});
+diff --git a/worker/ai-worker.js b/worker/ai-worker.js
+index 0591c67..43fe530 100644
+--- a/worker/ai-worker.js
++++ b/worker/ai-worker.js
+@@ -42,8 +42,8 @@ const PROVIDERS = {
+    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
+    app recebe 404 "Rota nao encontrada".
+    Consulte GET /__health para confirmar qual versao esta no ar. */
+-const WORKER_VERSION = '2.9.1';
+-const WORKER_BUILD = '2026-10-28 (v2.9.0: apagar conta+pedido de cadastro rejeitado; v2.8.x: super por flag, auto-cadastro)';
++const WORKER_VERSION = '2.10.0';
++const WORKER_BUILD = '2026-10-31 (P3: cron resiliente por tarefa + heartbeat com erros, token Firebase mais estrito, palavra-passe temporaria validada, prazos em Luanda, paidAmount sem escritas repetidas)';
+ 
+ const CORS = {
+   'Access-Control-Allow-Origin': '*',
+@@ -148,13 +148,31 @@ async function keyForKid(kid) {
+ }
+ 
+ async function verifyFirebaseIdToken(token, projectId) {
++  /* v2.10.0 (P3 «endurecer o token»): quatro defesas que faltavam —
++       · alg FIXO (RS256): recusa 'none'/HS256 antes sequer de procurar a chave
++         (a verificação já era imune por usar WebCrypto com chave RSA, mas agora
++         um token forjado nem chega à assinatura);
++       · exp OBRIGATÓRIO: antes `if (claims.exp && ...)` deixava passar um token
++         SEM expiração;
++       · iat não futurista (60 s de tolerância de relógio);
++       · sub não vazio: é a identidade usada nas guardas /admin/*.            */
++  if (typeof token !== 'string' || token.length < 32 || token.length > 4096) throw new Error('token malformado');
+   const parts = token.split('.');
+   if (parts.length !== 3) throw new Error('token malformado');
+-  const header = JSON.parse(b64urlDecode(parts[0]));
+-  const claims = JSON.parse(b64urlDecode(parts[1]));
++  let header = null;
++  let claims = null;
++  try {
++    header = JSON.parse(b64urlDecode(parts[0]));
++    claims = JSON.parse(b64urlDecode(parts[1]));
++  } catch {
++    throw new Error('token malformado');
++  }
++  if (!header || header.alg !== 'RS256') throw new Error('algoritmo do token nao suportado');
+ 
+   const now = Math.floor(Date.now() / 1000);
+-  if (claims.exp && claims.exp < now) throw new Error('token expirado');
++  if (typeof claims.exp !== 'number' || claims.exp < now) throw new Error('token expirado');
++  if (typeof claims.iat === 'number' && claims.iat > now + 60) throw new Error('token com data futura');
++  if (typeof claims.sub !== 'string' || claims.sub.length === 0 || claims.sub.length > 128) throw new Error('token sem sujeito');
+   if (claims.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('emissor invalido');
+   if (claims.aud !== projectId) throw new Error('audiencia invalida');
+ 
+@@ -233,8 +251,22 @@ const ROLE_TTL = 5 * 60 * 1000;
+    ───────────────────────────────────────────────────────────────────────── */
+ const signupBuckets = new Map();
+ const SIGNUP_RATE_LIMIT = 5;
++/* v2.10.0 (P3): os baldes viviam para sempre no isolate — um Worker com tráfego
++   de muitos IPs ia acumulando entradas até ao limite de memória. A poda corre
++   em cada chamada e é O(n) só quando o Map passa do tecto. */
++const BUCKET_MAX = 2000;
++function pruneBuckets(map, now) {
++  if (map.size <= BUCKET_MAX) return 0;
++  let removed = 0;
++  for (const [k, b] of map) {
++    if (!b || now - b.start > RATE_WINDOW) { map.delete(k); removed++; }
++  }
++  if (map.size > BUCKET_MAX) { map.clear(); removed = -1; } // último recurso
++  return removed;
++}
+ function signupRateOk(ip) {
+   const now = Date.now();
++  pruneBuckets(signupBuckets, now);
+   const b = signupBuckets.get(ip);
+   if (!b || now - b.start > RATE_WINDOW) {
+     signupBuckets.set(ip, { start: now, count: 1 });
+@@ -250,6 +282,21 @@ const SIGNUP_STR_FIELDS = {
+   profession: 80, address: 200, groupCell: 80, documentNumber: 20,
+ };
+ 
++/* v2.10.0 (P3): o regex '^\d{4}-\d{2}-\d{2}$' aceitava '1990-13-45' — mês 13,
++   dia 45 — e o lixo seguia para member_signups e depois para a ficha do membro
++   (aniversariantes, cartão, relatórios). Valida-se o calendário a sério. */
++const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
++function isLeapYear(y) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0; }
++function isRealIsoDate(v, minYear = 1850) {
++  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
++  const [y, m, d] = v.split('-').map(Number);
++  const maxYear = new Date().getUTCFullYear() + 1;
++  if (y < minYear || y > maxYear) return false;
++  if (m < 1 || m > 12 || d < 1) return false;
++  const max = m === 2 && isLeapYear(y) ? 29 : DAYS_IN_MONTH[m - 1];
++  return d <= max;
++}
++
+ function validateSignup(body) {
+   if (!body || typeof body !== 'object') return { ok: false, error: 'Pedido inválido.' };
+   const name = String(body.name || '').trim();
+@@ -285,7 +332,8 @@ function validateSignup(body) {
+   for (const k of ['birthDate', 'baptismDate']) {
+     const v = body[k];
+     if (v === undefined || v === null || v === '') continue;
+-    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return { ok: false, error: 'Data inválida: ' + k + ' (use AAAA-MM-DD).' };
++    /* P3: não basta o formato — '1990-13-45' passava o regex antigo. */
++    if (!isRealIsoDate(v)) return { ok: false, error: 'Data inválida: ' + k + ' (use AAAA-MM-DD, com dia e mês reais).' };
+     clean[k] = v;
+   }
+   if (body.photoBase64 !== undefined && body.photoBase64 !== null && body.photoBase64 !== '') {
+@@ -304,6 +352,7 @@ const RATE_LIMIT = 60;
+ const RATE_WINDOW = 10 * 60 * 1000;
+ function rateOk(email) {
+   const now = Date.now();
++  pruneBuckets(rateBuckets, now);
+   const b = rateBuckets.get(email);
+   if (!b || now - b.start > RATE_WINDOW) {
+     rateBuckets.set(email, { start: now, count: 1 });
+@@ -398,11 +447,42 @@ async function itSetAccount(env, payload) {
+   return j;
+ }
+ 
++/* v2.10.0 (P3): as rotas /admin/create-auth-account e /admin/reset-temp-password
++   aceitavam QUALQUER palavra-passe enviada pelo cliente (o Firebase só recusa
++   <6). Uma temporária de '123456' ficava activa 7 dias com troca obrigatória —
++   mas era uma janela desnecessária. Agora valida-se no servidor. */
++const WEAK_TEMP_PASSWORDS = ['12345678', '123456789', '1234567890', 'password', 'passwort',
++  'qwertyui', 'abcdefgh', 'mudarsenha', 'iesamanuel', 'emanuel1', 'xangongo'];
++function validateTempPassword(pwd) {
++  const s = typeof pwd === 'string' ? pwd : '';
++  if (s.length < 8 || s.length > 200) return { ok: false, error: 'A palavra-passe temporária precisa de 8 a 200 caracteres.' };
++  if (/\s/.test(s)) return { ok: false, error: 'A palavra-passe temporária não pode conter espaços.' };
++  if (WEAK_TEMP_PASSWORDS.includes(s.toLowerCase())) return { ok: false, error: 'Palavra-passe demasiado óbvia — use outra.' };
++  if (!/[A-Za-z]/.test(s) || !/[0-9]/.test(s)) return { ok: false, error: 'A palavra-passe temporária deve misturar letras e números.' };
++  return { ok: true, value: s };
++}
++
++const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
++
+ const TEMP_PASS_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // sem 0/O/1/l
+ function genTempPassword(len = 12) {
+-  const buf = crypto.getRandomValues(new Uint8Array(len));
++  const n = Math.max(8, Math.min(64, Math.trunc(Number(len) || 12)));
++  const buf = crypto.getRandomValues(new Uint8Array(n + 4));
++  const pick = (i) => TEMP_PASS_ALPHABET[buf[i] % TEMP_PASS_ALPHABET.length];
+   let out = '';
+-  for (let i = 0; i < len; i++) out += TEMP_PASS_ALPHABET[buf[i] % TEMP_PASS_ALPHABET.length];
++  for (let i = 0; i < n; i++) out += pick(i);
++  /* v2.10.0 (P3): garantir que cumpre a própria política (letras + números).
++     Sem isto, ~10% das passwords geradas saíam só com letras e a validação
++     (nova) recusava-as — o admin recebia um erro ao criar a conta. */
++  const DIGITS = '23456789';
++  if (!/[0-9]/.test(out)) {
++    const pos = buf[n] % n;
++    out = out.slice(0, pos) + DIGITS[buf[n + 1] % DIGITS.length] + out.slice(pos + 1);
++  }
++  if (!/[A-Za-z]/.test(out)) {
++    const pos = buf[n + 2] % n;
++    out = out.slice(0, pos) + TEMP_PASS_ALPHABET[buf[n + 3] % 24] + out.slice(pos + 1);
++  }
+   return out;
+ }
+ 
+@@ -932,6 +1012,23 @@ async function processOutbox(env, now) {
+   return processed;
+ }
+ 
++/* v2.10.0 (P3) — DOIS defeitos corrigidos aqui:
++   1. QUOTA: `fv(f,'paidAmount') !== Math.round(paid*100)/100` comparava uma
++      STRING (o Firestore devolve integerValue como texto: "1500") com um
++      NÚMERO (1500) — dava sempre diferente, portanto o cron REESCREVIA
++      `paidAmount` em todas as contribuições abertas, todos os minutos
++      (20 contribuições ≈ 28.800 escritas/dia; o plano Spark permite 20.000).
++      A comparação passa a ser numérica e o dinheiro volta a ser inteiro de
++      cêntimos de ponta a ponta (sem o arredondamento decimal herdado).
++   2. LUANDA: o prazo terminava às 23:59:59 **UTC** = 00:59 do dia seguinte em
++      Luanda. Agora termina à meia-noite de LUANDA, como o resto do sistema. */
++function luandaEndOfDayMs(dayKey) {
++  const s = String(dayKey == null ? '' : dayKey);
++  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return NaN;
++  const [y, m, d] = s.split('-').map(Number);
++  return Date.UTC(y, m - 1, d) - LUANDA_OFFSET_MS + 86400000 - 1;
++}
++
+ async function recomputeContributions(env, now) {
+   const rows = await fsRunQuery(env, 'contributions', [
+     { fieldFilter: { field: { fieldPath: 'status' }, op: 'IN', value: { arrayValue: { values: [{ stringValue: 'em_curso' }, { stringValue: 'em_atraso' }] } } } },
+@@ -939,13 +1036,15 @@ async function recomputeContributions(env, now) {
+   let changed = 0;
+   for (const row of rows) {
+     const f = row.fields;
+-    const total = fnum(f, 'amount');
++    const totalCents = fnum(f, 'amount');
+     const pays = await fsRunQuery(env, 'contribution_payments', [eq('contributionId', row.id)], 500);
+-    const paid = pays.reduce((a, p) => a + Number(fv(p.fields, 'amount') || 0), 0);
+-    const due = fv(f, 'dueDate') || '2099-12-31';
+-    let st = paid + 0.005 >= total ? 'concluida' : now > new Date(due + 'T23:59:59Z').getTime() ? 'em_atraso' : 'em_curso';
++    const paidCents = pays.reduce((a, p) => a + fnum(p.fields, 'amount'), 0);
++    const dueEnd = luandaEndOfDayMs(fv(f, 'dueDate') || '2099-12-31');
++    const st = paidCents >= totalCents
++      ? 'concluida'
++      : (Number.isFinite(dueEnd) && now > dueEnd) ? 'em_atraso' : 'em_curso';
+     if (st !== fv(f, 'status')) {
+-      const patch = { status: st, paidAmount: Math.round(paid * 100) / 100 };
++      const patch = { status: st, paidAmount: paidCents };
+       if (st === 'concluida') patch.completedAt = now;
+       await fsPatch(env, 'contributions', row.id, patch);
+       if (st === 'concluida') {
+@@ -956,8 +1055,9 @@ async function recomputeContributions(env, now) {
+         });
+       }
+       changed++;
+-    } else if (fv(f, 'paidAmount') !== Math.round(paid * 100) / 100) {
+-      await fsPatch(env, 'contributions', row.id, { paidAmount: Math.round(paid * 100) / 100 });
++    } else if (fnum(f, 'paidAmount') !== paidCents) {
++      /* Só escreve quando o valor REALMENTE mudou (antes: todos os minutos). */
++      await fsPatch(env, 'contributions', row.id, { paidAmount: paidCents });
+     }
+   }
+   return changed;
+@@ -1058,33 +1158,73 @@ async function runReminders(env, now) {
+ 
+ /* ------------------------------------------------------------------ */
+ 
++/* v2.10.0 (P3 «cron resiliente»): cada tarefa corre no SEU try/catch.
++   Antes, uma falha na primeira (um índice em falta, um 5xx do Firestore)
++   rebentava com as outras três E com o heartbeat: a app passava a dizer
++   «Cron SEM pulsar» com o agendador vivo, e nada dizia QUAL tarefa falhava.
++   Agora o heartbeat grava `jobsOk` e `lastError` («contributions: runQuery
++   contributions: 400») e o /__health expõe-nos.                             */
++async function runJob(name, fn) {
++  const t0 = Date.now();
++  try {
++    const n = await fn();
++    return { name, ok: true, n: Number(n) || 0, ms: Date.now() - t0, error: null, skipped: false };
++  } catch (e) {
++    const error = String((e && e.message) || e || 'erro').slice(0, 200);
++    console.error(`cron: tarefa «${name}» falhou:`, error);
++    return { name, ok: false, n: 0, ms: Date.now() - t0, error, skipped: false };
++  }
++}
++
++/** Throttle do heartbeat: grava se nunca gravou ou se passou o intervalo. */
++function heartbeatThrottled(lastRunAt, now, throttleMs = 10 * 60 * 1000) {
++  const last = Number(lastRunAt) || 0;
++  return last <= 0 || now - last > throttleMs;
++}
++
++/** O minuto actual pertence a um bloco de 5 min? (usado para espaçar o
++ *  recálculo de contribuições sem precisar de estado no isolate.) */
++function isRecomputeMinute(nowMs) {
++  return Math.floor(Number(nowMs) / 60000) % 5 === 0;
++}
++
+ export default {
+   /* Cron do Cloudflare (Workers → Settings → Triggers, ou [triggers] no wrangler):
+      a cada minuto. O próprio código decide o que fazer com o minuto actual. */
+   async scheduled(event, env) {
+     const now = Date.now();
++    /* P3 (quota): as contribuições só precisam de ser recalculadas de 5 em 5
++       minutos — o cliente já grava status/paidAmount ao registar um pagamento
++       e a viragem para «em atraso» é diária. Corta ~80% das leituras do cron. */
++    const jobs = [
++      await runJob('outbox', () => processOutbox(env, now)),
++      isRecomputeMinute(now)
++        ? await runJob('contributions', () => recomputeContributions(env, now))
++        : { name: 'contributions', ok: true, n: 0, ms: 0, error: null, skipped: true },
++      await runJob('reminders', () => runReminders(env, now)),
++      await runJob('events', () => processEventReminders(env, now)),
++    ];
++    console.log('cron: ' + jobs.map((j) => `${j.name}=${j.ok ? j.n : 'ERRO(' + j.error + ')'}`).join(' '));
++    const byName = {};
++    for (const j of jobs) byName[j.name] = j;
++    const failed = jobs.find((j) => !j.ok);
++    /* v2.9.1: heartbeat do cron (throttle 10 min) — a app mostra se o
++       agendador está vivo (Suporte → Diagnóstico e /__health).
++       v2.10.0: é gravado MESMO com tarefas em erro (é o pulso, não o sucesso). */
+     try {
+-      const q = await processOutbox(env, now);
+-      const c = await recomputeContributions(env, now);
+-      const r = await runReminders(env, now);
+-      const b = await processEventReminders(env, now);
+-      console.log(`cron: outbox=${q} contribs=${c} lembretes=${r} eventos=${b}`);
+-      /* v2.9.1: heartbeat do cron (throttle 10 min) — a app mostra se o
+-         agendador está vivo (Suporte → Diagnóstico e /__health). */
+-      try {
+-        const hb = await fsGetDoc(env, 'settings', 'worker_cron');
+-        const last = Number((hb && hb.lastRunAt && (hb.lastRunAt.integerValue || hb.lastRunAt.doubleValue)) || 0);
+-        if (now - last > 10 * 60 * 1000) {
+-          await fsPatch(env, 'settings', 'worker_cron', {
+-            lastRunAt: now, version: WORKER_VERSION,
+-            lastOutbox: q, lastReminders: r, lastEvents: b,
+-          });
+-        }
+-      } catch (e) {
+-        console.error('heartbeat falhou:', (e && e.message) || e);
++      const hb = await fsGetDoc(env, 'settings', 'worker_cron');
++      const last = Number((hb && hb.lastRunAt && (hb.lastRunAt.integerValue || hb.lastRunAt.doubleValue)) || 0);
++      if (heartbeatThrottled(last, now)) {
++        await fsPatch(env, 'settings', 'worker_cron', {
++          lastRunAt: now, version: WORKER_VERSION,
++          lastOutbox: byName.outbox.n, lastReminders: byName.reminders.n,
++          lastEvents: byName.events.n, lastContributions: byName.contributions.n,
++          jobsOk: !failed,
++          lastError: failed ? `${failed.name}: ${failed.error}` : null,
++        });
+       }
+     } catch (e) {
+-      console.error('cron falhou:', e?.message || e);
++      console.error('heartbeat falhou:', (e && e.message) || e);
+     }
+   },
+ 
+@@ -1107,6 +1247,15 @@ export default {
+             lastRunAt: last,
+             ageMinutes: last ? Math.round((Date.now() - last) / 60000) : null,
+             version: (hb.version && hb.version.stringValue) || null,
++            /* v2.10.0 (P3): o pulso existe, mas as tarefas correram bem? */
++            ok: hb.jobsOk ? hb.jobsOk.booleanValue !== false : null,
++            error: (hb.lastError && hb.lastError.stringValue) || null,
++            counts: {
++              outbox: fvInt(hb.lastOutbox),
++              contributions: fvInt(hb.lastContributions),
++              reminders: fvInt(hb.lastReminders),
++              events: fvInt(hb.lastEvents),
++            },
+           };
+         }
+       } catch { /* sem heartbeat ainda */ }
+@@ -1236,14 +1385,24 @@ export default {
+       if (path === '/admin/create-auth-account') {
+         if (!isSuper) return json({ error: 'Só o super administrador pode criar contas.' }, 403);
+         const { email, tempPassword, name, phone } = await request.json();
+-        if (!email) return json({ error: 'Email obrigatório.' }, 400);
+-        const pwd = tempPassword || genTempPassword();
++        const target = String(email || '').trim().toLowerCase();
++        if (!target) return json({ error: 'Email obrigatório.' }, 400);
++        /* v2.10.0 (P3): email válido + palavra-passe temporária com política. */
++        if (!EMAIL_RE.test(target) || target.length > 180) return json({ error: 'Email inválido.' }, 400);
++        let pwd = '';
++        if (tempPassword) {
++          const vp = validateTempPassword(tempPassword);
++          if (!vp.ok) return json({ error: vp.error }, 400);
++          pwd = vp.value;
++        } else {
++          pwd = genTempPassword();
++        }
+         const sa = JSON.parse(env.FIREBASE_SA_JSON);
+         const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+         const r = await fetch('https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+-          body: JSON.stringify({ email, password: pwd, displayName: email.split('@')[0] }),
++          body: JSON.stringify({ email: target, password: pwd, displayName: target.split('@')[0] }),
+         });
+         const j = await r.json();
+         if (!r.ok) {
+@@ -1263,13 +1422,22 @@ export default {
+         const { email, tempPassword } = await request.json();
+         const target = String(email || '').toLowerCase();
+         if (!target) return json({ error: 'Email obrigatório.' }, 400);
++        if (!EMAIL_RE.test(target) || target.length > 180) return json({ error: 'Email inválido.' }, 400);
+         const tDoc = await getAdminDoc(target, env);
+         if (!tDoc) return json({ error: 'Este email não está na coleção admins.' }, 404);
+         /* v2.8.2: protege QUALQUER conta com a flag isSuper (antes: um email fixo) */
+         if (tDoc.isSuper === true) return json({ error: 'A conta de super administrador não pode ser redefinida por aqui.' }, 403);
+         const localId = await itGetLocalId(env, target);
+         if (!localId) return json({ error: 'Não encontrei a conta de autenticação deste email.' }, 404);
+-        const pwd = tempPassword || genTempPassword();
++        /* v2.10.0 (P3): mesma política de palavra-passe que na criação. */
++        let pwd = '';
++        if (tempPassword) {
++          const vp = validateTempPassword(tempPassword);
++          if (!vp.ok) return json({ error: vp.error }, 400);
++          pwd = vp.value;
++        } else {
++          pwd = genTempPassword();
++        }
+         await itSetAccount(env, { localId, password: pwd, disableUser: false });
+         await patchAdminDoc(env, target, { mustChangePassword: true, tempPasswordIssuedAt: Date.now(), disabled: false });
+         roleCache = { ts: 0, map: {} };
+@@ -1463,3 +1631,24 @@ Responde APENAS com JSON: {"groupId": "texto do modelo", ...}.`;
+     }
+   },
+ };
++
++/* ─────────────────────────────────────────────────────────────────────────────
++   v2.10.0 (P3) — SUPERFÍCIE DE TESTES
++   O Cloudflare usa o `export default` acima; este export extra não muda nada em
++   produção (nenhuma rota nova, nenhum segredo exposto) e permite testar, pela
++   primeira vez, as funções PURAS do ficheiro mais crítico do sistema — o Worker
++   (1500 linhas: validação do auto-cadastro, rate limits, verificação do token
++   do Firebase, moeda, Luanda, cron). Testes: worker/__tests__/ai-worker.test.js
++   ───────────────────────────────────────────────────────────────────────────── */
++function resetBuckets() { signupBuckets.clear(); rateBuckets.clear(); }
++
++export const __test = {
++  WORKER_VERSION, WORKER_BUILD, PROVIDERS,
++  SIGNUP_RATE_LIMIT, RATE_LIMIT, RATE_WINDOW, BUCKET_MAX, TEMP_PASS_ALPHABET,
++  validateSignup, validateTempPassword, genTempPassword, isRealIsoDate, isLeapYear,
++  signupRateOk, rateOk, pruneBuckets, resetBuckets,
++  verifyFirebaseIdToken, b64urlDecode,
++  luandaNow, luandaEndOfDayMs, fmtKz,
++  fv, fvStr, fvInt, fnum, eq, le, isRetryable,
++  runJob, heartbeatThrottled, isRecomputeMinute,
++};
+-- 
+2.39.5
+
