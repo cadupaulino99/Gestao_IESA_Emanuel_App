@@ -42,8 +42,8 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.9.1';
-const WORKER_BUILD = '2026-10-28 (v2.9.0: apagar conta+pedido de cadastro rejeitado; v2.8.x: super por flag, auto-cadastro)';
+const WORKER_VERSION = '2.10.0';
+const WORKER_BUILD = '2026-10-31 (P3: cron resiliente por tarefa + heartbeat com erros, token Firebase mais estrito, palavra-passe temporaria validada, prazos em Luanda, paidAmount sem escritas repetidas)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -148,13 +148,31 @@ async function keyForKid(kid) {
 }
 
 async function verifyFirebaseIdToken(token, projectId) {
+  /* v2.10.0 (P3 «endurecer o token»): quatro defesas que faltavam —
+       · alg FIXO (RS256): recusa 'none'/HS256 antes sequer de procurar a chave
+         (a verificação já era imune por usar WebCrypto com chave RSA, mas agora
+         um token forjado nem chega à assinatura);
+       · exp OBRIGATÓRIO: antes `if (claims.exp && ...)` deixava passar um token
+         SEM expiração;
+       · iat não futurista (60 s de tolerância de relógio);
+       · sub não vazio: é a identidade usada nas guardas /admin/*.            */
+  if (typeof token !== 'string' || token.length < 32 || token.length > 4096) throw new Error('token malformado');
   const parts = token.split('.');
   if (parts.length !== 3) throw new Error('token malformado');
-  const header = JSON.parse(b64urlDecode(parts[0]));
-  const claims = JSON.parse(b64urlDecode(parts[1]));
+  let header = null;
+  let claims = null;
+  try {
+    header = JSON.parse(b64urlDecode(parts[0]));
+    claims = JSON.parse(b64urlDecode(parts[1]));
+  } catch {
+    throw new Error('token malformado');
+  }
+  if (!header || header.alg !== 'RS256') throw new Error('algoritmo do token nao suportado');
 
   const now = Math.floor(Date.now() / 1000);
-  if (claims.exp && claims.exp < now) throw new Error('token expirado');
+  if (typeof claims.exp !== 'number' || claims.exp < now) throw new Error('token expirado');
+  if (typeof claims.iat === 'number' && claims.iat > now + 60) throw new Error('token com data futura');
+  if (typeof claims.sub !== 'string' || claims.sub.length === 0 || claims.sub.length > 128) throw new Error('token sem sujeito');
   if (claims.iss !== `https://securetoken.google.com/${projectId}`) throw new Error('emissor invalido');
   if (claims.aud !== projectId) throw new Error('audiencia invalida');
 
@@ -233,8 +251,22 @@ const ROLE_TTL = 5 * 60 * 1000;
    ───────────────────────────────────────────────────────────────────────── */
 const signupBuckets = new Map();
 const SIGNUP_RATE_LIMIT = 5;
+/* v2.10.0 (P3): os baldes viviam para sempre no isolate — um Worker com tráfego
+   de muitos IPs ia acumulando entradas até ao limite de memória. A poda corre
+   em cada chamada e é O(n) só quando o Map passa do tecto. */
+const BUCKET_MAX = 2000;
+function pruneBuckets(map, now) {
+  if (map.size <= BUCKET_MAX) return 0;
+  let removed = 0;
+  for (const [k, b] of map) {
+    if (!b || now - b.start > RATE_WINDOW) { map.delete(k); removed++; }
+  }
+  if (map.size > BUCKET_MAX) { map.clear(); removed = -1; } // último recurso
+  return removed;
+}
 function signupRateOk(ip) {
   const now = Date.now();
+  pruneBuckets(signupBuckets, now);
   const b = signupBuckets.get(ip);
   if (!b || now - b.start > RATE_WINDOW) {
     signupBuckets.set(ip, { start: now, count: 1 });
@@ -249,6 +281,21 @@ const SIGNUP_STR_FIELDS = {
   gender: 20, maritalStatus: 30, spouseName: 140, education: 80,
   profession: 80, address: 200, groupCell: 80, documentNumber: 20,
 };
+
+/* v2.10.0 (P3): o regex '^\d{4}-\d{2}-\d{2}$' aceitava '1990-13-45' — mês 13,
+   dia 45 — e o lixo seguia para member_signups e depois para a ficha do membro
+   (aniversariantes, cartão, relatórios). Valida-se o calendário a sério. */
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function isLeapYear(y) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0; }
+function isRealIsoDate(v, minYear = 1850) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const [y, m, d] = v.split('-').map(Number);
+  const maxYear = new Date().getUTCFullYear() + 1;
+  if (y < minYear || y > maxYear) return false;
+  if (m < 1 || m > 12 || d < 1) return false;
+  const max = m === 2 && isLeapYear(y) ? 29 : DAYS_IN_MONTH[m - 1];
+  return d <= max;
+}
 
 function validateSignup(body) {
   if (!body || typeof body !== 'object') return { ok: false, error: 'Pedido inválido.' };
@@ -285,7 +332,8 @@ function validateSignup(body) {
   for (const k of ['birthDate', 'baptismDate']) {
     const v = body[k];
     if (v === undefined || v === null || v === '') continue;
-    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return { ok: false, error: 'Data inválida: ' + k + ' (use AAAA-MM-DD).' };
+    /* P3: não basta o formato — '1990-13-45' passava o regex antigo. */
+    if (!isRealIsoDate(v)) return { ok: false, error: 'Data inválida: ' + k + ' (use AAAA-MM-DD, com dia e mês reais).' };
     clean[k] = v;
   }
   if (body.photoBase64 !== undefined && body.photoBase64 !== null && body.photoBase64 !== '') {
@@ -304,6 +352,7 @@ const RATE_LIMIT = 60;
 const RATE_WINDOW = 10 * 60 * 1000;
 function rateOk(email) {
   const now = Date.now();
+  pruneBuckets(rateBuckets, now);
   const b = rateBuckets.get(email);
   if (!b || now - b.start > RATE_WINDOW) {
     rateBuckets.set(email, { start: now, count: 1 });
@@ -398,11 +447,42 @@ async function itSetAccount(env, payload) {
   return j;
 }
 
+/* v2.10.0 (P3): as rotas /admin/create-auth-account e /admin/reset-temp-password
+   aceitavam QUALQUER palavra-passe enviada pelo cliente (o Firebase só recusa
+   <6). Uma temporária de '123456' ficava activa 7 dias com troca obrigatória —
+   mas era uma janela desnecessária. Agora valida-se no servidor. */
+const WEAK_TEMP_PASSWORDS = ['12345678', '123456789', '1234567890', 'password', 'passwort',
+  'qwertyui', 'abcdefgh', 'mudarsenha', 'iesamanuel', 'emanuel1', 'xangongo'];
+function validateTempPassword(pwd) {
+  const s = typeof pwd === 'string' ? pwd : '';
+  if (s.length < 8 || s.length > 200) return { ok: false, error: 'A palavra-passe temporária precisa de 8 a 200 caracteres.' };
+  if (/\s/.test(s)) return { ok: false, error: 'A palavra-passe temporária não pode conter espaços.' };
+  if (WEAK_TEMP_PASSWORDS.includes(s.toLowerCase())) return { ok: false, error: 'Palavra-passe demasiado óbvia — use outra.' };
+  if (!/[A-Za-z]/.test(s) || !/[0-9]/.test(s)) return { ok: false, error: 'A palavra-passe temporária deve misturar letras e números.' };
+  return { ok: true, value: s };
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 const TEMP_PASS_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // sem 0/O/1/l
 function genTempPassword(len = 12) {
-  const buf = crypto.getRandomValues(new Uint8Array(len));
+  const n = Math.max(8, Math.min(64, Math.trunc(Number(len) || 12)));
+  const buf = crypto.getRandomValues(new Uint8Array(n + 4));
+  const pick = (i) => TEMP_PASS_ALPHABET[buf[i] % TEMP_PASS_ALPHABET.length];
   let out = '';
-  for (let i = 0; i < len; i++) out += TEMP_PASS_ALPHABET[buf[i] % TEMP_PASS_ALPHABET.length];
+  for (let i = 0; i < n; i++) out += pick(i);
+  /* v2.10.0 (P3): garantir que cumpre a própria política (letras + números).
+     Sem isto, ~10% das passwords geradas saíam só com letras e a validação
+     (nova) recusava-as — o admin recebia um erro ao criar a conta. */
+  const DIGITS = '23456789';
+  if (!/[0-9]/.test(out)) {
+    const pos = buf[n] % n;
+    out = out.slice(0, pos) + DIGITS[buf[n + 1] % DIGITS.length] + out.slice(pos + 1);
+  }
+  if (!/[A-Za-z]/.test(out)) {
+    const pos = buf[n + 2] % n;
+    out = out.slice(0, pos) + TEMP_PASS_ALPHABET[buf[n + 3] % 24] + out.slice(pos + 1);
+  }
   return out;
 }
 
@@ -932,6 +1012,23 @@ async function processOutbox(env, now) {
   return processed;
 }
 
+/* v2.10.0 (P3) — DOIS defeitos corrigidos aqui:
+   1. QUOTA: `fv(f,'paidAmount') !== Math.round(paid*100)/100` comparava uma
+      STRING (o Firestore devolve integerValue como texto: "1500") com um
+      NÚMERO (1500) — dava sempre diferente, portanto o cron REESCREVIA
+      `paidAmount` em todas as contribuições abertas, todos os minutos
+      (20 contribuições ≈ 28.800 escritas/dia; o plano Spark permite 20.000).
+      A comparação passa a ser numérica e o dinheiro volta a ser inteiro de
+      cêntimos de ponta a ponta (sem o arredondamento decimal herdado).
+   2. LUANDA: o prazo terminava às 23:59:59 **UTC** = 00:59 do dia seguinte em
+      Luanda. Agora termina à meia-noite de LUANDA, como o resto do sistema. */
+function luandaEndOfDayMs(dayKey) {
+  const s = String(dayKey == null ? '' : dayKey);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return NaN;
+  const [y, m, d] = s.split('-').map(Number);
+  return Date.UTC(y, m - 1, d) - LUANDA_OFFSET_MS + 86400000 - 1;
+}
+
 async function recomputeContributions(env, now) {
   const rows = await fsRunQuery(env, 'contributions', [
     { fieldFilter: { field: { fieldPath: 'status' }, op: 'IN', value: { arrayValue: { values: [{ stringValue: 'em_curso' }, { stringValue: 'em_atraso' }] } } } },
@@ -939,13 +1036,15 @@ async function recomputeContributions(env, now) {
   let changed = 0;
   for (const row of rows) {
     const f = row.fields;
-    const total = fnum(f, 'amount');
+    const totalCents = fnum(f, 'amount');
     const pays = await fsRunQuery(env, 'contribution_payments', [eq('contributionId', row.id)], 500);
-    const paid = pays.reduce((a, p) => a + Number(fv(p.fields, 'amount') || 0), 0);
-    const due = fv(f, 'dueDate') || '2099-12-31';
-    let st = paid + 0.005 >= total ? 'concluida' : now > new Date(due + 'T23:59:59Z').getTime() ? 'em_atraso' : 'em_curso';
+    const paidCents = pays.reduce((a, p) => a + fnum(p.fields, 'amount'), 0);
+    const dueEnd = luandaEndOfDayMs(fv(f, 'dueDate') || '2099-12-31');
+    const st = paidCents >= totalCents
+      ? 'concluida'
+      : (Number.isFinite(dueEnd) && now > dueEnd) ? 'em_atraso' : 'em_curso';
     if (st !== fv(f, 'status')) {
-      const patch = { status: st, paidAmount: Math.round(paid * 100) / 100 };
+      const patch = { status: st, paidAmount: paidCents };
       if (st === 'concluida') patch.completedAt = now;
       await fsPatch(env, 'contributions', row.id, patch);
       if (st === 'concluida') {
@@ -956,8 +1055,9 @@ async function recomputeContributions(env, now) {
         });
       }
       changed++;
-    } else if (fv(f, 'paidAmount') !== Math.round(paid * 100) / 100) {
-      await fsPatch(env, 'contributions', row.id, { paidAmount: Math.round(paid * 100) / 100 });
+    } else if (fnum(f, 'paidAmount') !== paidCents) {
+      /* Só escreve quando o valor REALMENTE mudou (antes: todos os minutos). */
+      await fsPatch(env, 'contributions', row.id, { paidAmount: paidCents });
     }
   }
   return changed;
@@ -1058,33 +1158,73 @@ async function runReminders(env, now) {
 
 /* ------------------------------------------------------------------ */
 
+/* v2.10.0 (P3 «cron resiliente»): cada tarefa corre no SEU try/catch.
+   Antes, uma falha na primeira (um índice em falta, um 5xx do Firestore)
+   rebentava com as outras três E com o heartbeat: a app passava a dizer
+   «Cron SEM pulsar» com o agendador vivo, e nada dizia QUAL tarefa falhava.
+   Agora o heartbeat grava `jobsOk` e `lastError` («contributions: runQuery
+   contributions: 400») e o /__health expõe-nos.                             */
+async function runJob(name, fn) {
+  const t0 = Date.now();
+  try {
+    const n = await fn();
+    return { name, ok: true, n: Number(n) || 0, ms: Date.now() - t0, error: null, skipped: false };
+  } catch (e) {
+    const error = String((e && e.message) || e || 'erro').slice(0, 200);
+    console.error(`cron: tarefa «${name}» falhou:`, error);
+    return { name, ok: false, n: 0, ms: Date.now() - t0, error, skipped: false };
+  }
+}
+
+/** Throttle do heartbeat: grava se nunca gravou ou se passou o intervalo. */
+function heartbeatThrottled(lastRunAt, now, throttleMs = 10 * 60 * 1000) {
+  const last = Number(lastRunAt) || 0;
+  return last <= 0 || now - last > throttleMs;
+}
+
+/** O minuto actual pertence a um bloco de 5 min? (usado para espaçar o
+ *  recálculo de contribuições sem precisar de estado no isolate.) */
+function isRecomputeMinute(nowMs) {
+  return Math.floor(Number(nowMs) / 60000) % 5 === 0;
+}
+
 export default {
   /* Cron do Cloudflare (Workers → Settings → Triggers, ou [triggers] no wrangler):
      a cada minuto. O próprio código decide o que fazer com o minuto actual. */
   async scheduled(event, env) {
     const now = Date.now();
+    /* P3 (quota): as contribuições só precisam de ser recalculadas de 5 em 5
+       minutos — o cliente já grava status/paidAmount ao registar um pagamento
+       e a viragem para «em atraso» é diária. Corta ~80% das leituras do cron. */
+    const jobs = [
+      await runJob('outbox', () => processOutbox(env, now)),
+      isRecomputeMinute(now)
+        ? await runJob('contributions', () => recomputeContributions(env, now))
+        : { name: 'contributions', ok: true, n: 0, ms: 0, error: null, skipped: true },
+      await runJob('reminders', () => runReminders(env, now)),
+      await runJob('events', () => processEventReminders(env, now)),
+    ];
+    console.log('cron: ' + jobs.map((j) => `${j.name}=${j.ok ? j.n : 'ERRO(' + j.error + ')'}`).join(' '));
+    const byName = {};
+    for (const j of jobs) byName[j.name] = j;
+    const failed = jobs.find((j) => !j.ok);
+    /* v2.9.1: heartbeat do cron (throttle 10 min) — a app mostra se o
+       agendador está vivo (Suporte → Diagnóstico e /__health).
+       v2.10.0: é gravado MESMO com tarefas em erro (é o pulso, não o sucesso). */
     try {
-      const q = await processOutbox(env, now);
-      const c = await recomputeContributions(env, now);
-      const r = await runReminders(env, now);
-      const b = await processEventReminders(env, now);
-      console.log(`cron: outbox=${q} contribs=${c} lembretes=${r} eventos=${b}`);
-      /* v2.9.1: heartbeat do cron (throttle 10 min) — a app mostra se o
-         agendador está vivo (Suporte → Diagnóstico e /__health). */
-      try {
-        const hb = await fsGetDoc(env, 'settings', 'worker_cron');
-        const last = Number((hb && hb.lastRunAt && (hb.lastRunAt.integerValue || hb.lastRunAt.doubleValue)) || 0);
-        if (now - last > 10 * 60 * 1000) {
-          await fsPatch(env, 'settings', 'worker_cron', {
-            lastRunAt: now, version: WORKER_VERSION,
-            lastOutbox: q, lastReminders: r, lastEvents: b,
-          });
-        }
-      } catch (e) {
-        console.error('heartbeat falhou:', (e && e.message) || e);
+      const hb = await fsGetDoc(env, 'settings', 'worker_cron');
+      const last = Number((hb && hb.lastRunAt && (hb.lastRunAt.integerValue || hb.lastRunAt.doubleValue)) || 0);
+      if (heartbeatThrottled(last, now)) {
+        await fsPatch(env, 'settings', 'worker_cron', {
+          lastRunAt: now, version: WORKER_VERSION,
+          lastOutbox: byName.outbox.n, lastReminders: byName.reminders.n,
+          lastEvents: byName.events.n, lastContributions: byName.contributions.n,
+          jobsOk: !failed,
+          lastError: failed ? `${failed.name}: ${failed.error}` : null,
+        });
       }
     } catch (e) {
-      console.error('cron falhou:', e?.message || e);
+      console.error('heartbeat falhou:', (e && e.message) || e);
     }
   },
 
@@ -1107,6 +1247,15 @@ export default {
             lastRunAt: last,
             ageMinutes: last ? Math.round((Date.now() - last) / 60000) : null,
             version: (hb.version && hb.version.stringValue) || null,
+            /* v2.10.0 (P3): o pulso existe, mas as tarefas correram bem? */
+            ok: hb.jobsOk ? hb.jobsOk.booleanValue !== false : null,
+            error: (hb.lastError && hb.lastError.stringValue) || null,
+            counts: {
+              outbox: fvInt(hb.lastOutbox),
+              contributions: fvInt(hb.lastContributions),
+              reminders: fvInt(hb.lastReminders),
+              events: fvInt(hb.lastEvents),
+            },
           };
         }
       } catch { /* sem heartbeat ainda */ }
@@ -1236,14 +1385,24 @@ export default {
       if (path === '/admin/create-auth-account') {
         if (!isSuper) return json({ error: 'Só o super administrador pode criar contas.' }, 403);
         const { email, tempPassword, name, phone } = await request.json();
-        if (!email) return json({ error: 'Email obrigatório.' }, 400);
-        const pwd = tempPassword || genTempPassword();
+        const target = String(email || '').trim().toLowerCase();
+        if (!target) return json({ error: 'Email obrigatório.' }, 400);
+        /* v2.10.0 (P3): email válido + palavra-passe temporária com política. */
+        if (!EMAIL_RE.test(target) || target.length > 180) return json({ error: 'Email inválido.' }, 400);
+        let pwd = '';
+        if (tempPassword) {
+          const vp = validateTempPassword(tempPassword);
+          if (!vp.ok) return json({ error: vp.error }, 400);
+          pwd = vp.value;
+        } else {
+          pwd = genTempPassword();
+        }
         const sa = JSON.parse(env.FIREBASE_SA_JSON);
         const tok = await saAccessToken(env.FIREBASE_SA_JSON);
         const r = await fetch('https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-          body: JSON.stringify({ email, password: pwd, displayName: email.split('@')[0] }),
+          body: JSON.stringify({ email: target, password: pwd, displayName: target.split('@')[0] }),
         });
         const j = await r.json();
         if (!r.ok) {
@@ -1263,13 +1422,22 @@ export default {
         const { email, tempPassword } = await request.json();
         const target = String(email || '').toLowerCase();
         if (!target) return json({ error: 'Email obrigatório.' }, 400);
+        if (!EMAIL_RE.test(target) || target.length > 180) return json({ error: 'Email inválido.' }, 400);
         const tDoc = await getAdminDoc(target, env);
         if (!tDoc) return json({ error: 'Este email não está na coleção admins.' }, 404);
         /* v2.8.2: protege QUALQUER conta com a flag isSuper (antes: um email fixo) */
         if (tDoc.isSuper === true) return json({ error: 'A conta de super administrador não pode ser redefinida por aqui.' }, 403);
         const localId = await itGetLocalId(env, target);
         if (!localId) return json({ error: 'Não encontrei a conta de autenticação deste email.' }, 404);
-        const pwd = tempPassword || genTempPassword();
+        /* v2.10.0 (P3): mesma política de palavra-passe que na criação. */
+        let pwd = '';
+        if (tempPassword) {
+          const vp = validateTempPassword(tempPassword);
+          if (!vp.ok) return json({ error: vp.error }, 400);
+          pwd = vp.value;
+        } else {
+          pwd = genTempPassword();
+        }
         await itSetAccount(env, { localId, password: pwd, disableUser: false });
         await patchAdminDoc(env, target, { mustChangePassword: true, tempPasswordIssuedAt: Date.now(), disabled: false });
         roleCache = { ts: 0, map: {} };
@@ -1462,4 +1630,25 @@ Responde APENAS com JSON: {"groupId": "texto do modelo", ...}.`;
       return json({ error: e?.message || 'Erro interno.' }, 500);
     }
   },
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   v2.10.0 (P3) — SUPERFÍCIE DE TESTES
+   O Cloudflare usa o `export default` acima; este export extra não muda nada em
+   produção (nenhuma rota nova, nenhum segredo exposto) e permite testar, pela
+   primeira vez, as funções PURAS do ficheiro mais crítico do sistema — o Worker
+   (1500 linhas: validação do auto-cadastro, rate limits, verificação do token
+   do Firebase, moeda, Luanda, cron). Testes: worker/__tests__/ai-worker.test.js
+   ───────────────────────────────────────────────────────────────────────────── */
+function resetBuckets() { signupBuckets.clear(); rateBuckets.clear(); }
+
+export const __test = {
+  WORKER_VERSION, WORKER_BUILD, PROVIDERS,
+  SIGNUP_RATE_LIMIT, RATE_LIMIT, RATE_WINDOW, BUCKET_MAX, TEMP_PASS_ALPHABET,
+  validateSignup, validateTempPassword, genTempPassword, isRealIsoDate, isLeapYear,
+  signupRateOk, rateOk, pruneBuckets, resetBuckets,
+  verifyFirebaseIdToken, b64urlDecode,
+  luandaNow, luandaEndOfDayMs, fmtKz,
+  fv, fvStr, fvInt, fnum, eq, le, isRetryable,
+  runJob, heartbeatThrottled, isRecomputeMinute,
 };

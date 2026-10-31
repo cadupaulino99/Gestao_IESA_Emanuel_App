@@ -14,12 +14,13 @@ import { Check, X, Search, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { saveXlsx } from '../../lib/download';
 import * as XLSX from 'xlsx';
+import { luandaDayKey, luandaMonthIdx, luandaYear } from '../../lib/luanda';
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export function MemberTithesTracker() {
-  const currentYear = new Date().getFullYear();
-  const currentMonthIdx = new Date().getMonth();
+  const currentYear = luandaYear();
+  const currentMonthIdx = luandaMonthIdx();
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'most_tithes' | 'least_tithes'>('name');
@@ -198,7 +199,7 @@ export function MemberTithesTracker() {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dízimos");
       
-      const dateStr = new Date().toISOString().split('T')[0];
+      const dateStr = luandaDayKey();
       const fileName = `Dizimos_${selectedYear}_${dateStr}.xlsx`;
       
       await saveXlsx(XLSX, wb, fileName);

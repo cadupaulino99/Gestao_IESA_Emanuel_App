@@ -31,6 +31,7 @@ type AssetForm = z.infer<typeof assetSchema>;
 
 import { useAuth } from '../context/AuthContext';
 import { formatKz } from '../lib/money';
+import { luandaDayKey } from '../lib/luanda';
 
 export default function Assets() {
   const { user, isAdmin } = useAuth();
@@ -38,7 +39,7 @@ export default function Assets() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const confirmDialog = useConfirm();
-  const today = new Date().toISOString().substring(0, 10);
+  const today = luandaDayKey();
 
   const { register, handleSubmit, control, formState: { errors }, reset, setValue, clearErrors } = useForm({
     resolver: zodResolver(assetSchema),

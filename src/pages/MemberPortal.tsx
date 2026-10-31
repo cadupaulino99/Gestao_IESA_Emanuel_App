@@ -78,6 +78,7 @@ import {
 } from "../types";
 import { computeStatus } from "../lib/contrib";
 import { formatKz } from '../lib/money';
+import { fmtTodayTimePT, lastMonthsLuanda } from '../lib/luanda';
 
 export default function MemberPortal() {
   const { memberData, signOut } = useAuth();
@@ -255,7 +256,7 @@ export default function MemberPortal() {
     docPdf.setFontSize(12);
     docPdf.text(`Extrato de Dízimos: ${memberData.name}`, 14, 28);
     docPdf.setFontSize(10);
-    docPdf.text(`Gerado em: ${new Date().toLocaleDateString("pt-AO")}`, 14, 34);
+    docPdf.text(`Gerado em: ${fmtTodayTimePT()}`, 14, 34);
 
     const tableData = tithes.map((t) => [
       `${t.month}/${t.year || "-"}`,
@@ -272,24 +273,13 @@ export default function MemberPortal() {
     await savePdf(docPdf, `Extrato_${memberData.name.replace(/\s+/g, "_")}.pdf`);
   };
 
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const chartData = [];
-  for (let i = 5; i >= 0; i--) {
-    let mDate = new Date(currentYear, currentMonth - i, 1);
-    const mName = mDate.toLocaleString("pt-AO", { month: "short" });
-    const mMonth = String(mDate.getMonth() + 1).padStart(2, "0");
-    const yYear = mDate.getFullYear();
-
-    const tithesSum = tithes
-      .filter((t: any) => t.month === mMonth && t.year === yYear)
-      .reduce((acc, curr) => acc + curr.amount, 0);
-
-    chartData.push({
-      name: `${mName}/${yYear.toString().substring(2)}`,
-      valor: tithesSum,
-    });
-  }
+  /* P3: meses de Luanda (era o fuso do aparelho). */
+  const chartData = lastMonthsLuanda(6).map((s) => ({
+    name: s.label,
+    valor: tithes
+      .filter((t: any) => t.month === s.monthStr && t.year === s.year)
+      .reduce((acc: number, curr: any) => acc + curr.amount, 0),
+  }));
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-background p-4 md:p-8">

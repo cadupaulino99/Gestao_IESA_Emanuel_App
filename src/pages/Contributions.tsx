@@ -24,8 +24,9 @@ import { openExternal } from '../lib/download';
 import { aiBulkTemplates } from '../lib/ai';
 import { idxToName } from '../lib/months';
 import { formatKz, parseKzInput, editValue } from '../lib/money';
+import { fmtTodayTimePT, luandaDayKey, luandaYear } from '../lib/luanda';
 
-const THIS_YEAR = new Date().getFullYear();
+const THIS_YEAR = luandaYear();
 // v1.12: moeda única — valores em CÊNTIMOS, formato 1.500,00 Kz (lib/money)
 const fmtKz = formatKz;
 const fmtDate = (iso?: string | null) => (iso ? iso.split('-').reverse().join('/') : '—');
@@ -47,9 +48,9 @@ export default function Contributions() {
 
   const [memberPick, setMemberPick] = useState<Member | null>(null);
   const [contribDialog, setContribDialog] = useState(false);
-  const [cForm, setCForm] = useState({ description: '', amount: '', dueDate: new Date().toISOString().slice(0, 10) });
+  const [cForm, setCForm] = useState({ description: '', amount: '', dueDate: luandaDayKey() });
   const [payDialog, setPayDialog] = useState<Contribution | null>(null);
-  const [pForm, setPForm] = useState({ amount: '', deliveryDate: new Date().toISOString().slice(0, 10) });
+  const [pForm, setPForm] = useState({ amount: '', deliveryDate: luandaDayKey() });
   const [reasonDialog, setReasonDialog] = useState<{ c: Contribution; action: 'close' | 'reopen' } | null>(null);
   const [reason, setReason] = useState('');
 
@@ -206,7 +207,7 @@ export default function Contributions() {
         body: `Paz, ${memberPick.name}. Foi registada a contribuição «${cForm.description}» no valor de ${fmtKz(amount)}, com prazo ${fmtDate(cForm.dueDate)}. Obrigado!`,
       });
       toast.success('Contribuição criada e membro notificado (fila com janela de 10 min).');
-      setContribDialog(false); setCForm({ description: '', amount: '', dueDate: new Date().toISOString().slice(0, 10) });
+      setContribDialog(false); setCForm({ description: '', amount: '', dueDate: luandaDayKey() });
       qc.invalidateQueries({ queryKey: ['contributions'] });
     } catch (e: any) { toast.error(e?.message || 'Erro ao criar.'); } finally { setBusy(false); }
   };
@@ -237,7 +238,7 @@ export default function Contributions() {
         await updateDoc(doc(db, 'contributions', payDialog.id), { paidAmount: newPaid });
         toast.success(`Pagamento registado (${fmtKz(newPaid)} de ${fmtKz(payDialog.amount)}).`);
       }
-      setPayDialog(null); setPForm({ amount: '', deliveryDate: new Date().toISOString().slice(0, 10) });
+      setPayDialog(null); setPForm({ amount: '', deliveryDate: luandaDayKey() });
       qc.invalidateQueries({ queryKey: ['contrib_payments'] }); qc.invalidateQueries({ queryKey: ['contributions'] });
     } catch (e: any) { toast.error(e?.message || 'Erro ao registar.'); } finally { setBusy(false); }
   };
@@ -330,7 +331,7 @@ export default function Contributions() {
         if (!yes) { setBusy(false); return; }
       }
       const campRef = await addDoc(collection(db, 'campaigns'), {
-        name: `${audience} — ${new Date().toLocaleString('pt-AO')}`,
+        name: `${audience} — ${fmtTodayTimePT()}`,
         audience, templates, groupCounts: Object.fromEntries(g.map((x) => [x.id, x.members.length])),
         createdBy: user?.email || 'unknown', createdAt: Date.now(), status: 'sent', recipientCount: plan.length,
       });
@@ -529,7 +530,7 @@ export default function Contributions() {
                     {c.closeReason && <p className="text-[11px] text-muted-foreground">Fecho manual: {c.closeReason}</p>}
                     {c.reopenReason && <p className="text-[11px] text-muted-foreground">Reaberta: {c.reopenReason}</p>}
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" onClick={() => { setPayDialog(c); setPForm({ amount: '', deliveryDate: new Date().toISOString().slice(0, 10) }); }}>Registar pagamento</Button>
+                      <Button size="sm" variant="outline" onClick={() => { setPayDialog(c); setPForm({ amount: '', deliveryDate: luandaDayKey() }); }}>Registar pagamento</Button>
                       {c.status !== 'concluida' && (
                         <Button size="sm" variant="ghost" onClick={() => { setReasonDialog({ c, action: 'close' }); setReason(''); }}>Concluir c/ motivo</Button>
                       )}

@@ -128,6 +128,92 @@ service cloud.firestore {
       return resource.data;
     }
 
+    // ─── v1.19.0 (P3 «regras: fechar o resto») ─────────────────────────────
+    // Quatro colecções tinham escrita «só liderança» mas SEM validação de
+    // campos: qualquer conta de liderança comprometida (ou um bug de UI) podia
+    // gravar lixo — ou, nas filas SMS/WhatsApp, mensagens arbitrárias para
+    // números arbitrários que o Worker enviaria em nome da igreja.
+    // Os validadores espelham EXACTAMENTE os payloads que a app já envia
+    // (lib/notify.ts, lib/board.ts, lib/audit.ts, Finances, Admin, Portal).
+    function isStr(d, k, max) {
+      return !hasField(d, k) || d[k] == null || (d[k] is string && d[k].size() <= max);
+    }
+
+    function isValidNotificationDoc(d) {
+      return d.keys().hasAll(['userEmail', 'kind', 'title', 'body', 'read', 'createdAt']) &&
+        d.keys().size() <= 9 &&
+        d.userEmail is string && d.userEmail.size() > 0 && d.userEmail.size() <= 200 &&
+        d.kind is string && d.kind.size() <= 40 &&
+        d.title is string && d.title.size() > 0 && d.title.size() <= 200 &&
+        d.body is string && d.body.size() <= 4000 &&
+        d.read is bool && d.createdAt is number &&
+        isStr(d, 'refId', 100) && isStr(d, 'byEmail', 200) &&
+        (!hasField(d, 'updatedAt') || d.updatedAt is number);
+    }
+
+    function isValidOutboxDoc(d) {
+      return d.keys().hasAll(['memberId', 'kind', 'body', 'status', 'createdAt']) &&
+        d.keys().size() <= 20 &&
+        d.memberId is string && d.memberId.size() > 0 && d.memberId.size() <= 100 &&
+        d.kind is string && d.kind.size() <= 40 &&
+        d.body is string && d.body.size() > 0 && d.body.size() <= 1600 &&
+        d.status in ['pending', 'done', 'held', 'cancelled'] &&
+        d.createdAt is number &&
+        isStr(d, 'phone', 20) && isStr(d, 'memberEmail', 200) && isStr(d, 'memberName', 200) &&
+        isStr(d, 'smsState', 20) && isStr(d, 'waState', 20) &&
+        isStr(d, 'dedupeDay', 10) && isStr(d, 'refId', 100) && isStr(d, 'campaignId', 100) &&
+        (!hasField(d, 'acceptsMessages') || d.acceptsMessages == null || d.acceptsMessages is bool) &&
+        (!hasField(d, 'cancelUntil') || d.cancelUntil is number) &&
+        (!hasField(d, 'updatedAt') || d.updatedAt is number);
+    }
+
+    function isValidWhatsAppOutboxDoc(d) {
+      return d.keys().hasAll(['memberPhone', 'receiptNumber', 'amount', 'status', 'createdAt']) &&
+        d.keys().size() <= 10 &&
+        d.memberPhone is string && d.memberPhone.size() <= 20 &&
+        d.receiptNumber is string && d.receiptNumber.size() <= 60 &&
+        d.amount is int && d.amount >= 0 &&
+        d.status in ['pending', 'sent', 'failed', 'done'] &&
+        d.createdAt is number &&
+        isStr(d, 'memberName', 200);
+    }
+
+    function isValidAuditDoc(d) {
+      // Dois esquemas coexistem (v1.14.4): {action,targetEmail,byEmail,at} e
+      // {adminEmail,action,collectionName,createdAt,...}. Aceitam-se ambos.
+      return d.keys().hasAll(['action']) && d.keys().size() <= 12 &&
+        d.action is string && d.action.size() > 0 && d.action.size() <= 80 &&
+        (hasField(d, 'at') || hasField(d, 'createdAt')) &&
+        (!hasField(d, 'at') || d.at is number) &&
+        (!hasField(d, 'createdAt') || d.createdAt is number) &&
+        isStr(d, 'byEmail', 200) && isStr(d, 'adminEmail', 200) &&
+        isStr(d, 'targetEmail', 200) && isStr(d, 'collectionName', 60) &&
+        isStr(d, 'detail', 2000);
+    }
+
+    function isValidUpdateRequestDoc(d) {
+      // Portal do Membro → «Pedir atualização»: só os três campos que a
+      // liderança realmente aplica (Admin.tsx) — nada de `status`, `name`,
+      // `documentNumber` ou `isSuper` apanhados de surpresa na aprovação.
+      return d.keys().hasAll(['memberId', 'requestedData', 'status', 'createdAt']) &&
+        d.keys().size() <= 10 &&
+        d.memberId is string && d.memberId.size() > 0 && d.memberId.size() <= 100 &&
+        d.status == 'pendente' && d.createdAt is number &&
+        d.requestedData is map &&
+        d.requestedData.keys().hasOnly(['telefone', 'endereco', 'estadoCivil']) &&
+        isStr(d, 'memberName', 200) && isStr(d, 'memberEmail', 200) &&
+        (!hasField(d, 'currentData') || d.currentData == null || d.currentData is map);
+    }
+
+    // O pedido tem de ser sobre a ficha do PRÓPRIO (a app compara com o email
+    // do token; aqui confirma-se no documento de membros — `get()` nas regras
+    // não conta para a quota de leituras).
+    function ownsMemberRecord(memberId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/members/$(memberId)) &&
+        get(/databases/$(database)/documents/members/$(memberId)).data.get('email', '') == request.auth.token.email;
+    }
+
     // --- Admin Collection ---
     function isValidAdmin(data) {
       return data.keys().hasAll(['email', 'role', 'createdAt']) && data.keys().size() <= 10 &&
@@ -155,10 +241,10 @@ service cloud.firestore {
       allow list: if isSuperAdmin();
     }
 
-    match /settings/{docId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
+    // v1.19.0 (P3): havia DOIS blocos `match /settings/...` (este e o de
+    // baixo, idênticos). Removido o duplicado — menos regras para avaliar em
+    // cada pedido e menos uma armadilha para quem editar (mudar só um dos
+    // blocos não mudava nada).
 
     // --- v1.11.0: orçamento único, contribuições, pagamentos ---
     // Escrita: só liderança (servidor). Leitura: o próprio membro ou liderança.
@@ -196,7 +282,9 @@ service cloud.firestore {
     // --- Notificações por utilizador: cada um vê só as suas; liderança cria ---
     match /notifications/{docId} {
       allow read, list: if isAuthenticated() && resource.data.userEmail == request.auth.token.email;
-      allow create: if hasFinancialWriteAccess() || (isAuthenticated() && incoming().userEmail == request.auth.token.email);
+      // v1.19.0 (P3): campos validados (antes: qualquer forma/tamanho).
+      allow create: if isValidNotificationDoc(incoming()) &&
+                    (hasFinancialWriteAccess() || (isAuthenticated() && incoming().userEmail == request.auth.token.email));
       // O dono marca como lida; a liderança (v1.13) actualiza APENAS os
       // documentos do digest do módulo (kind == 'board'), campos limitados.
       allow update: if (isAuthenticated() && resource.data.userEmail == request.auth.token.email
@@ -209,10 +297,11 @@ service cloud.firestore {
     // --- Fila de mensagens externas (SMS/WhatsApp) e campanhas ---
     match /message_outbox/{docId} {
       allow read, list: if hasFinancialWriteAccess();
-      allow create: if (isAdmin() && isValidId(docId))
+      allow create: if isValidOutboxDoc(incoming()) &&
+                    ((isAdmin() && isValidId(docId))
                     // v1.13: a liderança enfileira o digest «board» (avisos/
                     // eventos) quando marca «enviar também por SMS/WhatsApp».
-                    || (hasFinancialWriteAccess() && incoming().kind == 'board');
+                    || (hasFinancialWriteAccess() && incoming().kind == 'board'));
       allow update: if isAdmin() && isValidId(docId);
       allow delete: if hasFinancialWriteAccess();
     }
@@ -500,8 +589,12 @@ service cloud.firestore {
     function hasField(d, k) {
       return d.keys().hasAny([k]);
     }
+    // v1.19.0 (P3): o formato não chegava — '2026-13-45' era aceite e aparecia
+    // nos Avisos/Eventos como data impossível (e partia os lembretes do Worker,
+    // que compara strings). Mês 01-12 e dia 01-31; o calendário fino (30/31,
+    // bissextos) é validado no cliente e no Worker (isCalendarDateIso).
     function isDateIsoStr(s) {
-      return s is string && s.matches('^\\d{4}-\\d{2}-\\d{2}$');
+      return s is string && s.matches('^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
     }
     function isTimeHHMMStr(s) {
       return s is string && s.matches('^(0\\d|1\\d|2[0-3]):[0-5]\\d$');
@@ -616,14 +709,24 @@ service cloud.firestore {
       allow read, list: if hasFinancialWriteAccess() ||
         (isAuthenticated() && resource.data.keys().hasAll(['memberEmail']) &&
          resource.data.memberEmail == request.auth.token.email);
-      allow create: if isAuthenticated() && incoming().memberId != null;
+      // v1.19.0 (P3) — BURACO FECHADO: era `isAuthenticated() &&
+      // incoming().memberId != null`, ou seja QUALQUER sessão (incluindo um
+      // cadastro rejeitado) podia abrir pedidos de atualização em nome de
+      // OUTRO membro — poluindo a fila da liderança e permitindo propor dados
+      // alheios. Agora: liderança, ou o próprio dono da ficha (verificado no
+      // documento members/), com `memberEmail` coerente e campos limitados.
+      allow create: if isAuthenticated() && isValidId(reqId) && isValidUpdateRequestDoc(incoming()) &&
+        (hasFinancialWriteAccess() ||
+         (ownsMemberRecord(incoming().memberId) &&
+          (!hasField(incoming(), 'memberEmail') || incoming().memberEmail == null ||
+           incoming().memberEmail == request.auth.token.email)));
       allow update, delete: if isAdmin();
     }
 
     // --- Audit Logs Collection ---
     match /audit_logs/{logId} {
       allow read, list: if isAdmin();
-      allow create: if hasFinancialWriteAccess();
+      allow create: if hasFinancialWriteAccess() && isValidAuditDoc(incoming());
       allow update, delete: if false;
     }
 
@@ -657,7 +760,8 @@ service cloud.firestore {
 
     match /whatsapp_outbox/{msgId} {
       allow read, list: if isAdmin();
-      allow create: if hasFinancialWriteAccess();
+      // v1.19.0 (P3): validado — o Worker/extensão envia o que aqui estiver.
+      allow create: if hasFinancialWriteAccess() && isValidId(msgId) && isValidWhatsAppOutboxDoc(incoming());
       allow update, delete: if isAdmin();
     }
   }

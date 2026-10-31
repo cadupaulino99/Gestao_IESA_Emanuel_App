@@ -12,8 +12,9 @@ import CommunionGrid from './CommunionGrid';
 import { fetchCommunion, cycleCommunionMark } from '../../lib/communion';
 import { useAuth } from '../../context/AuthContext';
 import { CommunionMark, Member } from '../../types';
+import { luandaYear } from '../../lib/luanda';
 
-const THIS_YEAR = new Date().getFullYear();
+const THIS_YEAR = luandaYear();
 
 /**
  * Aba «Comunhão» dos Membros: a liderança localiza o membro pelo nome e

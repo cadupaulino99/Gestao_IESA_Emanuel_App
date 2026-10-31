@@ -8,22 +8,28 @@ import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/ui/badge';
 import { useDevice } from '../hooks/useDevice';
 import { AIExecutiveAnalysis } from '../components/finances/AIExecutiveAnalysis';
 import { formatKz } from '../lib/money';
+/* v1.19.0 (P3 «Luanda em todo o lado»): «hoje», «este mês» e «este ano» vêm
+   de lib/luanda.ts — o fuso do aparelho (e o UTC do toISOString) deslocava
+   aniversários e lançamentos feitos entre as 00:00 e as 01:00. */
+import {
+  luandaYear, luandaMonth, luandaDayOfMonth, luandaMonthStr, luandaMonthNamePT,
+  monthNamePT, normalizeBirthDate, isBirthdayToday,
+} from '../lib/luanda';
 
 export default function Dashboard() {
   const { userRole } = useAuth();
   const { isMobile, isTablet } = useDevice();
-  const d = new Date();
-  const year = d.getFullYear();
-  const currentMonth = d.getMonth() + 1;
-  const currentDay = d.getDate();
+  /* P3: dia/mês/ano de LUANDA (eram do fuso do aparelho — os aniversariantes
+     e os dízimos «deste mês» mudavam conforme o telemóvel). */
+  const year = luandaYear();
+  const currentMonth = luandaMonth();
+  const currentDay = luandaDayOfMonth();
 
   const isFinancialStaff = userRole === 'admin' || userRole === 'treasurer';
 
@@ -39,7 +45,7 @@ export default function Dashboard() {
         let offerings = 0;
         let expenses = 0;
         const monthlyData = Array.from({ length: 12 }, (_, i) => ({
-          name: format(new Date(year, i), 'MMM', { locale: ptBR }),
+          name: monthNamePT(i + 1, true),
           Entradas: 0,
           Saídas: 0,
           Dízimos: 0,
@@ -171,9 +177,12 @@ export default function Dashboard() {
         let tithingMembersSet = new Set<string>();
 
         if (isFinancialStaff) {
-          const currentMonth = new Date().getMonth() + 1; // 1-12
-          const currentYear = new Date().getFullYear();
-          const currentMonthTithes = await getDocs(query(collection(db, 'tithes'), where('month', '==', currentMonth), where('year', '==', currentYear)));
+          /* P3: o campo `month` dos dízimos é a string canónica '01'..'12'
+             (v1.9.3). Comparava-se com um NÚMERO — a query nunca devolvia nada
+             e o gráfico «Dizimistas do Mês» estava sempre vazio. */
+          const currentMonthStr = luandaMonthStr();
+          const currentYear = luandaYear();
+          const currentMonthTithes = await getDocs(query(collection(db, 'tithes'), where('month', '==', currentMonthStr), where('year', '==', currentYear)));
           currentMonthTithes.forEach(doc => {
             if (doc.data().memberId) {
               tithingMembersSet.add(doc.data().memberId);
@@ -220,8 +229,10 @@ export default function Dashboard() {
         const birthdays = membersData
           .filter((m: any) => m.birthDate)
           .map((m: any) => {
-            const [y, mm, dd] = m.birthDate.split('-');
-            return { ...m, bMonth: parseInt(mm, 10), bDay: parseInt(dd, 10) };
+            /* P3: normalizeBirthDate aceita 'AAAA-MM-DD' e o legado 'DD/MM/AAAA'
+               (o split('-') anterior produzia NaN e o membro desaparecia). */
+            const iso = normalizeBirthDate(m.birthDate);
+            return { ...m, bIso: iso, bMonth: Number(iso.slice(5, 7)), bDay: Number(iso.slice(8, 10)) };
           })
           .filter((m: any) => m.bMonth === currentMonth)
           .sort((a: any, b: any) => a.bDay - b.bDay);
@@ -657,7 +668,7 @@ export default function Dashboard() {
               <Card>
                 <CardHeader>
                   <CardTitle>Dizimistas do Mês (Género)</CardTitle>
-                  <CardDescription>Membros que contribuíram com dízimos {format(new Date(), 'MMMM', { locale: ptBR })}</CardDescription>
+                  <CardDescription>Membros que contribuíram com dízimos em {luandaMonthNamePT()}</CardDescription>
                 </CardHeader>
                 <CardContent className={isMobile ? "h-[250px] flex items-center justify-center relative" : "h-[300px] flex items-center justify-center relative"}>
                     {!isLoading && stats?.genders && stats.genders.every(d => d.value === 0) ? (
@@ -750,7 +761,7 @@ export default function Dashboard() {
         <TabsContent value="birthdays" className="m-0 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Aniversariantes do Mês ({format(d, 'MMMM', { locale: ptBR })})</CardTitle>
+              <CardTitle>Aniversariantes do Mês ({luandaMonthNamePT()})</CardTitle>
               <CardDescription>Membros que celebram aniversário este mês.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -761,7 +772,7 @@ export default function Dashboard() {
                   <div className="text-muted-foreground border-2 border-dashed p-8 rounded text-center">Nenhum aniversariante este mês.</div>
                 ) : (
                   stats?.birthdays?.map((m: any) => {
-                    const isToday = m.bDay === currentDay;
+                    const isToday = isBirthdayToday(m.bIso) || m.bDay === currentDay;
                     return (
                       <div key={m.id} className={`flex justify-between items-center p-3 rounded-lg border ${isToday ? 'bg-orange-50 border-orange-200' : 'bg-card'}`}>
                         <div className="flex items-center gap-3">

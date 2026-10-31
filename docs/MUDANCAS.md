@@ -1,5 +1,150 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.19.0 — P3: Luanda em todo o lado, Worker 2.10.0 (quota/cron/token), regras sem buracos, testes do Worker e das regras
+
+Auditoria nova em `docs/AUDITORIA-2026-10-31.md` (25 achados, todos com
+evidência e correcção). Guião de teste: `docs/VERIFICACAO-V1.19.0.md`.
+
+### Datas — «hoje», «este mês» e «este ano» passam a vir SÓ de `lib/luanda.ts`
+
+A biblioteca existia desde a v1.13.0, mas ~50 sítios da UI continuavam no fuso
+do APARELHO (`new Date().getMonth()`) ou em UTC (`toISOString().slice(0,10)`).
+Bugs reais que isto causava e que agora estão fechados:
+
+- **Datas de nascimento importadas do Excel recuavam SEMPRE 1 dia**
+  (`new Date(y,m-1,d).toISOString()`: meia-noite local em UTC+1 = 23:00 UTC do
+  dia anterior) → `isoFromParts()`.
+- **Lançamentos feitos entre as 00:00 e as 01:00 guardavam o dia anterior**
+  (prazo/entrega de contribuições, referência de ofertas e despesas, período dos
+  relatórios, donativos/renovações do cartão, nomes de ficheiros de backup e
+  Excel — 24 sítios) → `luandaDayKey()`.
+- **Pizza «Dizimistas do Mês» do Painel estava SEMPRE vazia**: a query comparava
+  `month == 10` (número) com o valor guardado `'10'` (string canónica da
+  migração v1.9.3) → nunca devolvia nada. Agora compara com `luandaMonthStr()`.
+- **Aniversariantes**: contados pelo dia do aparelho e com `split('-')`, que
+  devolve `NaN` para o formato legado `'DD/MM/AAAA'` (o membro desaparecia da
+  lista) → `isBirthdayToday()` + `normalizeBirthDate()` (ISO, `DD/MM/AAAA`,
+  `DD-MM-AAAA`, epoch). Vale para o Painel e para a notificação local do APK.
+- **Gráficos dos «últimos 6 meses»** (ficha do membro, Portal, Dízimos) faziam
+  `new Date(year, month - i, 1)` e partiam-se na viragem do ano →
+  `lastMonthsLuanda(n)`, pura e testada.
+- **Exportações e rodapés de PDF** («Emitido em», «Gerado em», «Data:»,
+  relatórios, nome de campanhas) usavam `toLocaleDateString` do aparelho →
+  `fmtTodayPT()` / `fmtTodayTimePT()`; nascimento no Excel/PDF de membros →
+  `fmtDatePT(normalizeBirthDate(...))`.
+- Nome das gravações da Rádio Maranata com partes de Luanda.
+
+Novas funções (puras, `now` injectável, 19 testes novos): `luandaYear`,
+`luandaMonth`, `luandaMonthIdx`, `luandaDayOfMonth`, `luandaMonthStr`,
+`luandaMonthKey`, `luandaEndOfDay`, `isoFromParts`, `luandaDateOf`,
+`monthNamePT`, `luandaMonthNamePT`, `fmtTodayPT`, `fmtTodayTimePT`,
+`lastMonthsLuanda`, `isBirthdayToday`, `ageToday`, `normalizeBirthDate`,
+`isCalendarDateIso`, `isLeapYear`.
+
+### Worker 2.10.0 — quota, resiliência, token e validação
+
+- **QUOTA (o achado mais caro da auditoria)**: o cron reescrevia `paidAmount`
+  em TODAS as contribuições abertas, TODOS os minutos. `fv(f,'paidAmount')`
+  devolve uma STRING (`integerValue: "1500"`) e era comparada com um NÚMERO
+  (`1500`) — `'1500' !== 1500` é sempre verdade, logo o PATCH corria sempre.
+  Com 20 contribuições abertas: **≈28.800 escritas/dia** contra **20.000/dia**
+  do plano Spark (o sistema começaria a falhar escritas sem causa aparente).
+  Comparação passa a ser numérica e o dinheiro volta a ser inteiro de cêntimos
+  de ponta a ponta.
+- **Cron resiliente**: cada tarefa (`outbox`, `contributions`, `reminders`,
+  `events`) corre no seu `runJob()` com try/catch próprio. Antes, UMA falha na
+  primeira rebentava com as outras três **e** com o heartbeat — a app dizia
+  «✗ Cron SEM pulsar» com o agendador vivo e nada dizia o que estava partido.
+- **Heartbeat mais rico**: `jobsOk` + `lastError` («contributions: runQuery
+  contributions: 400») + contagens por tarefa; `/__health` expõe
+  `cron.ok/error/counts`; **Suporte → Diagnóstico** mostra qual tarefa falha
+  (`cronHealthLines()`, pura e testada).
+- **Recálculo de contribuições de 5 em 5 minutos** (`isRecomputeMinute`): o
+  cliente já grava `status`/`paidAmount` ao registar um pagamento e a viragem
+  para «em atraso» é diária → −80% das leituras/escritas do cron.
+- **Prazos em Luanda**: `em_atraso` era decidido por `due + 'T23:59:59Z'`
+  (= 00:59 do dia seguinte em Luanda) → `luandaEndOfDayMs()`.
+- **Token do Firebase endurecido**: `alg === 'RS256'` obrigatório (recusa
+  `none`/`HS256` antes de procurar a chave), `exp` **obrigatório** (antes um
+  token sem `exp` passava), `iat` não futurista (60 s), `sub` não vazio,
+  comprimento 32–4096, JSON malformado recusado sem excepção.
+- **Palavra-passe temporária com política**: `validateTempPassword()` (8–200,
+  sem espaços, letras **e** números, lista de óbvias) aplicada em
+  `/admin/create-auth-account` e `/admin/reset-temp-password`; email validado e
+  normalizado. `genTempPassword()` garante 1 letra + 1 dígito — antes, ≈10% das
+  geradas saíam só com letras e seriam recusadas pela política nova.
+- **Datas impossíveis no auto-cadastro**: `'1990-13-45'` passava o regex
+  `^\d{4}-\d{2}-\d{2}$` e seguia para `member_signups` → ficha do membro
+  (aniversariantes, cartão, relatórios). Agora `isRealIsoDate()` valida o
+  calendário (bissextos incluídos) e o intervalo de anos. *Foi o primeiro teste
+  escrito para o Worker que apanhou isto.*
+- **Rate limits com poda**: `signupBuckets`/`rateBuckets` cresciam sem limite no
+  isolate → `pruneBuckets()` (tecto 2000).
+- **Testes do Worker: 0 → 50.** Superfície `export const __test` no fim do
+  ficheiro (só funções puras; o `export default` que o Cloudflare usa não muda,
+  nenhuma rota nova, nenhum segredo exposto) + `worker/__tests__/ai-worker.test.js`.
+  Inclui testes de COERÊNCIA com a app: `fmtKz` ≡ `formatKz` (`lib/money.ts`) e
+  `luandaNow`/`luandaEndOfDayMs` ≡ `luandaParts`/`luandaEndOfDay` (`lib/luanda.ts`)
+  — o Worker duplica essa lógica e a divergência passa a apanhar-se.
+  O `vitest.config.ts` inclui agora `worker/**/*.test.js`.
+
+### Regras do Firestore — fechar o resto
+
+- 🐛 **`pedidos_atualizacao`: QUALQUER sessão podia abrir pedidos sobre a ficha
+  de OUTRO membro** (`allow create: if isAuthenticated() &&
+  incoming().memberId != null`) — incluindo um cadastro rejeitado, que continua
+  com conta Auth: poluição da fila da liderança e propostas de dados alheios.
+  Agora exige `ownsMemberRecord()` (`get()` do documento do membro comparado com
+  o email do token — `get()`/`exists()` nas regras não contam para a quota),
+  `memberEmail` coerente, `status == 'pendente'` e `requestedData` limitado aos
+  três campos que a aprovação realmente aplica (`telefone`, `endereco`,
+  `estadoCivil`).
+- **Filas de saída validadas**: `whatsapp_outbox` (recibos por WhatsApp) e
+  `message_outbox` (fila SMS/WhatsApp) aceitavam qualquer documento de qualquer
+  liderança — o Worker enviaria o que lá estivesse quando os fornecedores pagos
+  forem ligados. Validadores escritos a partir dos payloads reais
+  (`Finances.tsx`, `lib/notify.ts`, `lib/board.ts`).
+- **`notifications` e `audit_logs` validados** (a auditoria aceita os DOIS
+  esquemas que coexistem desde a v1.14.4).
+- **Bloco `match /settings/{…}` duplicado removido** — havia dois equivalentes
+  (`{docId}` e `{settingId}`); o Firestore avalia os dois e basta um `allow`
+  para conceder, portanto editar um não mudava nada.
+- **Datas de Avisos/Eventos**: `isDateIsoStr` aceitava `'2026-13-45'` (e o
+  lembrete do Worker, que compara strings, nunca casava) → mês `01-12`, dia
+  `01-31`.
+- **Verificador estático das regras** (`scripts/check-rules.mjs`,
+  `npm run lint:rules`, passo novo no CI, 15 testes): sem Java no CI não há
+  emulador, e o deploy é manual — um parêntesis a mais ou uma função mal escrita
+  só aparecia no deploy; um validador escrito e **não ligado** a nenhum `allow`
+  não aparecia nunca (foi o que aconteceu a `isValidMemberCreate` até à v1.18).
+  Apanha: `(){}[]` desequilibrados, funções chamadas e inexistentes, funções
+  definidas e nunca usadas, blocos `match` duplicados (wildcards normalizados),
+  `match` sem `allow`, operações inválidas em `allow`, cabeçalho em falta.
+
+### Números
+
+Testes **191 → 282** (+91: 50 do Worker, 15 das regras, 19 de Luanda, 7 do
+diagnóstico do cron). `tsc` raiz 0 erros · `tsc` strict em `src/lib` 0 erros ·
+`npm run lint:rules` 0 erros/0 avisos nos dois ficheiros de regras · `node
+--check` do Worker ok · bundle completo validado com `esbuild` (o `vite build`
+precisa de >1 GB de RAM e não coube na sandbox de revisão).
+
+### Deploy desta versão
+
+1. **Regras**: Actions → «Deploy Firebase» (manual) — leva `firestore.rules`
+   (validadores novos) e `storage.rules` (inalterado).
+2. **Worker 2.10.0**: Actions → «deploy-ai-worker» **ou** Cloudflare → Workers →
+   `iesa-ai` → *Edit code* → colar `worker/ai-worker.js` → Deploy. Confirmar em
+   `https://iesa-ai.cadupaulino99.workers.dev/__health` (versão **2.10.0** e
+   `cron.ok`). O cron continua `* * * * *`.
+3. **APK**: automático no push ao `main` (Release `v1.19.0` com `app-release.apk`);
+   a app avisa os utilizadores.
+4. Não há migrações de dados nesta versão. Quem importou membros do Excel com
+   datas de nascimento pode querer rever os aniversários: as datas gravadas
+   ANTES desta versão continuam com o dia anterior (o corrector só afecta
+   importações novas).
+
+
 ## v1.18.0 — P2: sermões para membros, validação no servidor, strict em lib/, backup Android, cron visível, README
 
 - **Rádio — biblioteca para os membros**: a liderança publica gravações da

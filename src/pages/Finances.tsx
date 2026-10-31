@@ -32,6 +32,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTo
 import { useDevice } from '../hooks/useDevice';
 
 import { YearlyStats } from '../components/finances/YearlyStats';
+import { fmtTodayPT, luandaDayKey, luandaMonthNamePT, luandaMonthStr, luandaYear } from '../lib/luanda';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -41,9 +42,9 @@ const amtCents = (t?: string) => { const r = parseKzInput(t || '', { required: f
 
 export default function Finances() {
   const { user, isAdmin, userRole } = useAuth();
-  const d = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(MONTHS[d.getMonth()]);
-  const [selectedYear, setSelectedYear] = useState(d.getFullYear().toString());
+  /* P3: mês/ano correntes de LUANDA (era o fuso do aparelho). */
+  const [selectedMonth, setSelectedMonth] = useState(luandaMonthNamePT());
+  const [selectedYear, setSelectedYear] = useState(String(luandaYear()));
   
   const [members, setMembers] = useState<{id: string, name: string, email?: string, phone?: string}[]>([]);
   const [memberLookup, setMemberLookup] = useState<Record<string, string>>({});
@@ -79,23 +80,23 @@ export default function Finances() {
     memberId: '',
     amount: '',
     receiptNumber: '',
-    selectedMonths: [String(new Date().getMonth() + 1).padStart(2, '0')],
+    selectedMonths: [luandaMonthStr()],
     manualSplit: false,
     manualValues: {},
     year: selectedYear,
-    deliveryMonth: String(new Date().getMonth() + 1).padStart(2, '0'),
+    deliveryMonth: luandaMonthStr(),
     deliveryYear: selectedYear,
     contributionType: 'Dízimo',
     contributionDetail: ''
   });
-  const [oD, setOD] = useState({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: new Date().toISOString().split('T')[0], sinodPercentage: '0' });
+  const [oD, setOD] = useState({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: luandaDayKey(), sinodPercentage: '0' });
   /* v1.14.6: tipo explícito — o estado ganha receiptBase64/receiptMime no
      upload do recibo e o openEditExpense não repõe customCategory. */
   const [eD, setED] = useState<{
     description: string; category: string; amount: string; responsible: string;
     customCategory?: string; referenceDate: string;
     receiptBase64?: string; receiptMime?: string;
-  }>({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: new Date().toISOString().split('T')[0] });
+  }>({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: luandaDayKey() });
   const [isCustomCategory, setIsCustomCategory] = useState(false);
 
   const [isTOpen, setIsTOpen] = useState(false);
@@ -346,7 +347,7 @@ export default function Finances() {
       docPdf.text(`Recibo Nº: ${receiptNum}`, 20, 35);
       docPdf.text(`Membro: ${mem.name}`, 20, 45);
       docPdf.text(`Valor: ${formatKz(amount)}`, 20, 55);
-      docPdf.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 20, 65);
+      docPdf.text(`Data: ${fmtTodayPT()}`, 20, 65);
       const b64 = docPdf.output('datauristring');
       
       // Save for Webhook/Extension
@@ -745,7 +746,7 @@ export default function Finances() {
          await updateDoc(doc(db, 'offerings', editingOffering.id), newData);
          await logAudit('UPDATE', 'offerings', editingOffering, newData);
          toast.success("Oferta actualizada.");
-         setIsOOpen(false); setEditingOffering(null); setOD({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: new Date().toISOString().split('T')[0], sinodPercentage: '0' }); loadData(false);
+         setIsOOpen(false); setEditingOffering(null); setOD({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: luandaDayKey(), sinodPercentage: '0' }); loadData(false);
       } catch (error) { 
          toast.error("Falha ao actualizar."); 
          handleFirestoreError(error, OperationType.WRITE, 'offerings'); 
@@ -794,7 +795,7 @@ export default function Finances() {
        }
 
        toast.success("Oferta registada.");
-       setIsOOpen(false); setOD({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: new Date().toISOString().split('T')[0], sinodPercentage: '0' }); loadData(false);
+       setIsOOpen(false); setOD({ description: '', type: 'Geral', amount: '', receiptNumber: '', referenceDate: luandaDayKey(), sinodPercentage: '0' }); loadData(false);
     } catch (error) { 
        toast.error("Falha ao guardar."); 
        handleFirestoreError(error, OperationType.WRITE, 'offerings');
@@ -842,7 +843,7 @@ export default function Finances() {
            category: finalCategory,
            amount: eParsedEdit.cents,
            responsible: eD.responsible,
-           date: eD.referenceDate || new Date().toISOString().split('T')[0],
+           date: eD.referenceDate || luandaDayKey(),
            updatedAt: Date.now()
          };
          if (eD.receiptBase64) newData.hasReceipt = true;
@@ -858,7 +859,7 @@ export default function Finances() {
 
          await logAudit('UPDATE', 'expenses', editingExpense, newData);
          toast.success("Saída actualizada.");
-         setIsEOpen(false); setEditingExpense(null); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', receiptBase64: '', receiptMime: '', referenceDate: new Date().toISOString().split('T')[0] }); setIsCustomCategory(false); loadData(false);
+         setIsEOpen(false); setEditingExpense(null); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', receiptBase64: '', receiptMime: '', referenceDate: luandaDayKey() }); setIsCustomCategory(false); loadData(false);
       } catch (error) { 
          toast.error("Falha ao actualizar."); 
          handleFirestoreError(error, OperationType.WRITE, 'expenses'); 
@@ -874,7 +875,7 @@ export default function Finances() {
          category: finalCategory,
          amount: eParsedEdit.cents,
          responsible: eD.responsible,
-         date: eD.referenceDate || new Date().toISOString().split('T')[0],
+         date: eD.referenceDate || luandaDayKey(),
          month: selectedMonth,
          year: parseInt(selectedYear),
          adminId: auth.currentUser?.uid,
@@ -892,7 +893,7 @@ export default function Finances() {
        }
 
        toast.success("Saída registada.");
-       setIsEOpen(false); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: new Date().toISOString().split('T')[0], receiptBase64: '', receiptMime: '' }); setIsCustomCategory(false); loadData(false);
+       setIsEOpen(false); setED({ description: '', category: 'Manutenção', amount: '', responsible: '', customCategory: '', referenceDate: luandaDayKey(), receiptBase64: '', receiptMime: '' }); setIsCustomCategory(false); loadData(false);
     } catch (error) { 
        toast.error("Falha ao guardar."); 
        handleFirestoreError(error, OperationType.WRITE, 'expenses');
@@ -948,7 +949,7 @@ export default function Finances() {
       type: o.type,
       amount: o.amount.toString(),
       receiptNumber: o.receiptNumber || '',
-      referenceDate: o.referenceDate || new Date().toISOString().split('T')[0],
+      referenceDate: o.referenceDate || luandaDayKey(),
       sinodPercentage: '0'
     });
     setIsOOpen(true);
@@ -961,7 +962,7 @@ export default function Finances() {
       category: e.category,
       amount: e.amount.toString(),
       responsible: e.responsible || '',
-      referenceDate: e.date || new Date().toISOString().split('T')[0]
+      referenceDate: e.date || luandaDayKey()
     });
     setIsEOpen(true);
   };

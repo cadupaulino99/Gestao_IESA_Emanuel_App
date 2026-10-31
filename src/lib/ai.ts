@@ -241,6 +241,25 @@ export async function compressImageFile(
 /* Diagnóstico do Worker                                              */
 /* ------------------------------------------------------------------ */
 
+export interface CronCounts {
+  outbox?: number;
+  contributions?: number;
+  reminders?: number;
+  events?: number;
+}
+
+/** Heartbeat do cron do Worker (settings/worker_cron, exposto em /__health).
+ *  v1.19.0 (P3): `ok`/`error`/`counts` vêm do Worker 2.10.0 — o cron passou a
+ *  correr cada tarefa no seu próprio try/catch e a gravar qual falhou. */
+export interface CronHealth {
+  lastRunAt?: number | null;
+  ageMinutes?: number | null;
+  version?: string | null;
+  ok?: boolean | null;
+  error?: string | null;
+  counts?: CronCounts | null;
+}
+
 export interface WorkerHealth {
   ok: boolean;
   version?: string;
@@ -249,7 +268,40 @@ export interface WorkerHealth {
   routes?: string[];
   models?: string[];
   config?: { GEMINI_API_KEY?: boolean; FIREBASE_SA_JSON?: boolean; PROJECT_ID?: string | null };
+  cron?: CronHealth | null;
   error?: string;
+}
+
+/**
+ * Linhas de diagnóstico do cron (v1.19.0 / P3). Função PURA — testada em
+ * `__tests__/workerHealth.test.ts`. Antes só dizia «vivo / sem pulsar»; agora
+ * distingue «o cron corre mas UMA tarefa falha» (com o erro gravado no
+ * heartbeat), que era exactamente o caso que ficava invisível: com o try/catch
+ * único do Worker ≤2.9.1, uma tarefa partida rebentava com as outras três.
+ */
+export function cronHealthLines(cron: unknown): string[] {
+  const out: string[] = [];
+  const c = (cron || {}) as CronHealth;
+  if (typeof c.ageMinutes !== 'number') {
+    out.push('⚠ Sem heartbeat do cron — Worker pode ser anterior à v2.9.1 ou o Trigger não está configurado.');
+    return out;
+  }
+  if (c.ageMinutes <= 15) {
+    out.push(`✓ Cron vivo (fila SMS, lembretes, estados) — última execução há ${c.ageMinutes} min, v${c.version || '?'}.`);
+  } else {
+    out.push(`✗ Cron SEM pulsar há ${c.ageMinutes} min — verifique Workers → iesa-ai → Settings → Triggers (Cron «* * * * *»).`);
+  }
+  if (c.ok === false) {
+    out.push(`✗ O cron está a correr, mas uma tarefa falha: ${c.error || 'sem detalhe'}.`);
+    out.push('→ Desde o Worker 2.10.0 cada tarefa corre isolada: as outras continuam a trabalhar. Corrija a causa (índice, regra, quota) e o aviso some.');
+  } else if (c.ok === true) {
+    out.push('✓ As tarefas do cron terminaram sem erros (fila, contribuições, lembretes, eventos).');
+  }
+  const k = c.counts;
+  if (k && typeof k === 'object') {
+    out.push(`· Última execução: fila ${k.outbox ?? 0} · contribuições ${k.contributions ?? 0} · lembretes ${k.reminders ?? 0} · eventos ${k.events ?? 0}.`);
+  }
+  return out;
 }
 
 /** GET /__health — não precisa de sessão. Serve para confirmar qual versão do
@@ -307,14 +359,8 @@ export async function runAiDiagnostics(): Promise<{ lines: string[]; ok: boolean
   lines.push(h.vision ? '✓ Leitura de documentos (visão) disponível.' : '✗ Esta versão NÃO tem leitura de documentos.');
   if (Array.isArray(h.models)) lines.push(`✓ Modelos configurados: ${h.models.join(' → ')}.`);
 
-  /* v1.18: cron vivo? (heartbeat gravado pelo agendador do Worker) */
-  const cron = (h as any).cron;
-  if (cron && typeof cron.ageMinutes === 'number') {
-    if (cron.ageMinutes <= 15) lines.push(`✓ Cron vivo (fila SMS, lembretes, estados) — última execução há ${cron.ageMinutes} min, v${cron.version || '?'}.`);
-    else lines.push(`✗ Cron SEM pulsar há ${cron.ageMinutes} min — verifique Workers → iesa-ai → Settings → Triggers (Cron «* * * * *»).`);
-  } else {
-    lines.push('⚠ Sem heartbeat do cron — Worker pode ser anterior à v2.9.1 ou o Trigger não está configurado.');
-  }
+  /* v1.18: cron vivo? v1.19 (P3): e as tarefas, correram bem? */
+  lines.push(...cronHealthLines(h.cron));
 
   const cfg = h.config || {};
   if (cfg.GEMINI_API_KEY === false) lines.push('✗ Falta o segredo GEMINI_API_KEY no Worker (Settings → Variables and Secrets).');

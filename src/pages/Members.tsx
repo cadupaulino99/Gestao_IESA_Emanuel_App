@@ -45,6 +45,7 @@ import { memberSchema, type MemberForm } from '../lib/memberSchema';
 
 import { useAuth } from '../context/AuthContext';
 import { formatKz } from '../lib/money';
+import { fmtDatePT, isoFromParts, lastMonthsLuanda, normalizeBirthDate } from '../lib/luanda';
 
 export default function Members() {
   const { user, isAdmin } = useAuth();
@@ -100,7 +101,10 @@ export default function Members() {
                 // If the date is Excel serial number
                 if (typeof row[birthIdx] === 'number') {
                   const date = XLSX.SSF.parse_date_code(row[birthIdx]);
-                  birthDate = new Date(date.y, date.m - 1, date.d).toISOString().split('T')[0];
+                  /* P3: era new Date(y,m-1,d).toISOString() — meia-noite LOCAL
+                     é 23:00 UTC do dia anterior em Luanda, portanto TODAS as
+                     datas de nascimento importadas do Excel recuavam um dia. */
+                  birthDate = isoFromParts(date.y, date.m, date.d);
                 } else {
                   birthDate = row[birthIdx].toString(); // Might need parsing based on format
                 }
@@ -450,7 +454,7 @@ export default function Members() {
       'Nome': m.name,
       'Estado': m.status,
       'Telefone': m.phone || '-',
-      'Nascimento': m.birthDate ? new Date(m.birthDate).toLocaleDateString('pt-AO') : '-',
+      'Nascimento': m.birthDate ? fmtDatePT(normalizeBirthDate(m.birthDate)) : '-',
       'Célula': m.groupCell || '-'
     }));
     const worksheet = XLSX.utils.json_to_sheet(data);
@@ -474,7 +478,7 @@ export default function Members() {
       m.name,
       m.status,
       m.phone || '-',
-      m.birthDate ? new Date(m.birthDate).toLocaleDateString('pt-AO') : '-',
+      m.birthDate ? fmtDatePT(normalizeBirthDate(m.birthDate)) : '-',
       m.groupCell || '-'
     ]);
 
@@ -964,25 +968,15 @@ export default function Members() {
                    ) : (
                      <>
                        {(() => {
-                         const currentMonth = new Date().getMonth();
-                         const currentYear = new Date().getFullYear();
-                         
-                         const chartData = [];
-                         for (let i = 5; i >= 0; i--) {
-                           let mDate = new Date(currentYear, currentMonth - i, 1);
-                           const mName = mDate.toLocaleString('pt-AO', { month: 'short' });
-                           const mMonth = String(mDate.getMonth() + 1).padStart(2, '0');
-                           const yYear = mDate.getFullYear();
-                           
-                           const tithesSum = memberTithes
-                             .filter(t => t.referenceMonth === mMonth && t.referenceYear === yYear)
-                             .reduce((acc, curr) => acc + curr.amount, 0);
-                             
-                           chartData.push({
-                             name: `${mName}/${yYear.toString().substring(2)}`,
-                             valor: tithesSum
-                           });
-                         }
+                         /* P3: os últimos 6 meses vêm de lib/luanda.ts — o
+                            ciclo new Date(year, month - i, 1) dependia do fuso
+                            do aparelho e partia-se na viragem do ano. */
+                         const chartData = lastMonthsLuanda(6).map((s) => ({
+                           name: s.label,
+                           valor: memberTithes
+                             .filter(t => t.referenceMonth === s.monthStr && t.referenceYear === s.year)
+                             .reduce((acc: number, curr: any) => acc + curr.amount, 0),
+                         }));
 
                          return (
                            <div className="h-[200px] w-full mb-6">
