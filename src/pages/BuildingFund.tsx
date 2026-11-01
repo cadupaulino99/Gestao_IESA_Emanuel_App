@@ -33,6 +33,7 @@ const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Jul
 
 import { useAuth } from '../context/AuthContext';
 import { formatKz } from '../lib/money';
+import { luandaDayKey } from '../lib/luanda';
 
 export default function BuildingFund() {
   const { user, isAdmin } = useAuth();
@@ -40,7 +41,7 @@ export default function BuildingFund() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const confirmDialog = useConfirm();
-  const today = new Date().toISOString().substring(0, 10);
+  const today = luandaDayKey();
 
   const { register, handleSubmit, control, formState: { errors }, reset, setValue, watch, clearErrors } = useForm({
     resolver: zodResolver(fundSchema),

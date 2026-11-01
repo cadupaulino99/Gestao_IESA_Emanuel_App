@@ -15,6 +15,7 @@ import { fetchCommunion, cycleCommunionMark } from '../../lib/communion';
 import { computeStatus } from '../../lib/contrib';
 import { generateMemberCardPdf } from '../../lib/pdfUtils';
 import { useAuth } from '../../context/AuthContext';
+import { luandaDayKey, luandaYear } from '../../lib/luanda';
 import {
   Member,
   CommunionMark,
@@ -32,7 +33,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-const THIS_YEAR = new Date().getFullYear();
+const THIS_YEAR = luandaYear();
 
 /**
  * Cartão de membro (vista da liderança): mostra as duas faces tal como no papel
@@ -48,9 +49,9 @@ export default function MemberCardModal({ member, open, onOpenChange }: Props) {
   const [comYear, setComYear] = useState<number>(THIS_YEAR);
 
   const [donAmount, setDonAmount] = useState('');
-  const [donDate, setDonDate] = useState(new Date().toISOString().slice(0, 10));
+  const [donDate, setDonDate] = useState(luandaDayKey());
 
-  const [renDate, setRenDate] = useState(new Date().toISOString().slice(0, 10));
+  const [renDate, setRenDate] = useState(luandaDayKey());
   const [renSign, setRenSign] = useState('');
 
   const [busy, setBusy] = useState(false);

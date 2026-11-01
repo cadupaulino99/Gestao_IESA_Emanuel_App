@@ -18,17 +18,18 @@ import { collection, query, getDocs, where } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { AIExecutiveAnalysis } from '../components/finances/AIExecutiveAnalysis';
 import { formatKz } from '../lib/money';
+import { fmtTodayPT, luandaDayKey, luandaMonthNamePT, luandaYear } from '../lib/luanda';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 export default function Reports() {
-  const d = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(MONTHS[d.getMonth()]);
-  const [selectedYear, setSelectedYear] = useState(d.getFullYear().toString());
+  /* P3: mês/ano correntes de LUANDA (era o fuso do aparelho). */
+  const [selectedMonth, setSelectedMonth] = useState(luandaMonthNamePT());
+  const [selectedYear, setSelectedYear] = useState(String(luandaYear()));
   
   const [filterType, setFilterType] = useState<'month' | 'period'>('month');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(luandaDayKey());
+  const [endDate, setEndDate] = useState(luandaDayKey());
 
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [loadingXlsx, setLoadingXlsx] = useState(false);
@@ -171,7 +172,7 @@ export default function Reports() {
       const footerY = (docPdf as any).lastAutoTable.finalY + 20;
 
       docPdf.setFontSize(11);
-      docPdf.text(`Igreja Local de Emanuel em Xangongo, ${new Date().toLocaleDateString('pt-AO')}`, 105, footerY, { align: 'center' });
+      docPdf.text(`Igreja Local de Emanuel em Xangongo, ${fmtTodayPT()}`, 105, footerY, { align: 'center' });
       
       docPdf.setFont("helvetica", "bold");
       docPdf.text('O Tesoureiro', 40, footerY + 15, { align: 'center' });
@@ -388,7 +389,7 @@ export default function Reports() {
       const footerY = (docPdf as any).lastAutoTable.finalY + 20;
 
       docPdf.setFontSize(11);
-      docPdf.text(`Igreja Local de Emanuel em Xangongo, ${new Date().toLocaleDateString('pt-AO')}`, 105, footerY, { align: 'center' });
+      docPdf.text(`Igreja Local de Emanuel em Xangongo, ${fmtTodayPT()}`, 105, footerY, { align: 'center' });
       
       docPdf.setFont("helvetica", "bold");
       docPdf.text('O Tesoureiro', 40, footerY + 15, { align: 'center' });

@@ -105,7 +105,7 @@ export const generateMembershipCard = async (member: Member) => {
   docPdf.setFont("helvetica", "normal");
   docPdf.setTextColor(100, 100, 100);
   docPdf.text('ID: ' + member.id.substring(0, 8).toUpperCase(), 5, 49);
-  docPdf.text('Emitido em: ' + new Date().toLocaleDateString('pt-AO'), 45, 49);
+  docPdf.text('Emitido em: ' + fmtTodayPT(), 45, 49);
 
   await savePdf(docPdf, `Cartao_Membro_${member.name.replace(/\s+/g,'_')}.pdf`);
 };
@@ -118,6 +118,7 @@ export const generateMembershipCard = async (member: Member) => {
 import autoTable from 'jspdf-autotable';
 import { aggregateByMonth, sumYear, cardYears } from './finance';
 import { toMonthIdx } from './months';
+import { fmtTodayPT } from './luanda';
 import {
   CommunionMark,
   Donation,

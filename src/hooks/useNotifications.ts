@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useDevice } from './useDevice';
+import { isBirthdayToday } from '../lib/luanda';
 
 export function useNotifications() {
   const { userRole } = useAuth();
@@ -42,21 +43,12 @@ export function useNotifications() {
           }
         }
 
-        // Aniversariantes do dia
+        // Aniversariantes do dia (P3: pelo dia de LUANDA — o fuso do aparelho
+        // mudava o contador; e o split('-') ignorava o legado 'DD/MM/AAAA').
         const membersSnapshot = await getDocs(collection(db, 'members'));
-        const d = new Date();
-        const currentMonth = d.getMonth() + 1;
-        const currentDay = d.getDate();
-        
         let aniversariantes = 0;
         membersSnapshot.forEach(doc => {
-            const m = doc.data();
-            if (m.birthDate) {
-              const [y, mm, dd] = m.birthDate.split('-');
-              if (parseInt(mm, 10) === currentMonth && parseInt(dd, 10) === currentDay) {
-                  aniversariantes++;
-              }
-            }
+            if (isBirthdayToday(doc.data().birthDate)) aniversariantes++;
         });
 
         if (aniversariantes > 0 && !hasChecked) {

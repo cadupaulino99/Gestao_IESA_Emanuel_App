@@ -1,4 +1,5 @@
 import { formatKz } from '../../lib/money';
+import { luandaDateOf } from '../../lib/luanda';
 import MemberPhoto from './MemberPhoto';
 import { Check, X } from 'lucide-react';
 import { aggregateByMonth, sumYear, cardYears } from '../../lib/finance';
@@ -174,7 +175,7 @@ export default function MemberCardView({ member, data, header = CARD_HEADER_DEFA
                   <span className="text-blue-900 dark:text-blue-300">{money(c.paid)} / {money(c.amount)}</span>
                   <span>prazo {fmtDate(c.dueDate)}</span>
                   <span className={c.status === 'concluida' ? 'text-emerald-700 font-semibold' : c.status === 'em_atraso' ? 'text-red-600 font-semibold' : 'text-slate-600'}>
-                    {c.status === 'concluida' ? `Contribuição concluída${c.completedAt ? ` em ${fmtDate(new Date(c.completedAt).toISOString().slice(0, 10))}` : ''}` : c.status === 'em_atraso' ? 'Em atraso' : 'Em curso'}
+                    {c.status === 'concluida' ? `Contribuição concluída${c.completedAt ? ` em ${fmtDate(luandaDateOf(c.completedAt))}` : ''}` : c.status === 'em_atraso' ? 'Em atraso' : 'Em curso'}
                   </span>
                 </div>
               ))}

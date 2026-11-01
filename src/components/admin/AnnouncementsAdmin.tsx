@@ -21,7 +21,7 @@ import {
   publishBoardNotification, type NormalizedAnnouncement,
 } from '../../lib/board';
 import { validateRichText, hasDangerousPattern } from '../../lib/richtext';
-import { luandaDayKey, fmtDatePT } from '../../lib/luanda';
+import { luandaDayKey, fmtDatePT, luandaDateOf } from '../../lib/luanda';
 
 const EMPTY = { title: '', html: '', level: 'normal' as 'normal' | 'urgente', pinned: false, visibleUntil: '', alsoSms: false };
 
@@ -31,7 +31,7 @@ const EMPTY = { title: '', html: '', level: 'normal' as 'normal' | 'urgente', pi
 function audit(a: NormalizedAnnouncement) {
   return (
     <p className="mt-1 text-[10px] text-slate-400">
-      Criado por {a.createdBy || a.adminId || '—'}{(a.updatedBy && a.updatedAt) ? ` · editado por ${a.updatedBy} em ${fmtDatePT(new Date(a.updatedAt).toISOString().slice(0, 10))}` : ''}
+      Criado por {a.createdBy || a.adminId || '—'}{(a.updatedBy && a.updatedAt) ? ` · editado por ${a.updatedBy} em ${fmtDatePT(luandaDateOf(a.updatedAt))}` : ''}
     </p>
   );
 }

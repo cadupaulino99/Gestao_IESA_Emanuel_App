@@ -10,9 +10,10 @@ import { toast } from 'sonner';
 import { Pencil, Save, X } from 'lucide-react';
 import { formatKz } from '../lib/money';
 import MoneyInput from '../components/MoneyInput';
+import { luandaYear } from '../lib/luanda';
 
 export default function Budget() {
-  const currentYear = new Date().getFullYear();
+  const currentYear = luandaYear();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ 

@@ -24,6 +24,11 @@ jobs:
         run: npx tsc --noEmit
       - name: TypeScript ESTRITO em src/lib (v1.18)
         run: npx tsc -p tsconfig.lib.json --noEmit
+      - name: Regras Firestore/Storage (v1.19 — verificador estático)
+        # Sem Java no CI não há emulador; este passo apanha os erros que só
+        # apareciam no deploy manual: sintaxe, funções inexistentes, validadores
+        # definidos e nunca ligados, blocos match duplicados.
+        run: npm run lint:rules
       - name: Testes unitários (vitest)
         run: npx vitest run
       - name: Sintaxe do Worker

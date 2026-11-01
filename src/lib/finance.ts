@@ -4,6 +4,7 @@
  * ano) tenha uma única fonte de verdade.
  */
 import { deliveryOf, referenceOf } from './tithes';
+import { luandaYear } from './luanda';
 
 export interface MoneyRow {
   referenceMonth?: string;
@@ -111,6 +112,6 @@ export function cardYears(data: CardYearsData, max = 4): number[] {
     const y = Number(String(r?.date || '').slice(0, 4));
     if (y > 0) ys.add(y);
   }
-  if (ys.size === 0) ys.add(new Date().getFullYear());
+  if (ys.size === 0) ys.add(luandaYear());
   return [...ys].sort((a, b) => a - b).slice(-max);
 }

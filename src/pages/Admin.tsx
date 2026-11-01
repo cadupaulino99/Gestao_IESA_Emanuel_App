@@ -33,6 +33,7 @@ import { NOTIF_SETTINGS_DEFAULT } from '../types';
 import { writeBatch } from 'firebase/firestore';
 import { orderBy } from 'firebase/firestore';
 import { formatKz } from '../lib/money';
+import { luandaDayKey } from '../lib/luanda';
 
 export default function Admin() {
   const { user, userRole, isSuperAdmin } = useAuth();
@@ -513,7 +514,7 @@ export default function Admin() {
       }
       
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: "application/json" });
-      const fname = `backup_igreja_${new Date().toISOString().split('T')[0]}.json`;
+      const fname = `backup_igreja_${luandaDayKey()}.json`;
       await saveBlob(blob, fname);
       /* v1.18: no telemóvel, além da folha de partilha, fica SEMPRE uma cópia
          directa em Documents/Backup/ + marcador (data/tamanho/caminho). */
@@ -814,7 +815,7 @@ export default function Admin() {
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Utilizadores");
-      await saveXlsx(XLSX, wb, `utilizadores_${new Date().toISOString().substring(0, 10)}.xlsx`);
+      await saveXlsx(XLSX, wb, `utilizadores_${luandaDayKey()}.xlsx`);
       toast.success("Ficheiro exportado com sucesso.");
     }).catch(err => {
       console.error(err);

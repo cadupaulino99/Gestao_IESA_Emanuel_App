@@ -167,9 +167,12 @@ export interface Recording {
   mtime: number;
 }
 
-export function recordingName(d = new Date()): string {
+export function recordingName(now: number = Date.now()): string {
+  /* P3: partes de LUANDA — uma gravação às 00:20 do dia 1 ficava com o nome do
+     dia anterior em qualquer aparelho cujo fuso não fosse UTC+1. */
   const p = (n: number) => String(n).padStart(2, '0');
-  return `Maranata_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}h${p(d.getMinutes())}.aac`;
+  const d = luandaParts(now);
+  return `Maranata_${d.year}-${p(d.month)}-${p(d.day)}_${p(d.hour)}h${p(d.minute)}.aac`;
 }
 
 export async function listRecordings(): Promise<Recording[]> {
@@ -326,6 +329,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'fi
 import { storage, db } from './firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { dataUrlToBlob } from './download';
+import { luandaParts } from './luanda';
 
 export interface PublishedRecording {
   id: string;

@@ -7,11 +7,12 @@ import { collection, query, getDocs, where } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { formatKz } from '../lib/money';
+import { luandaYear } from '../lib/luanda';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 export default function Obligations() {
-  const currentYear = new Date().getFullYear();
+  const currentYear = luandaYear();
   const [selectedYear, setSelectedYear] = useState(currentYear.toString());
 
   const { data: obligationsData, isLoading } = useQuery({

@@ -14,7 +14,9 @@ export default defineConfig({
     // declaram `// @vitest-environment jsdom` no topo do ficheiro.
     environment: 'node',
     globals: true, // o auto-cleanup do Testing Library precisa do afterEach global
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    /* v1.19.0 (P3): também os testes do Worker (Cloudflare) — até aqui o
+       ficheiro mais crítico do sistema só tinha `node --check` no CI. */
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'worker/**/*.test.js', 'scripts/**/*.test.mjs'],
     setupFiles: ['src/test/setup.ts'],
     reporters: ['default'],
   },
