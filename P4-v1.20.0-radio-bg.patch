@@ -1,0 +1,777 @@
+From 7da05186d7267eeb61fb6ef1d2e1c3fbd101cb67 Mon Sep 17 00:00:00 2001
+From: assistente-qwen <assistente@qwen.local>
+Date: Sun, 1 Nov 2026 00:40:00 +0000
+Subject: [PATCH] =?UTF-8?q?feat(v1.20.0):=20r=C3=A1dio=20em=20segundo=20pl?=
+ =?UTF-8?q?ano=20=E2=80=94=20servi=C3=A7o=20foreground=20Android=20(mediaP?=
+ =?UTF-8?q?layback)=20+=20MediaSession,=20notifica=C3=A7=C3=A3o=20de=20med?=
+ =?UTF-8?q?ia=20e=20controlos=20no=20ecr=C3=A3=20de=20bloqueio?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ README.md                                     |   6 +-
+ android/app/src/main/AndroidManifest.xml      |   9 +
+ .../emanuelxangongo/gestao/MainActivity.java  |  11 +-
+ .../gestao/RadioPlaybackService.java          | 263 ++++++++++++++++++
+ .../gestao/RadioServicePlugin.java            |  91 ++++++
+ docs/MUDANCAS.md                              |  20 ++
+ docs/VERIFICACAO-V1.20.0.md                   |  23 ++
+ package.json                                  |   2 +-
+ src/lib/__tests__/radioBackground.test.ts     |  22 ++
+ src/lib/nativeRadio.ts                        |  46 +++
+ src/lib/radio.ts                              |  71 +++++
+ src/pages/Radio.tsx                           |   9 +-
+ src/pages/__tests__/radioVariant.test.tsx     |   1 +
+ 13 files changed, 567 insertions(+), 7 deletions(-)
+ create mode 100644 android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioPlaybackService.java
+ create mode 100644 android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioServicePlugin.java
+ create mode 100644 docs/VERIFICACAO-V1.20.0.md
+ create mode 100644 src/lib/__tests__/radioBackground.test.ts
+ create mode 100644 src/lib/nativeRadio.ts
+
+diff --git a/README.md b/README.md
+index 2d877c0..ddc6f2b 100644
+--- a/README.md
++++ b/README.md
+@@ -9,7 +9,7 @@ com PDF frente/verso), **comunhão**, **Avisos, Agenda e Eventos**, **Rádio
+ Maranata** (ao vivo + gravações publicadas), **auto-cadastro com aprovação**,
+ **chat de suporte** e IA (leitura de BI/comprovativos, assistente pastoral).
+ 
+-> **Versões actuais**: app **v1.19.0** · Worker **v2.10.0** · **282 testes** ·
++> **Versões actuais**: app **v1.20.0** · Worker **v2.10.0** · **286 testes** ·
+ > `tsc` limpo (raiz) + **strict em `src/lib`** (`npm run lint:lib`) +
+ > **regras verificadas** (`npm run lint:rules`).
+ > Fase actual: **P3** concluído — ver `docs/AUDITORIA-2026-10-31.md`
+@@ -103,7 +103,7 @@ git clone https://github.com/cadupaulino99/Gestao_IESA_Emanuel_App.git
+ cd Gestao_IESA_Emanuel_App
+ npm ci               # de preferência com --ignore-scripts em sandboxes pequenas
+ npm run dev          # web em http://localhost:3000
+-npm test             # 282 testes (app + Worker + regras)
++npm test             # 286 testes (app + Worker + regras)
+ npm run lint         # tsc --noEmit (raiz)
+ npm run lint:lib     # tsc STRICT de src/lib
+ npm run lint:rules   # verificador estático de firestore.rules/storage.rules
+@@ -142,7 +142,7 @@ npm run lint:rules   # verificador estático de firestore.rules/storage.rules
+ `docs/MUDANCAS.md` (histórico completo por versão) ·
+ `docs/AUDITORIA-2026-10-31.md` (**P3**: datas de Luanda, quota do cron, token,
+ regras) · `docs/AUDITORIA-2026-10-25.md` (auditoria P0/P1/P2) ·
+-`docs/VERIFICACAO-*` (guiões de teste: **v1.19.0**, moeda, cartão,
++`docs/VERIFICACAO-*` (guiões de teste: **v1.20.0**, v1.19.0, moeda, cartão,
+ auto-cadastro, memberEmail, avisos/agenda/eventos…) · `docs/INICIO-RAPIDO.md` ·
+ `docs/COMO-INSTALAR-NO-TELEMOVEL.md`.
+ 
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index 781b829..7ec1fe9 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -24,6 +24,12 @@
+ 
+         </activity>
+ 
++        <!-- v1.20.0: serviço foreground que mantém a rádio a tocar em segundo plano -->
++        <service
++            android:name=".RadioPlaybackService"
++            android:exported="false"
++            android:foregroundServiceType="mediaPlayback" />
++
+         <provider
+             android:name="androidx.core.content.FileProvider"
+             android:authorities="${applicationId}.fileprovider"
+@@ -46,4 +52,7 @@
+     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+     <!-- Manter ecra acordado durante sincronizacoes longas (opcional) -->
+     <uses-permission android:name="android.permission.WAKE_LOCK" />
++    <!-- v1.20.0: radio em segundo plano (servico foreground de reproducao) -->
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+ </manifest>
+diff --git a/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/MainActivity.java b/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/MainActivity.java
+index f161660..ee54471 100644
+--- a/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/MainActivity.java
++++ b/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/MainActivity.java
+@@ -1,5 +1,14 @@
+ package ao.co.iesa.emanuelxangongo.gestao;
+ 
++import android.os.Bundle;
++
+ import com.getcapacitor.BridgeActivity;
+ 
+-public class MainActivity extends BridgeActivity {}
++public class MainActivity extends BridgeActivity {
++    @Override
++    public void onCreate(Bundle savedInstanceState) {
++        // v1.20.0: plugin local da rádio em segundo plano (serviço foreground)
++        registerPlugin(RadioServicePlugin.class);
++        super.onCreate(savedInstanceState);
++    }
++}
+diff --git a/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioPlaybackService.java b/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioPlaybackService.java
+new file mode 100644
+index 0000000..4b3ba34
+--- /dev/null
++++ b/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioPlaybackService.java
+@@ -0,0 +1,263 @@
++package ao.co.iesa.emanuelxangongo.gestao;
++
++import android.app.Notification;
++import android.app.NotificationChannel;
++import android.app.NotificationManager;
++import android.app.PendingIntent;
++import android.app.Service;
++import android.content.Intent;
++import android.content.pm.ServiceInfo;
++import android.graphics.drawable.Icon;
++import android.media.AudioAttributes;
++import android.media.MediaMetadata;
++import android.media.MediaPlayer;
++import android.media.session.MediaSession;
++import android.media.session.PlaybackState;
++import android.net.wifi.WifiManager;
++import android.os.Build;
++import android.os.IBinder;
++import android.os.PowerManager;
++
++/**
++ * v1.20.0 — Rádio em SEGUNDO PLANO.
++ *
++ * Serviço foreground (tipo mediaPlayback) com MediaPlayer + MediaSession:
++ *  - a emissão continua a tocar com o ecrã apagado / app em segundo plano;
++ *  - a notificação de media e o ecrã de bloqueio ganham controlo «Parar»;
++ *  - WakeLock (CPU) via MediaPlayer.setWakeMode + WifiLock para o stream não
++ *    morrer com o ecrã off.
++ *
++ * Só usa classes do framework (android.media / android.app) — zero dependências
++ * novas no gradle. minSdk 24.
++ */
++public class RadioPlaybackService extends Service {
++
++    public static final String ACTION_PLAY = "ao.co.iesa.emanuelxangongo.gestao.radio.PLAY";
++    public static final String ACTION_STOP = "ao.co.iesa.emanuelxangongo.gestao.radio.STOP";
++    public static final String EXTRA_URL = "url";
++    public static final String EXTRA_TITLE = "title";
++
++    private static final int NOTIFICATION_ID = 9119;
++    private static final String CHANNEL_ID = "radio_segundo_plano";
++
++    private static boolean playing;
++    private static MediaPlayer player;
++    private static float volume = 0.9f;
++
++    private MediaSession session;
++    private WifiManager.WifiLock wifiLock;
++    private String title = "Rádio";
++
++    public static boolean isPlaying() {
++        return playing;
++    }
++
++    /** Chamado pelo plugin (setVolume) mesmo antes de o serviço existir. */
++    public static void setPlayerVolume(float v) {
++        volume = v;
++        if (player != null) {
++            player.setVolume(v, v);
++        }
++    }
++
++    @Override
++    public void onCreate() {
++        super.onCreate();
++        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
++        if (nm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++            NotificationChannel ch = new NotificationChannel(
++                    CHANNEL_ID,
++                    "Rádio em segundo plano",
++                    NotificationManager.IMPORTANCE_LOW);
++            ch.setDescription("Mantém a emissão a tocar com o ecrã apagado.");
++            ch.setShowBadge(false);
++            nm.createNotificationChannel(ch);
++        }
++        session = new MediaSession(this, "iesa-radio");
++        session.setCallback(new MediaSession.Callback() {
++            @Override
++            public void onPause() {
++                stopEverything();
++                stopSelf();
++            }
++
++            @Override
++            public void onStop() {
++                stopEverything();
++                stopSelf();
++            }
++
++            @Override
++            public void onPlay() {
++                /* emissão ao vivo: retomar = novo play() pelo plugin */
++            }
++        });
++    }
++
++    @Override
++    public int onStartCommand(Intent intent, int flags, int startId) {
++        String action = intent == null ? null : intent.getAction();
++        if (ACTION_STOP.equals(action)) {
++            stopEverything();
++            stopSelf();
++            return START_NOT_STICKY;
++        }
++        String url = intent == null ? null : intent.getStringExtra(EXTRA_URL);
++        if (url == null || url.isEmpty()) {
++            stopSelf();
++            return START_NOT_STICKY;
++        }
++        String t = intent.getStringExtra(EXTRA_TITLE);
++        title = (t == null || t.isEmpty()) ? "Rádio" : t;
++        // startForeground IMEDIATO (regra do Android para startForegroundService)
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
++            startForeground(NOTIFICATION_ID, buildNotification("A ligar…", false),
++                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
++        } else {
++            startForeground(NOTIFICATION_ID, buildNotification("A ligar…", false));
++        }
++        startPlayer(url);
++        return START_NOT_STICKY;
++    }
++
++    private void startPlayer(final String url) {
++        releasePlayer();
++        playing = false;
++        RadioServicePlugin.emitState(false, true);
++        final MediaPlayer mp = new MediaPlayer();
++        player = mp;
++        mp.setAudioAttributes(new AudioAttributes.Builder()
++                .setUsage(AudioAttributes.USAGE_MEDIA)
++                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
++                .build());
++        mp.setWakeMode(PowerManager.PARTIAL_WAKE_LOCK);
++        mp.setVolume(volume, volume);
++        mp.setOnPreparedListener(m -> {
++            m.start();
++            playing = true;
++            if (session != null) {
++                session.setActive(true);
++                session.setMetadata(new MediaMetadata.Builder()
++                        .putString(MediaMetadata.METADATA_KEY_TITLE, title)
++                        .build());
++                updatePlaybackState(true);
++            }
++            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
++            if (nm != null) {
++                nm.notify(NOTIFICATION_ID, buildNotification("No ar", true));
++            }
++            RadioServicePlugin.emitState(true, false);
++        });
++        mp.setOnErrorListener((m, what, extra) -> {
++            playing = false;
++            RadioServicePlugin.emitState(false, false);
++            RadioServicePlugin.emitError("A emissão caiu. Abra a app e toque novamente.");
++            stopEverything();
++            stopSelf();
++            return true;
++        });
++        acquireWifiLock();
++        try {
++            mp.setDataSource(url);
++            mp.prepareAsync();
++        } catch (Exception e) {
++            playing = false;
++            RadioServicePlugin.emitState(false, false);
++            RadioServicePlugin.emitError("Não foi possível ligar à emissão.");
++            stopEverything();
++            stopSelf();
++        }
++    }
++
++    private void acquireWifiLock() {
++        if (wifiLock != null && wifiLock.isHeld()) return;
++        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
++        if (wm != null) {
++            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "iesa-radio");
++            wifiLock.setReferenceCounted(false);
++            wifiLock.acquire();
++        }
++    }
++
++    private void releaseWifiLock() {
++        if (wifiLock != null && wifiLock.isHeld()) {
++            wifiLock.release();
++        }
++        wifiLock = null;
++    }
++
++    private void releasePlayer() {
++        if (player != null) {
++            try {
++                player.reset();
++                player.release();
++            } catch (Exception ignored) {
++                /* já estava libertado */
++            }
++            player = null;
++        }
++    }
++
++    private void updatePlaybackState(boolean isPlaying) {
++        if (session == null) return;
++        session.setPlaybackState(new PlaybackState.Builder()
++                .setActions(PlaybackState.ACTION_PLAY_PAUSE
++                        | PlaybackState.ACTION_PAUSE
++                        | PlaybackState.ACTION_STOP)
++                .setState(isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_STOPPED,
++                        PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1f)
++                .build());
++    }
++
++    private Notification buildNotification(String text, boolean isPlaying) {
++        Intent stopIntent = new Intent(this, RadioPlaybackService.class);
++        stopIntent.setAction(ACTION_STOP);
++        PendingIntent stopPi = PendingIntent.getService(this, 0, stopIntent,
++                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
++
++        Intent openIntent = new Intent(this, MainActivity.class);
++        openIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
++        PendingIntent openPi = PendingIntent.getActivity(this, 1, openIntent,
++                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
++
++        Notification.Builder b = new Notification.Builder(this, CHANNEL_ID)
++                .setSmallIcon(getApplicationInfo().icon)
++                .setContentTitle(title)
++                .setContentText(text)
++                .setContentIntent(openPi)
++                .setOngoing(isPlaying)
++                .setShowWhen(false)
++                .setCategory(Notification.CATEGORY_TRANSPORT)
++                .setVisibility(Notification.VISIBILITY_PUBLIC)
++                .addAction(new Notification.Action.Builder(
++                        Icon.createWithResource(getApplicationContext(), android.R.drawable.ic_media_pause),
++                        "Parar",
++                        stopPi).build());
++        b.setStyle(new Notification.MediaStyle()
++                .setMediaSession(session.getSessionToken())
++                .setShowActionsInCompactView(0));
++        return b.build();
++    }
++
++    private void stopEverything() {
++        playing = false;
++        releasePlayer();
++        releaseWifiLock();
++        if (session != null) {
++            updatePlaybackState(false);
++            session.setActive(false);
++        }
++        stopForeground(STOP_FOREGROUND_REMOVE);
++    }
++
++    @Override
++    public void onDestroy() {
++        stopEverything();
++        super.onDestroy();
++    }
++
++    @Override
++    public IBinder onBind(Intent intent) {
++        return null;
++    }
++}
+diff --git a/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioServicePlugin.java b/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioServicePlugin.java
+new file mode 100644
+index 0000000..843c9f8
+--- /dev/null
++++ b/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioServicePlugin.java
+@@ -0,0 +1,91 @@
++package ao.co.iesa.emanuelxangongo.gestao;
++
++import android.content.Intent;
++import android.os.Build;
++
++import com.getcapacitor.JSObject;
++import com.getcapacitor.Plugin;
++import com.getcapacitor.PluginCall;
++import com.getcapacitor.PluginMethod;
++import com.getcapacitor.annotation.CapacitorPlugin;
++
++import java.lang.ref.WeakReference;
++
++/**
++ * v1.20.0 — ponte JS ↔ {@link RadioPlaybackService}.
++ *
++ * Métodos: play({url,title}), stop(), setVolume({value}), getState().
++ * Eventos: «radioState» {playing,loading} e «radioError» {message}.
++ */
++@CapacitorPlugin(name = "RadioService")
++public class RadioServicePlugin extends Plugin {
++
++    private static WeakReference<RadioServicePlugin> ref;
++
++    @Override
++    public void load() {
++        ref = new WeakReference<>(this);
++    }
++
++    static void emitState(boolean playing, boolean loading) {
++        RadioServicePlugin p = ref == null ? null : ref.get();
++        if (p == null) return;
++        JSObject e = new JSObject();
++        e.put("playing", playing);
++        e.put("loading", loading);
++        p.notifyListeners("radioState", e);
++    }
++
++    static void emitError(String message) {
++        RadioServicePlugin p = ref == null ? null : ref.get();
++        if (p == null) return;
++        JSObject e = new JSObject();
++        e.put("message", message);
++        p.notifyListeners("radioError", e);
++    }
++
++    private void send(Intent i) {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++            getContext().startForegroundService(i);
++        } else {
++            getContext().startService(i);
++        }
++    }
++
++    @PluginMethod
++    public void play(PluginCall call) {
++        String url = call.getString("url");
++        if (url == null || url.isEmpty()) {
++            call.reject("url é obrigatório");
++            return;
++        }
++        Intent i = new Intent(getContext(), RadioPlaybackService.class);
++        i.setAction(RadioPlaybackService.ACTION_PLAY);
++        i.putExtra(RadioPlaybackService.EXTRA_URL, url);
++        i.putExtra(RadioPlaybackService.EXTRA_TITLE, call.getString("title", "Rádio"));
++        send(i);
++        call.resolve();
++    }
++
++    @PluginMethod
++    public void stop(PluginCall call) {
++        Intent i = new Intent(getContext(), RadioPlaybackService.class);
++        i.setAction(RadioPlaybackService.ACTION_STOP);
++        send(i);
++        call.resolve();
++    }
++
++    @PluginMethod
++    public void setVolume(PluginCall call) {
++        Float v = call.getFloat("value");
++        RadioPlaybackService.setPlayerVolume(v == null ? 1f : v);
++        call.resolve();
++    }
++
++    @PluginMethod
++    public void getState(PluginCall call) {
++        JSObject r = new JSObject();
++        r.put("playing", RadioPlaybackService.isPlaying());
++        call.resolve(r);
++    }
++}
+diff --git a/docs/MUDANCAS.md b/docs/MUDANCAS.md
+index d4db7ae..3ac13a6 100644
+--- a/docs/MUDANCAS.md
++++ b/docs/MUDANCAS.md
+@@ -1,5 +1,25 @@
+ # 🔧 MUDANÇAS face ao repositório original
+ 
++## v1.20.0 — Rádio em segundo plano (serviço foreground Android + notificação de media)
++
++- No Android, a emissão ao vivo passa a tocar **NATIVA** (plugin Capacitor local
++  `RadioService` + `RadioPlaybackService` em `android/app`): serviço foreground
++  do tipo `mediaPlayback`, `MediaPlayer` com WakeLock (CPU) + WifiLock (stream
++  não morre com o ecrã off), `MediaSession` com controlos no ecrã de bloqueio e
++  notificação de media com acção «Parar».
++- **A rádio continua a tocar com o ecrã apagado e com a app em segundo plano**;
++  enquanto o serviço vive, o processo da app não é morto pelo Android.
++- UI inalterada: o singleton `livePlayer` (`lib/radio.ts`) delega no plugin em
++  Android (`radioEngine()` puro e testado) e mantém o `<audio>` da WebView em
++  web/iOS; ao entrar na página da rádio o estado é ressincronizado
++  (`livePlayer.sync()`) — a emissão que já tocava em 2.º plano aparece «No ar».
++- Manifest: permissões `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK`
++  + declaração do serviço com `foregroundServiceType="mediaPlayback"`.
++- Nota de âmbito: notificações push com a app FECHADA continuam a ser trabalho
++  futuro (exige FCM); «segundo plano» aqui = rádio a tocar + processo vivo
++  enquanto o serviço foreground corre.
++- Guião de teste: `docs/VERIFICACAO-V1.20.0.md`.
++
+ ## v1.19.0 — P3: Luanda em todo o lado, Worker 2.10.0 (quota/cron/token), regras sem buracos, testes do Worker e das regras
+ 
+ Auditoria nova em `docs/AUDITORIA-2026-10-31.md` (25 achados, todos com
+diff --git a/docs/VERIFICACAO-V1.20.0.md b/docs/VERIFICACAO-V1.20.0.md
+new file mode 100644
+index 0000000..9046e57
+--- /dev/null
++++ b/docs/VERIFICACAO-V1.20.0.md
+@@ -0,0 +1,23 @@
++# ✅ Verificação v1.20.0 — Rádio em segundo plano
++
++Guião de teste no telemóvel (APK v1.20.0). Cada passo tem o resultado esperado.
++
++| # | Passo | Esperado |
++|---|-------|----------|
++| 1 | Instalar a v1.20.0 (banner de atualização na app ou Release `v1.20.0` no GitHub) | A app abre e mostra v1.20.0 em Suporte → Diagnóstico |
++| 2 | Rádio → botão ▶ (ligar emissão) | Toca; surge notificação «Rádio Maranata 91.9 FM · No ar» |
++| 3 | Apagar o ecrã (botão power) e esperar 2–3 min | **A emissão CONTINUA a tocar** |
++| 4 | Com o ecrã apagado/bloqueado: ver o ecrã de bloqueio | Controlos de media com o título «Rádio Maranata 91.9 FM» e acção «Parar» |
++| 5 | Ecrã de bloqueio → «Parar» | O áudio para e a notificação desaparece |
++| 6 | Ligar de novo e sair da app (botão home / outra app) | O áudio continua; a notificação mantém-se |
++| 7 | Voltar à app → Rádio | O botão mostra ◼/❚❚ «No ar» (estado ressincronizado, não «parado») |
++| 8 | Deslizador de volume com a emissão nativa a tocar | O volume da emissão muda |
++| 9 | Modo de avião com a emissão a tocar | Passado algum tempo: notificação some e a app mostra «A emissão caiu…» (ou erro ao religar) |
++| 10 | PC/navegador (web) → Rádio | Comportamento igual ao da v1.19.0 (player da página) |
++
++Notas:
++- Em alguns fabricantes (Xiaomi/MIUI, Samsung) pode ser preciso permitir
++  «execução em segundo plano» nas definições da app — o serviço foreground
++  minimiza isto, mas as ROMs agressivas existem.
++- A notificação usa o canal «Rádio em segundo plano» (importância baixa: não
++  faz som nem vibra).
+diff --git a/package.json b/package.json
+index 8fe730c..34390d3 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "gestao-iesa-emanuel-xangongo",
+   "private": true,
+-  "version": "1.19.0",
++  "version": "1.20.0",
+   "type": "module",
+   "scripts": {
+     "dev": "tsx server.ts",
+diff --git a/src/lib/__tests__/radioBackground.test.ts b/src/lib/__tests__/radioBackground.test.ts
+new file mode 100644
+index 0000000..01d0998
+--- /dev/null
++++ b/src/lib/__tests__/radioBackground.test.ts
+@@ -0,0 +1,22 @@
++import { describe, expect, it } from 'vitest';
++import { radioEngine } from '../nativeRadio';
++
++/* v1.20.0 — rádio em segundo plano: escolha do motor de reprodução. */
++describe('radioEngine', () => {
++  it('Android → serviço foreground nativo', () => {
++    expect(radioEngine('android')).toBe('native');
++  });
++
++  it('web → <audio> da WebView (comportamento antigo)', () => {
++    expect(radioEngine('web')).toBe('web');
++  });
++
++  it('iOS → web (serviço nativo só existe para Android)', () => {
++    expect(radioEngine('ios')).toBe('web');
++  });
++
++  it('plataforma desconhecida nunca cai no motor nativo', () => {
++    expect(radioEngine('')).toBe('web');
++    expect(radioEngine('windows')).toBe('web');
++  });
++});
+diff --git a/src/lib/nativeRadio.ts b/src/lib/nativeRadio.ts
+new file mode 100644
+index 0000000..10b9ab9
+--- /dev/null
++++ b/src/lib/nativeRadio.ts
+@@ -0,0 +1,46 @@
++import { Capacitor, registerPlugin } from '@capacitor/core';
++
++/**
++ * v1.20.0 — Rádio em segundo plano (Android).
++ *
++ * Ponte para o plugin local `RadioService` (Java, em android/app):
++ * serviço foreground mediaPlayback + MediaSession. No Android a emissão
++ * passa a tocar NATIVA (sobrevive a ecrã apagado / app em segundo plano,
++ * com notificação de media e controlo no ecrã de bloqueio); nas outras
++ * plataformas mantém-se o <audio> da WebView.
++ */
++export interface RadioStateEvent {
++  playing: boolean;
++  loading: boolean;
++}
++
++export interface RadioErrorEvent {
++  message: string;
++}
++
++export interface RadioServicePlugin {
++  play(o: { url: string; title: string }): Promise<void>;
++  stop(): Promise<void>;
++  setVolume(o: { value: number }): Promise<void>;
++  getState(): Promise<{ playing: boolean }>;
++  addListener(
++    eventName: 'radioState',
++    listenerFunc: (e: RadioStateEvent) => void,
++  ): Promise<{ remove: () => Promise<void> }>;
++  addListener(
++    eventName: 'radioError',
++    listenerFunc: (e: RadioErrorEvent) => void,
++  ): Promise<{ remove: () => Promise<void> }>;
++}
++
++export const RadioService = registerPlugin<RadioServicePlugin>('RadioService');
++
++/**
++ * Decisão PURA (testável em vitest): que motor toca a emissão ao vivo.
++ * Android → serviço foreground nativo; web/iOS → <audio> da WebView.
++ */
++export function radioEngine(platform: string): 'native' | 'web' {
++  return platform === 'android' ? 'native' : 'web';
++}
++
++export const nativeRadio = (): boolean => radioEngine(Capacitor.getPlatform()) === 'native';
+diff --git a/src/lib/radio.ts b/src/lib/radio.ts
+index 99849bf..18568ba 100644
+--- a/src/lib/radio.ts
++++ b/src/lib/radio.ts
+@@ -1,6 +1,7 @@
+ import { Capacitor } from '@capacitor/core';
+ import { Directory, Filesystem } from '@capacitor/filesystem';
+ import { Share } from '@capacitor/share';
++import { RadioService, nativeRadio } from './nativeRadio';
+ 
+ /**
+  * Rádio Maranata 91.9 FM (Lubango, Huíla) — player ao vivo + gravador.
+@@ -32,12 +33,51 @@ type Listener = () => void;
+ class LivePlayer {
+   private audio: HTMLAudioElement | null = null;
+   private listeners = new Set<Listener>();
++  private nativeHooks = false;
+ 
+   playing = false;
+   loading = false;
+   error: string | null = null;
+   volume = 0.9;
+ 
++  constructor() {
++    /* v1.20.0: no Android os eventos do serviço foreground alimentam este
++       singleton — a UI (Radio.tsx / Portal) não muda uma linha. */
++    this.ensureNative();
++  }
++
++  /** Liga os eventos do plugin nativo (uma vez só). */
++  private ensureNative(): void {
++    if (this.nativeHooks || !nativeRadio()) return;
++    this.nativeHooks = true;
++    void RadioService.addListener('radioState', (e) => {
++      this.playing = e.playing;
++      this.loading = e.loading;
++      if (e.playing) this.error = null;
++      this.emit();
++    });
++    void RadioService.addListener('radioError', (e) => {
++      this.playing = false;
++      this.loading = false;
++      this.error = e.message || 'A emissão caiu. Toque novamente para tentar.';
++      this.emit();
++    });
++  }
++
++  /** v1.20.0: ressincroniza com o serviço (a rádio pode estar a tocar em 2.º plano). */
++  async sync(): Promise<void> {
++    if (!nativeRadio()) return;
++    this.ensureNative();
++    try {
++      const s = await RadioService.getState();
++      this.playing = s.playing;
++      this.loading = false;
++      this.emit();
++    } catch {
++      /* plugin indisponível — mantém o motor web */
++    }
++  }
++
+   private ensure(): HTMLAudioElement {
+     if (this.audio) return this.audio;
+     const a = new Audio();
+@@ -62,6 +102,23 @@ class LivePlayer {
+   private emit() { this.listeners.forEach((fn) => fn()); }
+ 
+   async play(): Promise<void> {
++    /* v1.20.0: Android → serviço foreground nativo (toca com o ecrã apagado) */
++    if (nativeRadio()) {
++      this.ensureNative();
++      this.error = null;
++      this.loading = true;
++      this.emit();
++      try {
++        await RadioService.play({ url: RADIO.streamUrl, title: `${RADIO.name} ${RADIO.freq}` });
++      } catch (e) {
++        this.loading = false;
++        this.playing = false;
++        this.error = 'Não foi possível ligar à emissão. Verifique a internet e tente novamente.';
++        this.emit();
++        throw e;
++      }
++      return;
++    }
+     const a = this.ensure();
+     this.error = null;
+     this.loading = true;
+@@ -80,6 +137,15 @@ class LivePlayer {
+   }
+ 
+   pause(): void {
++    if (nativeRadio()) {
++      this.ensureNative();
++      /* ao vivo: «pausar» = parar o stream (retomar volta ao vivo da emissão) */
++      void RadioService.stop().catch(() => { /* serviço já parado */ });
++      this.playing = false;
++      this.loading = false;
++      this.emit();
++      return;
++    }
+     this.audio?.pause();
+     this.playing = false;
+     this.loading = false;
+@@ -88,6 +154,11 @@ class LivePlayer {
+ 
+   setVolume(v: number): void {
+     this.volume = v;
++    if (nativeRadio()) {
++      void RadioService.setVolume({ value: v }).catch(() => { /* serviço parado */ });
++      this.emit();
++      return;
++    }
+     if (this.audio) this.audio.volume = v;
+     this.emit();
+   }
+diff --git a/src/pages/Radio.tsx b/src/pages/Radio.tsx
+index 61ce351..8dcbfe3 100644
+--- a/src/pages/Radio.tsx
++++ b/src/pages/Radio.tsx
+@@ -73,8 +73,13 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
+      verificava JSX. */
+   const confirm = useConfirm();
+ 
+-  /* re-render quando o player/gravador mudam de estado */
+-  useEffect(() => livePlayer.subscribe(rerender), []);
++  /* re-render quando o player/gravador mudam de estado; v1.20.0: ressincroniza
++     com o serviço nativo (a rádio pode já estar a tocar em 2.º plano) */
++  useEffect(() => {
++    const un = livePlayer.subscribe(rerender);
++    void livePlayer.sync();
++    return un;
++  }, []);
+   useEffect(() => {
+     recorder.onProgress = rerender;
+     return () => { recorder.onProgress = null; };
+diff --git a/src/pages/__tests__/radioVariant.test.tsx b/src/pages/__tests__/radioVariant.test.tsx
+index 76a5722..b0a5455 100644
+--- a/src/pages/__tests__/radioVariant.test.tsx
++++ b/src/pages/__tests__/radioVariant.test.tsx
+@@ -16,6 +16,7 @@ vi.mock('../../lib/radio', () => {
+     livePlayer: {
+       playing: false, loading: false, error: null, volume: 0.9,
+       subscribe: vi.fn(() => noop), play: vi.fn(async () => {}), pause: vi.fn(), setVolume: vi.fn(),
++      sync: vi.fn(async () => {}), // v1.20.0: ressincronização com o serviço nativo
+     },
+     recorder: { recording: false, seconds: 0, bytes: 0, onProgress: null, start: vi.fn(), stop: vi.fn() },
+     isNative: () => true,
+-- 
+2.39.5
+
