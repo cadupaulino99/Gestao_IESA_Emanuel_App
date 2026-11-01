@@ -220,8 +220,13 @@ public class RadioPlaybackService extends Service {
         PendingIntent openPi = PendingIntent.getActivity(this, 1, openIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Notification.Builder b = new Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(getApplicationInfo().icon)
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            b = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            b = new Notification.Builder(this);
+        }
+        b.setSmallIcon(getApplicationInfo().icon)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setContentIntent(openPi)
