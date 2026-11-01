@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { RadioService, nativeRadio } from './nativeRadio';
 
 /**
  * Rádio Maranata 91.9 FM (Lubango, Huíla) — player ao vivo + gravador.
@@ -32,11 +33,50 @@ type Listener = () => void;
 class LivePlayer {
   private audio: HTMLAudioElement | null = null;
   private listeners = new Set<Listener>();
+  private nativeHooks = false;
 
   playing = false;
   loading = false;
   error: string | null = null;
   volume = 0.9;
+
+  constructor() {
+    /* v1.20.0: no Android os eventos do serviço foreground alimentam este
+       singleton — a UI (Radio.tsx / Portal) não muda uma linha. */
+    this.ensureNative();
+  }
+
+  /** Liga os eventos do plugin nativo (uma vez só). */
+  private ensureNative(): void {
+    if (this.nativeHooks || !nativeRadio()) return;
+    this.nativeHooks = true;
+    void RadioService.addListener('radioState', (e) => {
+      this.playing = e.playing;
+      this.loading = e.loading;
+      if (e.playing) this.error = null;
+      this.emit();
+    });
+    void RadioService.addListener('radioError', (e) => {
+      this.playing = false;
+      this.loading = false;
+      this.error = e.message || 'A emissão caiu. Toque novamente para tentar.';
+      this.emit();
+    });
+  }
+
+  /** v1.20.0: ressincroniza com o serviço (a rádio pode estar a tocar em 2.º plano). */
+  async sync(): Promise<void> {
+    if (!nativeRadio()) return;
+    this.ensureNative();
+    try {
+      const s = await RadioService.getState();
+      this.playing = s.playing;
+      this.loading = false;
+      this.emit();
+    } catch {
+      /* plugin indisponível — mantém o motor web */
+    }
+  }
 
   private ensure(): HTMLAudioElement {
     if (this.audio) return this.audio;
@@ -62,6 +102,23 @@ class LivePlayer {
   private emit() { this.listeners.forEach((fn) => fn()); }
 
   async play(): Promise<void> {
+    /* v1.20.0: Android → serviço foreground nativo (toca com o ecrã apagado) */
+    if (nativeRadio()) {
+      this.ensureNative();
+      this.error = null;
+      this.loading = true;
+      this.emit();
+      try {
+        await RadioService.play({ url: RADIO.streamUrl, title: `${RADIO.name} ${RADIO.freq}` });
+      } catch (e) {
+        this.loading = false;
+        this.playing = false;
+        this.error = 'Não foi possível ligar à emissão. Verifique a internet e tente novamente.';
+        this.emit();
+        throw e;
+      }
+      return;
+    }
     const a = this.ensure();
     this.error = null;
     this.loading = true;
@@ -80,6 +137,15 @@ class LivePlayer {
   }
 
   pause(): void {
+    if (nativeRadio()) {
+      this.ensureNative();
+      /* ao vivo: «pausar» = parar o stream (retomar volta ao vivo da emissão) */
+      void RadioService.stop().catch(() => { /* serviço já parado */ });
+      this.playing = false;
+      this.loading = false;
+      this.emit();
+      return;
+    }
     this.audio?.pause();
     this.playing = false;
     this.loading = false;
@@ -88,6 +154,11 @@ class LivePlayer {
 
   setVolume(v: number): void {
     this.volume = v;
+    if (nativeRadio()) {
+      void RadioService.setVolume({ value: v }).catch(() => { /* serviço parado */ });
+      this.emit();
+      return;
+    }
     if (this.audio) this.audio.volume = v;
     this.emit();
   }

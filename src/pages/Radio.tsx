@@ -73,8 +73,13 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
      verificava JSX. */
   const confirm = useConfirm();
 
-  /* re-render quando o player/gravador mudam de estado */
-  useEffect(() => livePlayer.subscribe(rerender), []);
+  /* re-render quando o player/gravador mudam de estado; v1.20.0: ressincroniza
+     com o serviço nativo (a rádio pode já estar a tocar em 2.º plano) */
+  useEffect(() => {
+    const un = livePlayer.subscribe(rerender);
+    void livePlayer.sync();
+    return un;
+  }, []);
   useEffect(() => {
     recorder.onProgress = rerender;
     return () => { recorder.onProgress = null; };
