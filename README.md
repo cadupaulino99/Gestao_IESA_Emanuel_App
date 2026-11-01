@@ -9,7 +9,7 @@ com PDF frente/verso), **comunhão**, **Avisos, Agenda e Eventos**, **Rádio
 Maranata** (ao vivo + gravações publicadas), **auto-cadastro com aprovação**,
 **chat de suporte** e IA (leitura de BI/comprovativos, assistente pastoral).
 
-> **Versões actuais**: app **v1.19.0** · Worker **v2.10.0** · **282 testes** ·
+> **Versões actuais**: app **v1.20.0** · Worker **v2.10.0** · **286 testes** ·
 > `tsc` limpo (raiz) + **strict em `src/lib`** (`npm run lint:lib`) +
 > **regras verificadas** (`npm run lint:rules`).
 > Fase actual: **P3** concluído — ver `docs/AUDITORIA-2026-10-31.md`
@@ -103,7 +103,7 @@ git clone https://github.com/cadupaulino99/Gestao_IESA_Emanuel_App.git
 cd Gestao_IESA_Emanuel_App
 npm ci               # de preferência com --ignore-scripts em sandboxes pequenas
 npm run dev          # web em http://localhost:3000
-npm test             # 282 testes (app + Worker + regras)
+npm test             # 286 testes (app + Worker + regras)
 npm run lint         # tsc --noEmit (raiz)
 npm run lint:lib     # tsc STRICT de src/lib
 npm run lint:rules   # verificador estático de firestore.rules/storage.rules
@@ -142,7 +142,7 @@ npm run lint:rules   # verificador estático de firestore.rules/storage.rules
 `docs/MUDANCAS.md` (histórico completo por versão) ·
 `docs/AUDITORIA-2026-10-31.md` (**P3**: datas de Luanda, quota do cron, token,
 regras) · `docs/AUDITORIA-2026-10-25.md` (auditoria P0/P1/P2) ·
-`docs/VERIFICACAO-*` (guiões de teste: **v1.19.0**, moeda, cartão,
+`docs/VERIFICACAO-*` (guiões de teste: **v1.20.0**, v1.19.0, moeda, cartão,
 auto-cadastro, memberEmail, avisos/agenda/eventos…) · `docs/INICIO-RAPIDO.md` ·
 `docs/COMO-INSTALAR-NO-TELEMOVEL.md`.
 

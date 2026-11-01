@@ -1,5 +1,25 @@
 # 🔧 MUDANÇAS face ao repositório original
 
+## v1.20.0 — Rádio em segundo plano (serviço foreground Android + notificação de media)
+
+- No Android, a emissão ao vivo passa a tocar **NATIVA** (plugin Capacitor local
+  `RadioService` + `RadioPlaybackService` em `android/app`): serviço foreground
+  do tipo `mediaPlayback`, `MediaPlayer` com WakeLock (CPU) + WifiLock (stream
+  não morre com o ecrã off), `MediaSession` com controlos no ecrã de bloqueio e
+  notificação de media com acção «Parar».
+- **A rádio continua a tocar com o ecrã apagado e com a app em segundo plano**;
+  enquanto o serviço vive, o processo da app não é morto pelo Android.
+- UI inalterada: o singleton `livePlayer` (`lib/radio.ts`) delega no plugin em
+  Android (`radioEngine()` puro e testado) e mantém o `<audio>` da WebView em
+  web/iOS; ao entrar na página da rádio o estado é ressincronizado
+  (`livePlayer.sync()`) — a emissão que já tocava em 2.º plano aparece «No ar».
+- Manifest: permissões `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK`
+  + declaração do serviço com `foregroundServiceType="mediaPlayback"`.
+- Nota de âmbito: notificações push com a app FECHADA continuam a ser trabalho
+  futuro (exige FCM); «segundo plano» aqui = rádio a tocar + processo vivo
+  enquanto o serviço foreground corre.
+- Guião de teste: `docs/VERIFICACAO-V1.20.0.md`.
+
 ## v1.19.0 — P3: Luanda em todo o lado, Worker 2.10.0 (quota/cron/token), regras sem buracos, testes do Worker e das regras
 
 Auditoria nova em `docs/AUDITORIA-2026-10-31.md` (25 achados, todos com

@@ -16,6 +16,7 @@ vi.mock('../../lib/radio', () => {
     livePlayer: {
       playing: false, loading: false, error: null, volume: 0.9,
       subscribe: vi.fn(() => noop), play: vi.fn(async () => {}), pause: vi.fn(), setVolume: vi.fn(),
+      sync: vi.fn(async () => {}), // v1.20.0: ressincronização com o serviço nativo
     },
     recorder: { recording: false, seconds: 0, bytes: 0, onProgress: null, start: vi.fn(), stop: vi.fn() },
     isNative: () => true,
