@@ -1,0 +1,38 @@
+From a65571a84cbf57efaa7b68bc6d35d4df8a982ee1 Mon Sep 17 00:00:00 2001
+From: assistente-qwen <assistente@qwen.local>
+Date: Sun, 1 Nov 2026 00:58:45 +0000
+Subject: [PATCH] =?UTF-8?q?fix(android):=20notifica=C3=A7=C3=A3o=20da=20r?=
+ =?UTF-8?q?=C3=A1dio=20compat=C3=ADvel=20com=20API=2024-25=20(constructor?=
+ =?UTF-8?q?=20com=20canal=20=C3=A9=20API=2026;=20lintVital=20NewApi=20bloq?=
+ =?UTF-8?q?ueava=20o=20release)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .../emanuelxangongo/gestao/RadioPlaybackService.java     | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioPlaybackService.java b/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioPlaybackService.java
+index 4b3ba34..88c5aa0 100644
+--- a/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioPlaybackService.java
++++ b/android/app/src/main/java/ao/co/iesa/emanuelxangongo/gestao/RadioPlaybackService.java
+@@ -220,8 +220,13 @@ public class RadioPlaybackService extends Service {
+         PendingIntent openPi = PendingIntent.getActivity(this, 1, openIntent,
+                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+ 
+-        Notification.Builder b = new Notification.Builder(this, CHANNEL_ID)
+-                .setSmallIcon(getApplicationInfo().icon)
++        Notification.Builder b;
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++            b = new Notification.Builder(this, CHANNEL_ID);
++        } else {
++            b = new Notification.Builder(this);
++        }
++        b.setSmallIcon(getApplicationInfo().icon)
+                 .setContentTitle(title)
+                 .setContentText(text)
+                 .setContentIntent(openPi)
+-- 
+2.39.5
+
