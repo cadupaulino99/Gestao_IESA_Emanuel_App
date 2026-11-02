@@ -130,7 +130,8 @@ public class RadioPlaybackService extends Service {
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build());
-        mp.setWakeMode(PowerManager.PARTIAL_WAKE_LOCK);
+        // setWakeMode exige (Context, int) — a sobrecarga de 1 argumento não existe
+        mp.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
         mp.setVolume(volume, volume);
         mp.setOnPreparedListener(m -> {
             m.start();
