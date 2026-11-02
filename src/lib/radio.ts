@@ -11,6 +11,9 @@ import { RadioService, nativeRadio } from './nativeRadio';
  *   1. Tocar com um <audio> normal (sem CORS);
  *   2. GRAVAR a transmissão com fetch() + ReadableStream (com CORS) e guardar
  *      os bytes crus num ficheiro `.aac` reproduzível no próprio telemóvel.
+ *
+ * v1.21: latência — URL com cache-bust + salto para a borda «ao vivo» no web;
+ * no Android o serviço nativo usa ExoPlayer com buffer 1,5–4s.
  */
 export const RADIO = {
   name: 'Rádio Maranata',
@@ -22,6 +25,12 @@ export const RADIO = {
   bitrateKbps: 48,
   folder: 'Radio', // dentro de Documentos da app
 } as const;
+
+/** URL do mount com query anti-cache (força ligação fresca à borda ao vivo). */
+export function liveStreamUrl(base: string = RADIO.streamUrl): string {
+  const sep = base.includes('?') ? '&' : '?';
+  return `${base}${sep}_t=${Date.now()}`;
+}
 
 export const isNative = () => Capacitor.isNativePlatform();
 
@@ -78,12 +87,38 @@ class LivePlayer {
     }
   }
 
+  /**
+   * Salta para o fim do buffer disponível (borda «ao vivo»).
+   * Em streams progressivos o <audio> costuma ficar vários segundos atrás.
+   */
+  private jumpToLiveEdge(a: HTMLAudioElement): void {
+    try {
+      if (a.seekable && a.seekable.length > 0) {
+        const end = a.seekable.end(a.seekable.length - 1);
+        if (Number.isFinite(end) && end > 0) {
+          // 0,3s antes do fim evita «waiting» contínuo em redes instáveis
+          a.currentTime = Math.max(0, end - 0.3);
+        }
+      }
+    } catch {
+      /* alguns browsers bloqueiam seek em live */
+    }
+  }
+
   private ensure(): HTMLAudioElement {
     if (this.audio) return this.audio;
     const a = new Audio();
     a.preload = 'none';
     a.volume = this.volume;
-    a.addEventListener('playing', () => { this.playing = true; this.loading = false; this.error = null; this.emit(); });
+    a.addEventListener('playing', () => {
+      this.playing = true;
+      this.loading = false;
+      this.error = null;
+      this.jumpToLiveEdge(a);
+      this.emit();
+    });
+    a.addEventListener('loadedmetadata', () => this.jumpToLiveEdge(a));
+    a.addEventListener('canplay', () => this.jumpToLiveEdge(a));
     a.addEventListener('waiting', () => { this.loading = true; this.emit(); });
     a.addEventListener('pause', () => { this.playing = false; this.loading = false; this.emit(); });
     a.addEventListener('error', () => {
@@ -109,6 +144,7 @@ class LivePlayer {
       this.loading = true;
       this.emit();
       try {
+        /* URL base: o serviço nativo aplica o próprio cache-bust */
         await RadioService.play({ url: RADIO.streamUrl, title: `${RADIO.name} ${RADIO.freq}` });
       } catch (e) {
         this.loading = false;
@@ -123,10 +159,11 @@ class LivePlayer {
     this.error = null;
     this.loading = true;
     this.emit();
-    // recomeça no "vivinho" da emissão (salta qualquer buffer antigo)
-    a.src = RADIO.streamUrl;
+    // recomeça no «vivinho» da emissão (cache-bust + salto à borda)
+    a.src = liveStreamUrl();
     try {
       await a.play();
+      this.jumpToLiveEdge(a);
     } catch (e) {
       this.loading = false;
       this.playing = false;
@@ -191,7 +228,7 @@ export class StreamRecorder {
     this.recording = true;
     this.onProgress?.();
 
-    const res = await fetch(RADIO.streamUrl, { signal: this.ctrl.signal });
+    const res = await fetch(liveStreamUrl(), { signal: this.ctrl.signal });
     if (!res.ok || !res.body) throw new Error('A emissão não respondeu (HTTP ' + res.status + ').');
     const reader = res.body.getReader();
     try {
@@ -394,7 +431,7 @@ export function fmtBytes(bytes: number): string {
    A liderança publica uma gravação da biblioteca: o áudio vai para o
    Storage (radio/<nome>.aac) e os metadados para `radio_recordings`.
    Os membros ouvem no Portal → Rádio («Gravações da igreja»), com URL
-   resolvido só ao tocar (poupa a quota de descargas do plano Spark).
+   resolvido só ao tocar (poupa a quota diária de descargas do plano Spark).
    ═══════════════════════════════════════════════════════════════════════ */
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage, db } from './firebase';
