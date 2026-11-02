@@ -17,6 +17,7 @@ import { livePlayer } from '../lib/radio';
 import UpdateBanner from './UpdateBanner';
 import ForcePasswordChangeModal from './admin/ForcePasswordChangeModal';
 import NotificationBell from './NotificationBell';
+import { currentVersion } from '../lib/updateCheck';
 
 export default function Layout() {
   const { user, signOut, isAdmin, userRole } = useAuth();
@@ -116,8 +117,13 @@ export default function Layout() {
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl overflow-hidden bg-slate-100 shadow-sm border border-slate-200/50">
             <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
           </div>
-          <div>
-            <h1 className="font-semibold text-lg tracking-tight text-slate-900 dark:text-white">Gestão IESA</h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="font-semibold text-lg tracking-tight text-slate-900 dark:text-white">Gestão IESA</h1>
+              <span className="rounded-md bg-slate-900/90 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white dark:bg-white/15">
+                v{currentVersion()}
+              </span>
+            </div>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{churchName}</p>
           </div>
         </div>
@@ -169,7 +175,12 @@ export default function Layout() {
               <img src={logoUrl} alt="Logo" className="w-full h-full object-cover" />
             </div>
             <div className="min-w-0">
-              <h1 className="font-semibold tracking-tight leading-none truncate">Gestão IESA</h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-semibold tracking-tight leading-none truncate">Gestão IESA</h1>
+                <span className="shrink-0 rounded bg-slate-900 px-1 py-0.5 text-[9px] font-semibold tabular-nums text-white dark:bg-white/20">
+                  v{currentVersion()}
+                </span>
+              </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-none mt-0.5 truncate">{churchName}</p>
             </div>
           </div>
