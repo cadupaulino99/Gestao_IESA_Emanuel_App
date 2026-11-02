@@ -1,15 +1,42 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { ArrowDownToLine, X, Rocket } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 import { Button } from './ui/button';
 import { checkForUpdate, openUpdate, currentVersion, type UpdateInfo } from '../lib/updateCheck';
 import { prefGet, prefSet } from '../lib/prefs';
 
 const DISMISS_KEY = 'update-dismissed-tag';
+const NOTIFIED_KEY = 'update-notified-tag';
+
+/** Agenda aviso do sistema (uma vez por versão) no Android/iOS. */
+async function notifySystem(info: UpdateInfo): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  if (prefGet(NOTIFIED_KEY) === info.tag) return;
+  try {
+    const { display } = await LocalNotifications.requestPermissions();
+    if (display !== 'granted') return;
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: 91,
+          title: 'Nova versão da Gestão IESA',
+          body: `A versão ${info.tag.replace(/^v/, '')} está disponível. Abre a app e toca em Instalar.`,
+          schedule: { at: new Date(Date.now() + 1500) },
+          extra: { apkUrl: info.apkUrl, tag: info.tag },
+        },
+      ],
+    });
+    prefSet(NOTIFIED_KEY, info.tag);
+  } catch {
+    /* permissão negada / plugin indisponível */
+  }
+}
 
 /**
- * Banner discreto no topo: «Nova versão disponível — tocar para instalar».
- * Mostra-se uma vez por versão nova; «Agora não» guarda a decisão para essa tag.
+ * Banner no topo: «Nova versão disponível — tocar para instalar».
+ * + notificação local no Android (uma vez por tag).
  */
 export default function UpdateBanner() {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
@@ -23,13 +50,17 @@ export default function UpdateBanner() {
         if (force && silent) toast.info(`Sem atualizações: está na versão ${currentVersion()}.`);
         return;
       }
+      void notifySystem(u);
       if (prefGet(DISMISS_KEY) === u.tag) return;
       setInfo(u);
     };
-    run();
+    // force=true no 1.º arranque da sessão: não espera o throttle de 10 min
+    run(true, false);
     const onRetry = () => run(true, false);
     const onManual = () => run(true, true);
-    const onVisible = () => { if (document.visibilityState === 'visible') run(false, false); };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') run(false, false);
+    };
     window.addEventListener('iesa:update-retry', onRetry);
     window.addEventListener('iesa:check-update', onManual);
     document.addEventListener('visibilitychange', onVisible);
