@@ -8,27 +8,29 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
-import android.media.AudioAttributes;
-import android.media.MediaMetadata;
-import android.media.MediaPlayer;
-import android.media.session.MediaSession;
-import android.media.session.PlaybackState;
+import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
-import android.os.PowerManager;
+import android.os.Looper;
+
+import androidx.annotation.Nullable;
+import androidx.media3.common.AudioAttributes;
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.exoplayer.ExoPlayer;
 
 /**
- * v1.20.0 — Rádio em SEGUNDO PLANO.
+ * v1.21 — Rádio em SEGUNDO PLANO com baixa latência.
  *
- * Serviço foreground (tipo mediaPlayback) com MediaPlayer + MediaSession:
- *  - a emissão continua a tocar com o ecrã apagado / app em segundo plano;
- *  - a notificação de media e o ecrã de bloqueio ganham controlo «Parar»;
- *  - WakeLock (CPU) via MediaPlayer.setWakeMode + WifiLock para o stream não
- *    morrer com o ecrã off.
- *
- * Só usa classes do framework (android.media / android.app) — zero dependências
- * novas no gradle. minSdk 24.
+ * ExoPlayer (media3) com buffer curto em vez de MediaPlayer:
+ *  - MediaPlayer em streams Icecast/AAC acumulava 15–30s de atraso;
+ *  - aqui o buffer alvo fica entre ~1,5s e ~4s e cada play usa URL
+ *    com cache-bust para ligar à borda «ao vivo» do mount.
  */
 public class RadioPlaybackService extends Service {
 
@@ -40,23 +42,28 @@ public class RadioPlaybackService extends Service {
     private static final int NOTIFICATION_ID = 9119;
     private static final String CHANNEL_ID = "radio_segundo_plano";
 
+    /* Buffer curto: prioriza «ao vivo» sobre resiliência em redes muito fracas. */
+    private static final int MIN_BUFFER_MS = 1500;
+    private static final int MAX_BUFFER_MS = 4000;
+    private static final int PLAYBACK_BUFFER_MS = 750;
+    private static final int REBUFFER_MS = 1200;
+
     private static boolean playing;
-    private static MediaPlayer player;
+    private static ExoPlayer player;
     private static float volume = 0.9f;
 
-    private MediaSession session;
     private WifiManager.WifiLock wifiLock;
     private String title = "Rádio";
+    private final Handler main = new Handler(Looper.getMainLooper());
 
     public static boolean isPlaying() {
         return playing;
     }
 
-    /** Chamado pelo plugin (setVolume) mesmo antes de o serviço existir. */
     public static void setPlayerVolume(float v) {
         volume = v;
         if (player != null) {
-            player.setVolume(v, v);
+            player.setVolume(v);
         }
     }
 
@@ -73,25 +80,6 @@ public class RadioPlaybackService extends Service {
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
-        session = new MediaSession(this, "iesa-radio");
-        session.setCallback(new MediaSession.Callback() {
-            @Override
-            public void onPause() {
-                stopEverything();
-                stopSelf();
-            }
-
-            @Override
-            public void onStop() {
-                stopEverything();
-                stopSelf();
-            }
-
-            @Override
-            public void onPlay() {
-                /* emissão ao vivo: retomar = novo play() pelo plugin */
-            }
-        });
     }
 
     @Override
@@ -109,7 +97,7 @@ public class RadioPlaybackService extends Service {
         }
         String t = intent.getStringExtra(EXTRA_TITLE);
         title = (t == null || t.isEmpty()) ? "Rádio" : t;
-        // startForeground IMEDIATO (regra do Android para startForegroundService)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, buildNotification("A ligar…", false),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
@@ -120,54 +108,71 @@ public class RadioPlaybackService extends Service {
         return START_NOT_STICKY;
     }
 
-    private void startPlayer(final String url) {
+    private void startPlayer(final String baseUrl) {
         releasePlayer();
         playing = false;
         RadioServicePlugin.emitState(false, true);
-        final MediaPlayer mp = new MediaPlayer();
-        player = mp;
-        mp.setAudioAttributes(new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                .build());
-        // setWakeMode exige (Context, int) — a sobrecarga de 1 argumento não existe
-        mp.setWakeMode(getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
-        mp.setVolume(volume, volume);
-        mp.setOnPreparedListener(m -> {
-            m.start();
-            playing = true;
-            if (session != null) {
-                session.setActive(true);
-                session.setMetadata(new MediaMetadata.Builder()
-                        .putString(MediaMetadata.METADATA_KEY_TITLE, title)
-                        .build());
-                updatePlaybackState(true);
-            }
-            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (nm != null) {
-                nm.notify(NOTIFICATION_ID, buildNotification("No ar", true));
-            }
-            RadioServicePlugin.emitState(true, false);
-        });
-        mp.setOnErrorListener((m, what, extra) -> {
-            playing = false;
-            RadioServicePlugin.emitState(false, false);
-            RadioServicePlugin.emitError("A emissão caiu. Abra a app e toque novamente.");
-            stopEverything();
-            stopSelf();
-            return true;
-        });
         acquireWifiLock();
-        try {
-            mp.setDataSource(url);
-            mp.prepareAsync();
-        } catch (Exception e) {
-            playing = false;
-            RadioServicePlugin.emitState(false, false);
-            RadioServicePlugin.emitError("Não foi possível ligar à emissão.");
-            stopEverything();
-            stopSelf();
-        }
+
+        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                        MIN_BUFFER_MS,
+                        MAX_BUFFER_MS,
+                        PLAYBACK_BUFFER_MS,
+                        REBUFFER_MS)
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build();
+
+        ExoPlayer mp = new ExoPlayer.Builder(this)
+                .setLoadControl(loadControl)
+                .setAudioAttributes(
+                        new AudioAttributes.Builder()
+                                .setUsage(C.USAGE_MEDIA)
+                                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                                .build(),
+                        /* handleAudioFocus= */ true)
+                .setHandleAudioBecomingNoisy(true)
+                .build();
+        player = mp;
+        mp.setVolume(volume);
+
+        mp.addListener(new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY && mp.getPlayWhenReady()) {
+                    playing = true;
+                    NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                    if (nm != null) {
+                        nm.notify(NOTIFICATION_ID, buildNotification("No ar", true));
+                    }
+                    RadioServicePlugin.emitState(true, false);
+                } else if (state == Player.STATE_BUFFERING) {
+                    RadioServicePlugin.emitState(playing, true);
+                } else if (state == Player.STATE_ENDED) {
+                    playing = false;
+                    RadioServicePlugin.emitState(false, false);
+                }
+            }
+
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                playing = false;
+                RadioServicePlugin.emitState(false, false);
+                RadioServicePlugin.emitError("A emissão caiu. Abra a app e toque novamente.");
+                stopEverything();
+                stopSelf();
+            }
+        });
+
+        /* Cache-bust: força ligação fresca à borda ao vivo (evita proxies/CDN
+           a servirem um segmento já atrasado). */
+        String liveUrl = baseUrl;
+        String sep = baseUrl.contains("?") ? "&" : "?";
+        liveUrl = baseUrl + sep + "_t=" + System.currentTimeMillis();
+
+        mp.setMediaItem(MediaItem.fromUri(Uri.parse(liveUrl)));
+        mp.prepare();
+        mp.play();
     }
 
     private void acquireWifiLock() {
@@ -190,24 +195,13 @@ public class RadioPlaybackService extends Service {
     private void releasePlayer() {
         if (player != null) {
             try {
-                player.reset();
+                player.stop();
                 player.release();
             } catch (Exception ignored) {
                 /* já estava libertado */
             }
             player = null;
         }
-    }
-
-    private void updatePlaybackState(boolean isPlaying) {
-        if (session == null) return;
-        session.setPlaybackState(new PlaybackState.Builder()
-                .setActions(PlaybackState.ACTION_PLAY_PAUSE
-                        | PlaybackState.ACTION_PAUSE
-                        | PlaybackState.ACTION_STOP)
-                .setState(isPlaying ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_STOPPED,
-                        PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1f)
-                .build());
     }
 
     private Notification buildNotification(String text, boolean isPlaying) {
@@ -239,9 +233,6 @@ public class RadioPlaybackService extends Service {
                         Icon.createWithResource(getApplicationContext(), android.R.drawable.ic_media_pause),
                         "Parar",
                         stopPi).build());
-        b.setStyle(new Notification.MediaStyle()
-                .setMediaSession(session.getSessionToken())
-                .setShowActionsInCompactView(0));
         return b.build();
     }
 
@@ -249,10 +240,6 @@ public class RadioPlaybackService extends Service {
         playing = false;
         releasePlayer();
         releaseWifiLock();
-        if (session != null) {
-            updatePlaybackState(false);
-            session.setActive(false);
-        }
         stopForeground(STOP_FOREGROUND_REMOVE);
     }
 
@@ -262,6 +249,7 @@ public class RadioPlaybackService extends Service {
         super.onDestroy();
     }
 
+    @Nullable
     @Override
     public IBinder onBind(Intent intent) {
         return null;
