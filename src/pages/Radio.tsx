@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Radio as RadioIcon,
   Play,
@@ -16,8 +16,6 @@ import {
   Loader2,
   UploadCloud,
   CloudOff,
-  CalendarDays,
-  Clock,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -48,73 +46,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { logAudit } from '../lib/audit';
 import { useConfirm } from '../context/ConfirmContext';
-import { luandaParts } from '../lib/luanda';
-
-type Slot = { start: string; end: string; title: string; host?: string };
-const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'] as const;
-const PROGRAMACAO: Record<(typeof DIAS)[number], Slot[]> = {
-  Domingo: [
-    { start: '05:00', end: '07:00', title: 'Despertar com Deus' },
-    { start: '07:00', end: '09:00', title: 'Culto matinal', host: 'Ao vivo' },
-    { start: '09:00', end: '12:00', title: 'Escola bíblica & louvor' },
-    { start: '12:00', end: '14:00', title: 'Almoço gospel' },
-    { start: '14:00', end: '17:00', title: 'Tarde de testemunhos' },
-    { start: '17:00', end: '20:00', title: 'Culto da noite', host: 'Ao vivo' },
-    { start: '20:00', end: '23:00', title: 'Noite de oração e música' },
-  ],
-  Segunda: [
-    { start: '05:00', end: '08:00', title: 'Café com a Palavra' },
-    { start: '08:00', end: '12:00', title: 'Manhã gospel' },
-    { start: '12:00', end: '14:00', title: 'Pausa musical' },
-    { start: '14:00', end: '17:00', title: 'Tarde jovem' },
-    { start: '17:00', end: '20:00', title: 'Drive time Maranata' },
-    { start: '20:00', end: '23:00', title: 'Noite de louvor' },
-  ],
-  Terça: [
-    { start: '05:00', end: '08:00', title: 'Café com a Palavra' },
-    { start: '08:00', end: '12:00', title: 'Manhã gospel' },
-    { start: '12:00', end: '14:00', title: 'Pausa musical' },
-    { start: '14:00', end: '17:00', title: 'Tarde de intercessão' },
-    { start: '17:00', end: '20:00', title: 'Drive time Maranata' },
-    { start: '20:00', end: '23:00', title: 'Estudo bíblico' },
-  ],
-  Quarta: [
-    { start: '05:00', end: '08:00', title: 'Café com a Palavra' },
-    { start: '08:00', end: '12:00', title: 'Manhã gospel' },
-    { start: '12:00', end: '14:00', title: 'Pausa musical' },
-    { start: '14:00', end: '17:00', title: 'Tarde jovem' },
-    { start: '17:00', end: '19:00', title: 'Drive time Maranata' },
-    { start: '19:00', end: '21:00', title: 'Culto de oração', host: 'Ao vivo' },
-    { start: '21:00', end: '23:00', title: 'Noite de louvor' },
-  ],
-  Quinta: [
-    { start: '05:00', end: '08:00', title: 'Café com a Palavra' },
-    { start: '08:00', end: '12:00', title: 'Manhã gospel' },
-    { start: '12:00', end: '14:00', title: 'Pausa musical' },
-    { start: '14:00', end: '17:00', title: 'Tarde de testemunhos' },
-    { start: '17:00', end: '20:00', title: 'Drive time Maranata' },
-    { start: '20:00', end: '23:00', title: 'Noite de oração' },
-  ],
-  Sexta: [
-    { start: '05:00', end: '08:00', title: 'Café com a Palavra' },
-    { start: '08:00', end: '12:00', title: 'Manhã gospel' },
-    { start: '12:00', end: '14:00', title: 'Pausa musical' },
-    { start: '14:00', end: '17:00', title: 'Tarde jovem' },
-    { start: '17:00', end: '20:00', title: 'Sexta gospel' },
-    { start: '20:00', end: '23:59', title: 'Noite de vigília' },
-  ],
-  Sábado: [
-    { start: '05:00', end: '08:00', title: 'Despertar sabático' },
-    { start: '08:00', end: '12:00', title: 'Manhã em família' },
-    { start: '12:00', end: '15:00', title: 'Almoço gospel' },
-    { start: '15:00', end: '18:00', title: 'Tarde de louvor' },
-    { start: '18:00', end: '21:00', title: 'Sábado especial' },
-    { start: '21:00', end: '23:59', title: 'Noite de adoração' },
-  ],
-};
-const toMin = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
-const slotNow = (slots: Slot[], minutes: number) => slots.find((s) => minutes >= toMin(s.start) && minutes < toMin(s.end)) ?? null;
-const nextSlotFn = (slots: Slot[], minutes: number) => slots.find((s) => toMin(s.start) > minutes) ?? null;
 
 export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member' }) {
   const [, force] = useState(0);
@@ -133,18 +64,8 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
   useEffect(() => { const un = livePlayer.subscribe(rerender); void livePlayer.sync(); return un; }, []);
   useEffect(() => { recorder.onProgress = rerender; return () => { recorder.onProgress = null; }; }, []);
   useEffect(() => { if (!recorder.recording) return; const id = setInterval(() => setTick((t) => t + 1), 1000); return () => clearInterval(id); }, [recorder.recording, tick === 0]);
-  useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 30000); return () => clearInterval(id); }, []);
   useEffect(() => { let alive = true; const load = async () => { const np = await fetchNowPlaying(); if (alive) setNow(np); }; load(); const id = setInterval(load, 45000); return () => { alive = false; clearInterval(id); }; }, []);
   useEffect(() => { listRecordings().then(setRecordings); listPublishedRecordings().then(setPublished).catch(() => setPublished([])); }, []);
-
-  const schedule = useMemo(() => {
-    const p = luandaParts(Date.now());
-    const weekday = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
-    const dia = DIAS[weekday];
-    const slots = PROGRAMACAO[dia];
-    const minutes = p.hour * 60 + p.minute;
-    return { dia, slots, actual: slotNow(slots, minutes), seguinte: nextSlotFn(slots, minutes), hora: `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}` };
-  }, [tick]);
 
   const toggleLive = async () => {
     if (livePlayer.playing || livePlayer.loading) { livePlayer.pause(); return; }
@@ -250,12 +171,7 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
                 {live ? <span className="text-emerald-400">● Em direto</span> : livePlayer.loading ? <span className="text-amber-300">A ligar…</span> : <span>Parado</span>}
                 {now?.listeners != null && <span className="inline-flex items-center gap-0.5"><Headphones className="h-3 w-3" /> {now.listeners}</span>}
               </div>
-              <p className="mt-0.5 truncate text-sm font-medium text-slate-100">{now?.song || schedule.actual?.title || 'Rádio Maranata'}</p>
-              {schedule.actual && (
-                <p className="mt-0.5 truncate text-[11px] text-slate-400">
-                  <Clock className="mr-1 inline h-3 w-3" />{schedule.actual.start}–{schedule.actual.end}{schedule.actual.host ? ` · ${schedule.actual.host}` : ''}
-                </p>
-              )}
+              <p className="mt-0.5 truncate text-sm font-medium text-slate-100">{now?.song || 'Rádio Maranata — a melhor do seu rádio'}</p>
               <div className="mt-2 flex h-4 items-end gap-0.5" aria-hidden>
                 {[0.9, 0.55, 1.15, 0.7, 1.05, 0.5, 0.95, 0.65, 1.2, 0.75].map((d, i) => (
                   <span key={i} className={`w-1 rounded-full bg-gradient-to-t from-rose-500 to-orange-300 ${live ? 'eq-bar' : ''}`} style={{ height: live ? '100%' : '20%', animationDuration: `${d}s` }} />
@@ -275,32 +191,6 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
           {livePlayer.error && <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/15 px-3 py-2 text-xs text-red-200">{livePlayer.error}</p>}
         </div>
       </div>
-
-      <Card className="overflow-hidden">
-        <CardHeader className="space-y-0 px-3.5 py-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle className="flex items-center gap-2 text-sm"><CalendarDays className="h-4 w-4 text-rose-500" />Programação · {schedule.dia}</CardTitle>
-            <span className="text-[11px] tabular-nums text-muted-foreground">{schedule.hora}</span>
-          </div>
-          {schedule.seguinte && (
-            <CardDescription className="mt-1 text-[11px]">A seguir: <span className="font-medium text-foreground">{schedule.seguinte.title}</span> às {schedule.seguinte.start}</CardDescription>
-          )}
-        </CardHeader>
-        <CardContent className="px-2 pb-2.5 pt-0">
-          <ul className="max-h-48 space-y-0.5 overflow-y-auto">
-            {schedule.slots.map((s) => {
-              const active = schedule.actual?.start === s.start && schedule.actual?.end === s.end;
-              return (
-                <li key={`${s.start}-${s.title}`} className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-xs ${active ? 'bg-rose-500/10 text-rose-700 dark:text-rose-200' : 'text-muted-foreground'}`}>
-                  <span className={`w-20 shrink-0 font-mono tabular-nums ${active ? 'font-semibold' : ''}`}>{s.start}–{s.end}</span>
-                  <span className={`min-w-0 flex-1 truncate ${active ? 'font-semibold' : 'text-foreground/90'}`}>{s.title}{s.host ? <span className="ml-1 font-normal text-muted-foreground">· {s.host}</span> : null}</span>
-                  {active && <Badge className="h-5 border-0 bg-rose-500 px-1.5 text-[9px] text-white">Agora</Badge>}
-                </li>
-              );
-            })}
-          </ul>
-        </CardContent>
-      </Card>
 
       {variant === 'full' && (
         <div className="grid gap-3 lg:grid-cols-2">
