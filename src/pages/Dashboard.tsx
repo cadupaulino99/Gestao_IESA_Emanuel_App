@@ -25,6 +25,7 @@ export default function Dashboard() {
   const year = luandaYear();
   const currentMonth = luandaMonth();
   const isFinancialStaff = userRole === 'admin' || userRole === 'treasurer';
+  const isAdminHome = userRole === 'admin';
   const navigate = useNavigate();
   const [tab, setTab] = useState('overview');
   const [, tick] = useState(0);
@@ -208,6 +209,7 @@ export default function Dashboard() {
   ] as const;
 
   const todayBirthdays = (stats?.birthdays || []).filter((m: any) => isBirthdayToday(m.birthDate));
+
   const upcomingEvents = (stats?.events || []).slice(0, 3);
 
   const toggleRadio = async () => {
@@ -220,6 +222,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-3 pb-3">
+      {isAdminHome && (
+      <>
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-700 via-blue-700 to-indigo-800 text-white shadow-md">
         <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(circle at 80% 40%, rgba(255,255,255,0.25), transparent 55%)' }} />
         <div className="relative p-3.5 sm:p-4">
@@ -375,6 +379,15 @@ export default function Dashboard() {
             <strong>{stats.inactiveTithers.length}</strong> membros activos sem dízimo nos últimos 3 meses.
           </AlertDescription>
         </Alert>
+      )}
+      </>
+      )}
+
+      {!isAdminHome && (
+        <div className="space-y-1 px-0.5 pb-1">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Início</h2>
+          <p className="text-sm text-muted-foreground">Resumo operacional da sua área.</p>
+        </div>
       )}
 
       <div id="inicio-detalhe">
