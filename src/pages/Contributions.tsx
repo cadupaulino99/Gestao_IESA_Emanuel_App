@@ -372,7 +372,7 @@ export default function Contributions() {
 
   if (!canWrite) {
     return (
-      <Card className="max-w-xl mx-auto mt-10">
+      <Card className="mx-auto mt-10 max-w-xl rounded-2xl border-border/70 shadow-sm">
         <CardContent className="p-6 text-sm text-muted-foreground">
           Acesso negado: orçamento único, contribuições e mensagens são geridos apenas por administradores.
           (Restrição aplicada também no servidor.)
@@ -384,17 +384,26 @@ export default function Contributions() {
   const pending = outbox.filter((o) => o.status !== 'done');
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Orçamento & Contribuições</h2>
-        <p className="text-muted-foreground">Orçamento único por membro/ano, contribuições com pagamentos parciais, fila de mensagens e modelos por IA.</p>
-      </div>
+    <div className="mx-auto w-full max-w-6xl space-y-5 pb-6">
+      <header className="relative overflow-hidden rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-6 sm:py-6">
+        <div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-amber-500/10 blur-3xl" />
+        <div className="relative max-w-2xl">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+            <HandCoins className="h-3.5 w-3.5 text-amber-600" />
+            CONTRIBUIÇÕES
+          </div>
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Orçamento & Contribuições</h2>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">
+            Orçamento único por membro/ano, pagamentos parciais, fila de mensagens e modelos.
+          </p>
+        </div>
+      </header>
 
       <Tabs defaultValue="orcamento">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="orcamento" className="gap-1.5"><PiggyBank className="h-4 w-4" /> Orçamento único</TabsTrigger>
-          <TabsTrigger value="contrib" className="gap-1.5"><HandCoins className="h-4 w-4" /> Contribuições</TabsTrigger>
-          <TabsTrigger value="msg" className="gap-1.5"><Send className="h-4 w-4" /> Mensagens & fila</TabsTrigger>
+        <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card md:w-auto">
+          <TabsTrigger value="orcamento" className="gap-1.5 rounded-lg text-xs sm:text-sm"><PiggyBank className="h-4 w-4" /> Orçamento único</TabsTrigger>
+          <TabsTrigger value="contrib" className="gap-1.5 rounded-lg text-xs sm:text-sm"><HandCoins className="h-4 w-4" /> Contribuições</TabsTrigger>
+          <TabsTrigger value="msg" className="gap-1.5 rounded-lg text-xs sm:text-sm"><Send className="h-4 w-4" /> Mensagens & fila</TabsTrigger>
         </TabsList>
 
         {/* ═══════════ ORÇAMENTO ═══════════ */}
@@ -506,7 +515,7 @@ export default function Contributions() {
             <Card>
               <CardHeader className="flex-row items-center justify-between space-y-0">
                 <div>
-                  <CardTitle className="text-base">{memberPick.name}</CardTitle>
+                  <CardTitle className="text-base font-semibold tracking-tight">{memberPick.name}</CardTitle>
                   <CardDescription>{memberPick.phone || 'sem telefone'} · {budgetOf(memberPick.id)?.amount ? `Orçamento ${year}: ${fmtKz(budgetOf(memberPick.id)!.amount)}` : `Sem orçamento ${year}`}</CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -517,7 +526,7 @@ export default function Contributions() {
               <CardContent className="space-y-3">
                 {contribsOf(memberPick.id).length === 0 && <p className="text-sm text-muted-foreground">Sem contribuições.</p>}
                 {contribsOf(memberPick.id).map((c) => (
-                  <div key={c.id} className="rounded-lg border p-3 space-y-2">
+                  <div key={c.id} className="rounded-xl border bg-card p-3 shadow-sm space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-sm">{c.description}</span>
                       <Badge variant={c.status === 'concluida' ? 'default' : c.status === 'em_atraso' ? 'destructive' : 'secondary'} className="text-[10px]">
@@ -599,7 +608,7 @@ export default function Contributions() {
         <TabsContent value="msg" className="space-y-4 pt-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2"><Sparkles className="h-4 w-4 text-purple-500" /> Modelos por IA (só marcadores)</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight"><Sparkles className="h-4 w-4 text-amber-600" /> Modelos de mensagem</CardTitle>
               <CardDescription>
                 A IA recebe apenas o objectivo e as contagens por grupo — nunca nomes, telefones ou valores.
                 Os marcadores {'{nome} {descricao} {valor} {prazo} {valor_em_falta}'} são substituídos pelo sistema.
@@ -622,7 +631,7 @@ export default function Contributions() {
               </div>
 
               {groups.map((g) => (
-                <div key={g.id} className="rounded-lg border p-3 space-y-2">
+                <div key={g.id} className="rounded-xl border bg-card p-3 shadow-sm space-y-2">
                   <div className="flex items-center gap-2 text-xs font-semibold">
                     {g.label} <Badge variant="outline">{g.members.length} destinatário(s)</Badge>
                     <span className="text-[10px] text-muted-foreground">marcadores: {placeholdersIn(templates[g.id] || '').join(' ') || '—'}</span>
@@ -652,7 +661,7 @@ export default function Contributions() {
           <Card>
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <div>
-                <CardTitle className="text-base">Fila de mensagens externas</CardTitle>
+                <CardTitle className="text-base font-semibold tracking-tight">Fila de mensagens externas</CardTitle>
                 <CardDescription>Modo manual: use os botões wa.me / sms: e marque como enviada. Janela de cancelamento de 10 min.</CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={retryFailed} className="gap-1.5"><RefreshCw className="h-4 w-4" /> Repetir falhadas</Button>
@@ -662,7 +671,7 @@ export default function Contributions() {
               {pending.slice(0, 30).map((o) => {
                 const inWindow = o.cancelUntil > Date.now();
                 return (
-                  <div key={o.id} className="rounded-lg border p-2.5 text-xs space-y-1.5">
+                  <div key={o.id} className="space-y-1.5 rounded-xl border bg-card p-3 text-xs shadow-sm">
                     <div className="flex flex-wrap items-center gap-2">
                       <b>{o.memberName || o.memberId}</b>
                       <Badge variant="outline" className="text-[10px]">{o.kind}</Badge>
