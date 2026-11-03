@@ -135,13 +135,17 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
   const totalSaved = recordings.reduce((s, r) => s + r.size, 0);
 
   return (
-    <div className="space-y-3 md:space-y-4 pb-4">
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950 text-white shadow-xl shadow-rose-900/10">
+    <div className="mx-auto w-full max-w-3xl space-y-4 pb-6">
+      <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-slate-900 via-slate-900 to-rose-950 text-white shadow-xl shadow-rose-900/10">
         <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-rose-500/20 blur-3xl" />
-        <div className="relative p-3.5 sm:p-4">
+        <div className="relative p-4 sm:p-5">
+          <div className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-100/90">
+            <RadioIcon className="h-3 w-3" />
+            Rádio em direto
+          </div>
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-rose-500 via-red-500 to-orange-400 shadow-lg">
+              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 via-red-500 to-orange-400 shadow-lg">
                 <div className="text-center leading-none">
                   <div className="text-sm font-black tracking-tighter">91.9</div>
                   <div className="text-[8px] font-semibold uppercase tracking-widest opacity-90">FM</div>
@@ -155,7 +159,7 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <h1 className="truncate text-sm font-semibold sm:text-base">{RADIO.name}</h1>
+                  <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">{RADIO.name}</h1>
                   <Badge className="h-5 border-0 bg-white/10 px-1.5 text-[10px] text-rose-100">{RADIO.freq}</Badge>
                 </div>
                 <p className="truncate text-[11px] text-slate-400">{RADIO.city}</p>
@@ -194,9 +198,9 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
 
       {variant === 'full' && (
         <div className="grid gap-3 lg:grid-cols-2">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm"><Mic className={`h-4 w-4 ${recorder.recording ? 'animate-pulse text-red-500' : 'text-slate-400'}`} />Gravar</CardTitle>
+          <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm">
+            <CardHeader className="border-b bg-muted/20 pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold tracking-tight"><Mic className={`h-4 w-4 ${recorder.recording ? 'animate-pulse text-red-500' : 'text-slate-400'}`} />Gravar</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between rounded-xl border px-3 py-2.5">
@@ -214,9 +218,9 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm"><Music4 className="h-4 w-4 text-slate-400" />Gravações</CardTitle>
+          <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm">
+            <CardHeader className="border-b bg-muted/20 pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold tracking-tight"><Music4 className="h-4 w-4 text-slate-400" />Gravações</CardTitle>
             </CardHeader>
             <CardContent>
               {recordings.length === 0 ? (
@@ -251,15 +255,15 @@ export default function Radio({ variant = 'full' }: { variant?: 'full' | 'member
       )}
 
       {(variant === 'member' || published.length > 0) && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm"><RadioIcon className="h-4 w-4" />Gravações da igreja</CardTitle>
+        <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm">
+          <CardHeader className="border-b bg-muted/20 pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold tracking-tight"><RadioIcon className="h-4 w-4" />Gravações da igreja</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-2 pt-3">
             {published.length === 0 ? (
               <p className="py-3 text-center text-xs text-muted-foreground">Ainda não há gravações publicadas.</p>
             ) : published.map((p) => (
-              <div key={p.id} className="space-y-1.5 rounded-lg border p-2.5">
+              <div key={p.id} className="space-y-1.5 rounded-xl border bg-card p-3 shadow-sm">
                 <p className="text-xs font-semibold">{p.name.replace('.aac', '').replace(/[_-]/g, ' ')}</p>
                 <PublishedPlayer p={p} />
               </div>
