@@ -1,6 +1,6 @@
 name: restore-finances
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
 jobs:
   restore:
     runs-on: ubuntu-latest
@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore Finances from stable commit and modernize UI
         run: |
           set -euo pipefail
@@ -24,69 +24,19 @@ jobs:
               "import { Plus, Trash2, Info, Download, Pencil, FileText, Check, ChevronsUpDown, Printer, MessageCircle, AlertTriangle, Loader2, Wallet } from 'lucide-react';",
               1,
           )
-          old = '''  return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Gestão Mensal</h2>
-          <p className="text-muted-foreground">Registo de entradas e saídas.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">'''
-          new = '''  return (
-    <div className="mx-auto w-full max-w-6xl space-y-5 pb-6">
-      <header className="relative overflow-hidden rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-6 sm:py-6">
-        <div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-xl">
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
-              <Wallet className="h-3.5 w-3.5 text-emerald-600" />
-              TESOURARIA
-            </div>
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Gestão Mensal</h2>
-            <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-              Registo de entradas, ofertas e saídas · {selectedMonth} {selectedYear}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">'''
+          old = '''  return (\n    <div className="space-y-6">\n      <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">\n        <div>\n          <h2 className="text-3xl font-bold tracking-tight">Gestão Mensal</h2>\n          <p className="text-muted-foreground">Registo de entradas e saídas.</p>\n        </div>\n        <div className="flex flex-wrap items-center gap-2">'''
+          new = '''  return (\n    <div className="mx-auto w-full max-w-6xl space-y-5 pb-6">\n      <header className="relative overflow-hidden rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-6 sm:py-6">\n        <div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-emerald-500/10 blur-3xl" />\n        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">\n          <div className="max-w-xl">\n            <div className="mb-2 inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">\n              <Wallet className="h-3.5 w-3.5 text-emerald-600" />\n              TESOURARIA\n            </div>\n            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Gestão Mensal</h2>\n            <p className="mt-1 text-sm text-muted-foreground sm:text-base">\n              Registo de entradas, ofertas e saídas · {selectedMonth} {selectedYear}\n            </p>\n          </div>\n          <div className="flex flex-wrap items-center gap-2">'''
           if old not in t:
               raise SystemExit('header start not found')
           t = t.replace(old, new, 1)
-          # close the header wrapper after action buttons block ends (before Tabs)
-          old_tabs = '''        </div>
-      </div>
-
-        <Tabs defaultValue="estatisticas" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 md:w-[500px]">
-            <TabsTrigger value="estatisticas">Análise</TabsTrigger>
-            <TabsTrigger value="dizimos">Membros</TabsTrigger>
-            <TabsTrigger value="ofertas">Ofertas</TabsTrigger>
-            <TabsTrigger value="saidas">Saídas</TabsTrigger>
-          </TabsList>'''
-          new_tabs = '''        </div>
-        </div>
-      </header>
-
-        <Tabs defaultValue="estatisticas" className="w-full">
-          <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card md:w-auto">
-            <TabsTrigger value="estatisticas" className="rounded-lg text-xs sm:text-sm">Análise</TabsTrigger>
-            <TabsTrigger value="dizimos" className="rounded-lg text-xs sm:text-sm">Membros</TabsTrigger>
-            <TabsTrigger value="ofertas" className="rounded-lg text-xs sm:text-sm">Ofertas</TabsTrigger>
-            <TabsTrigger value="saidas" className="rounded-lg text-xs sm:text-sm">Saídas</TabsTrigger>
-          </TabsList>'''
+          old_tabs = '''        </div>\n      </div>\n\n        <Tabs defaultValue="estatisticas" className="w-full">\n          <TabsList className="grid w-full grid-cols-4 md:w-[500px]">\n            <TabsTrigger value="estatisticas">Análise</TabsTrigger>\n            <TabsTrigger value="dizimos">Membros</TabsTrigger>\n            <TabsTrigger value="ofertas">Ofertas</TabsTrigger>\n            <TabsTrigger value="saidas">Saídas</TabsTrigger>\n          </TabsList>'''
+          new_tabs = '''        </div>\n        </div>\n      </header>\n\n        <Tabs defaultValue="estatisticas" className="w-full">\n          <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card md:w-auto">\n            <TabsTrigger value="estatisticas" className="rounded-lg text-xs sm:text-sm">Análise</TabsTrigger>\n            <TabsTrigger value="dizimos" className="rounded-lg text-xs sm:text-sm">Membros</TabsTrigger>\n            <TabsTrigger value="ofertas" className="rounded-lg text-xs sm:text-sm">Ofertas</TabsTrigger>\n            <TabsTrigger value="saidas" className="rounded-lg text-xs sm:text-sm">Saídas</TabsTrigger>\n          </TabsList>'''
           if old_tabs not in t:
               raise SystemExit('tabs block not found')
           t = t.replace(old_tabs, new_tabs, 1)
           t = t.replace(
-              '''          <TabsContent value="dizimos" className="mt-4">
-            <Card>
-              <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Entradas de Membros - {selectedMonth}</CardTitle>''',
-              '''          <TabsContent value="dizimos" className="mt-4">
-            <Card className="rounded-2xl border-border/70 shadow-sm">
-              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <CardTitle className="text-base font-semibold tracking-tight">Entradas de Membros · {selectedMonth}</CardTitle>''',
+              '''          <TabsContent value="dizimos" className="mt-4">\n            <Card>\n              <CardHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4">\n                <div>\n                  <CardTitle>Entradas de Membros - {selectedMonth}</CardTitle>''',
+              '''          <TabsContent value="dizimos" className="mt-4">\n            <Card className="rounded-2xl border-border/70 shadow-sm">\n              <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">\n                <div>\n                  <CardTitle className="text-base font-semibold tracking-tight">Entradas de Membros · {selectedMonth}</CardTitle>''',
               1,
           )
           t, n2 = re.subn(
