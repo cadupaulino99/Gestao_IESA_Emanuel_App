@@ -32,6 +32,13 @@ export default function Dashboard() {
   const [, tick] = useState(0);
   useEffect(() => livePlayer.subscribe(() => tick((n) => n + 1)), []);
 
+  useEffect(() => {
+    if (!isAdminHome || adminSection === 'home') return;
+    requestAnimationFrame(() => {
+      document.getElementById('admin-detail-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [adminSection, isAdminHome]);
+
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats', year, isFinancialStaff],
     staleTime: 5 * 60 * 1000,
@@ -213,6 +220,10 @@ export default function Dashboard() {
     try { await livePlayer.play(); } catch { /* ok */ }
   };
 
+  const openSection = (id: 'overview' | 'calendar' | 'birthdays' | 'parecer') => {
+    setAdminSection((cur) => (cur === id ? 'home' : id));
+  };
+
   return (
     <div className="space-y-3 pb-3">
       {isAdminHome ? (
@@ -243,11 +254,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {tiles.map((t) => {
               const Icon = t.icon;
-              const active =
-                (t.id === 'overview' && adminSection === 'overview') ||
-                (t.id === 'calendar' && adminSection === 'calendar') ||
-                (t.id === 'birthdays' && adminSection === 'birthdays') ||
-                (t.id === 'parecer' && adminSection === 'parecer');
+              const active = adminSection === t.id;
               return (
                 <button
                   key={t.id}
@@ -257,12 +264,9 @@ export default function Dashboard() {
                       navigate((t as any).path);
                       return;
                     }
-                    if (t.id === 'overview') setAdminSection(adminSection === 'overview' ? 'home' : 'overview');
-                    else if (t.id === 'calendar') setAdminSection(adminSection === 'calendar' ? 'home' : 'calendar');
-                    else if (t.id === 'birthdays') setAdminSection(adminSection === 'birthdays' ? 'home' : 'birthdays');
-                    else if (t.id === 'parecer') setAdminSection(adminSection === 'parecer' ? 'home' : 'parecer');
+                    openSection(t.id as 'overview' | 'calendar' | 'birthdays' | 'parecer');
                   }}
-                  className={`group relative flex flex-col items-start gap-2 overflow-hidden rounded-2xl bg-gradient-to-br ${t.from} ${t.to} p-3 text-left text-white shadow-md transition active:scale-[0.98] ${active ? 'ring-2 ring-white/70 ring-offset-2 ring-offset-slate-950' : ''}`}
+                  className={`group relative flex flex-col items-start gap-2 overflow-hidden rounded-2xl bg-gradient-to-br ${t.from} ${t.to} p-3 text-left text-white shadow-md transition active:scale-[0.98] ${active ? 'ring-2 ring-white/80 ring-offset-2 ring-offset-background' : ''}`}
                 >
                   <Icon className="h-6 w-6 opacity-95" />
                   <div className="min-w-0 pr-6">
@@ -277,14 +281,128 @@ export default function Dashboard() {
             })}
           </div>
 
+          {adminSection !== 'home' && (
+            <div id="admin-detail-panel" className="scroll-mt-20 space-y-3 rounded-2xl border border-sky-500/40 bg-slate-50 p-3 shadow-md dark:border-sky-500/30 dark:bg-slate-900/60">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {adminSection === 'overview' && 'Visão geral financeira'}
+                  {adminSection === 'calendar' && 'Calendário de eventos'}
+                  {adminSection === 'birthdays' && `Aniversariantes de ${luandaMonthNamePT()}`}
+                  {adminSection === 'parecer' && 'Parecer administrativo'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setAdminSection('home')}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              {adminSection === 'parecer' && (
+                isLoading || !stats ? (
+                  <p className="py-6 text-center text-xs text-muted-foreground">A carregar dados da tesouraria…</p>
+                ) : (
+                  <AIExecutiveAnalysis financialStats={{
+                    totalTithes: stats.totalTithes || 0,
+                    totalOfferings: stats.totalOfferings || 0,
+                    totalExpenses: stats.totalExpenses || 0,
+                    balance: stats.balance || 0,
+                    totalMembers: stats.totalMembers || 0,
+                    activeMembers: stats.activeMembers || 0,
+                    year,
+                  }} />
+                )
+              )}
+
+              {adminSection === 'overview' && (
+                isLoading ? (
+                  <p className="py-6 text-center text-xs text-muted-foreground">A carregar…</p>
+                ) : (
+                  <div className="grid gap-3 lg:grid-cols-12">
+                    <Card className="border-slate-200/80 shadow-sm lg:col-span-7">
+                      <CardHeader className="pb-2"><CardTitle className="text-sm">Fluxo mensal ({year})</CardTitle></CardHeader>
+                      <CardContent className="h-52 pt-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={stats?.chartData || []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={48} />
+                            <Tooltip formatter={(v: any) => formatKz(Number(v) || 0)} contentStyle={{ borderRadius: 12, fontSize: 12 }} />
+                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                            <Bar dataKey="Entradas" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                            <Bar dataKey="Saídas" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-slate-200/80 shadow-sm lg:col-span-5">
+                      <CardHeader className="pb-2"><CardTitle className="text-sm">Movimentos recentes</CardTitle></CardHeader>
+                      <CardContent className="space-y-2 pt-0">
+                        {!stats?.activities?.length ? (
+                          <p className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">Sem movimentos recentes.</p>
+                        ) : stats.activities.map((act: any) => (
+                          <div key={act.id} className="flex items-center justify-between rounded-lg border bg-white px-2.5 py-2 dark:bg-slate-950">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-medium">{act.description || act.category || (act.type === 'expense' ? 'Despesa' : 'Oferta')}</p>
+                              <p className="text-[10px] text-muted-foreground">{act.createdAt ? new Date(act.createdAt).toLocaleDateString('pt-AO') : '—'}</p>
+                            </div>
+                            <span className={`shrink-0 text-xs font-semibold tabular-nums ${act.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                              {act.type === 'expense' ? '−' : '+'}{formatKz(act.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  </div>
+                )
+              )}
+
+              {adminSection === 'calendar' && (
+                <div className="space-y-2">
+                  {!stats?.events?.length ? (
+                    <p className="py-6 text-center text-xs text-muted-foreground">Ainda não há eventos registados.</p>
+                  ) : stats.events.slice(0, 20).map((ev: any) => (
+                    <div key={ev.id} className="flex items-center justify-between rounded-lg border bg-white px-3 py-2 dark:bg-slate-950">
+                      <div>
+                        <p className="text-sm font-medium">{ev.title || ev.name || 'Evento'}</p>
+                        <p className="text-[11px] text-muted-foreground">{ev.date || ev.when || 'Data a definir'}</p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px]">{ev.type || 'Evento'}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {adminSection === 'birthdays' && (
+                <div className="space-y-2">
+                  {!stats?.birthdays?.length ? (
+                    <p className="py-6 text-center text-xs text-muted-foreground">Sem aniversários este mês.</p>
+                  ) : stats.birthdays.map((m: any) => {
+                    const isToday = isBirthdayToday(m.birthDate);
+                    return (
+                      <div key={m.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${isToday ? 'border-rose-200 bg-rose-50/80 dark:border-rose-900 dark:bg-rose-950/30' : 'bg-white dark:bg-slate-950'}`}>
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-full ${isToday ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-800'}`}><Cake className="h-4 w-4" /></div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{m.name}</span>
+                            {isToday && <Badge className="bg-rose-500 text-[10px]">Hoje!</Badge>}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">Dia {m.bDay} · {m.groupCell || 'Membro'}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
             <div className="mb-2.5 flex items-center justify-between">
               <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white">
                 <BarChart3 className="h-4 w-4 text-sky-600" /> Resumo da Igreja
               </h3>
-              <button type="button" onClick={() => setAdminSection(adminSection === 'overview' ? 'home' : 'overview')} className="text-[11px] font-medium text-sky-600 hover:underline">
-                {adminSection === 'overview' ? 'Ocultar' : 'Ver mais'}
-              </button>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-2.5 text-white">
@@ -312,9 +430,7 @@ export default function Dashboard() {
                 <h3 className="flex items-center gap-1.5 text-sm font-semibold">
                   <Megaphone className="h-4 w-4 text-sky-600" /> Últimas notícias
                 </h3>
-                <button type="button" onClick={() => setAdminSection(adminSection === 'calendar' ? 'home' : 'calendar')} className="text-[11px] font-medium text-sky-600 hover:underline">
-                  Ver todas
-                </button>
+                <button type="button" onClick={() => openSection('calendar')} className="text-[11px] font-medium text-sky-600 hover:underline">Ver todas</button>
               </div>
               {upcomingEvents.length === 0 ? (
                 <p className="rounded-xl border border-dashed py-6 text-center text-xs text-muted-foreground">Ainda não há eventos ou avisos.</p>
@@ -373,103 +489,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {adminSection === 'parecer' && isFinancialStaff && !isLoading && stats && (
-            <AIExecutiveAnalysis financialStats={{
-              totalTithes: stats.totalTithes || 0,
-              totalOfferings: stats.totalOfferings || 0,
-              totalExpenses: stats.totalExpenses || 0,
-              balance: stats.balance || 0,
-              totalMembers: stats.totalMembers || 0,
-              activeMembers: stats.activeMembers || 0,
-              year,
-            }} />
-          )}
-
-          {adminSection === 'overview' && isFinancialStaff && (
-            <div className="grid gap-3 lg:grid-cols-12">
-              <Card className="border-slate-200/80 shadow-sm lg:col-span-7">
-                <CardHeader className="pb-2"><CardTitle className="text-sm">Fluxo mensal ({year})</CardTitle></CardHeader>
-                <CardContent className="h-52 pt-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stats?.chartData || []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={48} />
-                      <Tooltip formatter={(v: any) => formatKz(Number(v) || 0)} contentStyle={{ borderRadius: 12, fontSize: 12 }} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar dataKey="Entradas" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={28} />
-                      <Bar dataKey="Saídas" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={28} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-              <Card className="border-slate-200/80 shadow-sm lg:col-span-5">
-                <CardHeader className="pb-2"><CardTitle className="text-sm">Movimentos recentes</CardTitle></CardHeader>
-                <CardContent className="space-y-2 pt-0">
-                  {!stats?.activities?.length ? (
-                    <p className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">Sem movimentos recentes.</p>
-                  ) : stats.activities.map((act: any) => (
-                    <div key={act.id} className="flex items-center justify-between rounded-lg border bg-slate-50/60 px-2.5 py-2 dark:bg-slate-900/40">
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-medium">{act.description || act.category || (act.type === 'expense' ? 'Despesa' : 'Oferta')}</p>
-                        <p className="text-[10px] text-muted-foreground">{act.createdAt ? new Date(act.createdAt).toLocaleDateString('pt-AO') : '—'}</p>
-                      </div>
-                      <span className={`shrink-0 text-xs font-semibold tabular-nums ${act.type === 'expense' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                        {act.type === 'expense' ? '−' : '+'}{formatKz(act.amount)}
-                      </span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {adminSection === 'calendar' && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Eventos da igreja</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {!stats?.events?.length ? (
-                  <p className="py-8 text-center text-xs text-muted-foreground">Ainda não há eventos registados.</p>
-                ) : stats.events.slice(0, 20).map((ev: any) => (
-                  <div key={ev.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
-                    <div>
-                      <p className="text-sm font-medium">{ev.title || ev.name || 'Evento'}</p>
-                      <p className="text-[11px] text-muted-foreground">{ev.date || ev.when || 'Data a definir'}</p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">{ev.type || 'Evento'}</Badge>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {adminSection === 'birthdays' && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Aniversariantes de {luandaMonthNamePT()}</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {!stats?.birthdays?.length ? (
-                  <p className="py-8 text-center text-xs text-muted-foreground">Sem aniversários este mês.</p>
-                ) : stats.birthdays.map((m: any) => {
-                  const isToday = isBirthdayToday(m.birthDate);
-                  return (
-                    <div key={m.id} className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${isToday ? 'border-rose-200 bg-rose-50/80 dark:border-rose-900 dark:bg-rose-950/30' : 'bg-card'}`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-full ${isToday ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-800'}`}><Cake className="h-4 w-4" /></div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{m.name}</span>
-                            {isToday && <Badge className="bg-rose-500 text-[10px]">Hoje!</Badge>}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">Dia {m.bDay} · {m.groupCell || 'Membro'}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-
           {isFinancialStaff && !isLoading && stats?.inactiveTithers && stats.inactiveTithers.length > 0 && (
             <Alert className="border-amber-200 bg-amber-50/90 py-3 dark:border-amber-900 dark:bg-amber-950/30">
               <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -507,37 +526,31 @@ export default function Dashboard() {
               )}
             </TabsContent>
             <TabsContent value="members" className="m-0">
-              <Card className="shadow-sm">
-                <CardContent className="pt-4">
-                  <button type="button" onClick={() => navigate('/members')} className="flex w-full items-center justify-between rounded-xl border px-3 py-3 text-sm font-medium">
-                    Ir para Membros <ChevronRight className="h-4 w-4" />
-                  </button>
-                </CardContent>
-              </Card>
+              <Card className="shadow-sm"><CardContent className="pt-4">
+                <button type="button" onClick={() => navigate('/members')} className="flex w-full items-center justify-between rounded-xl border px-3 py-3 text-sm font-medium">
+                  Ir para Membros <ChevronRight className="h-4 w-4" />
+                </button>
+              </CardContent></Card>
             </TabsContent>
             <TabsContent value="calendar" className="m-0">
-              <Card className="shadow-sm">
-                <CardContent className="space-y-2 pt-4">
-                  {(stats?.events || []).slice(0, 12).map((ev: any) => (
-                    <div key={ev.id} className="flex justify-between border-b py-2 text-sm">
-                      <span>{ev.title || ev.name || 'Evento'}</span>
-                      <span className="text-muted-foreground text-xs">{ev.date || '—'}</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+              <Card className="shadow-sm"><CardContent className="space-y-2 pt-4">
+                {(stats?.events || []).slice(0, 12).map((ev: any) => (
+                  <div key={ev.id} className="flex justify-between border-b py-2 text-sm">
+                    <span>{ev.title || ev.name || 'Evento'}</span>
+                    <span className="text-xs text-muted-foreground">{ev.date || '—'}</span>
+                  </div>
+                ))}
+              </CardContent></Card>
             </TabsContent>
             <TabsContent value="birthdays" className="m-0">
-              <Card className="shadow-sm">
-                <CardContent className="space-y-2 pt-4">
-                  {(stats?.birthdays || []).map((m: any) => (
-                    <div key={m.id} className="flex items-center gap-2 text-sm">
-                      <Cake className="h-4 w-4 text-rose-500" /> {m.name}
-                      <span className="ml-auto text-xs text-muted-foreground">Dia {m.bDay}</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+              <Card className="shadow-sm"><CardContent className="space-y-2 pt-4">
+                {(stats?.birthdays || []).map((m: any) => (
+                  <div key={m.id} className="flex items-center gap-2 text-sm">
+                    <Cake className="h-4 w-4 text-rose-500" /> {m.name}
+                    <span className="ml-auto text-xs text-muted-foreground">Dia {m.bDay}</span>
+                  </div>
+                ))}
+              </CardContent></Card>
             </TabsContent>
           </Tabs>
         </>
