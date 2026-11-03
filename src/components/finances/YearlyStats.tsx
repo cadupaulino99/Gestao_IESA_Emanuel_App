@@ -26,8 +26,7 @@ export function YearlyStats({ year }: { year: string }) {
         const tithesSnap = await getDocs(query(collection(db, 'tithes'), where('year', '==', numYear)));
         const offeringsSnap = await getDocs(query(collection(db, 'offerings'), where('year', '==', numYear)));
         const expensesSnap = await getDocs(query(collection(db, 'expenses'), where('year', '==', numYear)));
-        
-        // chaves canónicas '01'..'12' (v1.9.3); name só para exibição
+
         const monthlyData = MONTHS_IDX.reduce((acc, mi) => {
           acc[mi] = { name: MONTHS_SHORT[MONTHS_IDX.indexOf(mi as any)], Entradas: 0, Saídas: 0 };
           return acc;
@@ -49,16 +48,14 @@ export function YearlyStats({ year }: { year: string }) {
           const d = doc.data();
           const dm = toMonthIdx(d.month);
           if (monthlyData[dm]) monthlyData[dm].Saídas += d.amount;
-          
-          categoryMap[d.category] = (categoryMap[d.category] || 0) + d.amount;
+          const cat = d.category || 'Outros';
+          categoryMap[cat] = (categoryMap[cat] || 0) + (d.amount || 0);
         });
 
-        setData(Object.values(monthlyData));
-        
-        const catData = Object.entries(categoryMap).map(([name, value]) => ({ name, value }));
-        setCategoryData(catData);
+        setData(MONTHS_IDX.map(mi => monthlyData[mi]));
+        setCategoryData(Object.entries(categoryMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
       } catch (error) {
-        handleFirestoreError(error, OperationType.GET, 'multiple');
+        handleFirestoreError(error, OperationType.GET, 'yearly-stats');
       } finally {
         setLoading(false);
       }
@@ -66,18 +63,20 @@ export function YearlyStats({ year }: { year: string }) {
     loadStats();
   }, [year]);
 
-  if (loading) return <div className="py-8 text-center text-muted-foreground">A carregar estatísticas...</div>;
+  if (loading) {
+    return <div className="py-12 text-center text-sm text-muted-foreground">A carregar análise anual…</div>;
+  }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 mt-4">
-      <Card>
+    <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <Card className="rounded-2xl border-border/70 shadow-sm md:col-span-2">
         <CardHeader>
-          <CardTitle>Entradas vs Saídas ({year})</CardTitle>
-          <CardDescription>Evolução financeira ao longo dos meses.</CardDescription>
+          <CardTitle>Fluxo Mensal {year}</CardTitle>
+          <CardDescription>Entradas vs saídas ao longo do ano.</CardDescription>
         </CardHeader>
-        <CardContent className={isMobile ? "h-[250px]" : "h-[300px]"}>
-          <ResponsiveContainer width="100%" height={isMobile ? 250 : 300}>
-            <BarChart data={data} margin={{ left: isMobile ? -25 : 0, right: isMobile ? 0 : 10, top: 20 }}>
+        <CardContent className={isMobile ? "h-[250px]" : "h-[320px]"}>
+          <ResponsiveContainer width="100%" height={isMobile ? 250 : 320}>
+            <BarChart data={data}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
               <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: isMobile ? 10 : 12, fill: '#64748b' }} dy={10} />
               <YAxis fontSize={isMobile ? 10 : 12} tickFormatter={(value) => formatKz(value as number)} axisLine={false} tickLine={false} width={isMobile ? 40 : 60} tick={{ fill: '#64748b' }} dx={-10} />
@@ -90,7 +89,7 @@ export function YearlyStats({ year }: { year: string }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-2xl border-border/70 shadow-sm">
         <CardHeader>
           <CardTitle>Despesas por Categoria</CardTitle>
           <CardDescription>Distribuição de gastos no ano corrente.</CardDescription>
