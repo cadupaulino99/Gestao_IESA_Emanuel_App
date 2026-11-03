@@ -288,15 +288,20 @@ export default function EventsAdmin() {
 
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base"><CalendarPlus className="h-4 w-4" /> Eventos</CardTitle>
+    <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm">
+      <CardHeader className="space-y-1 border-b bg-muted/20 pb-4">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/15 text-violet-700 dark:text-violet-300">
+            <CalendarPlus className="h-4 w-4" />
+          </span>
+          Eventos
+        </CardTitle>
         <CardDescription>
           Atividades com data própria. Estados: marcado, adiado, cancelado, realizado.
           Cartaz opcional (JPG/PNG/WEBP até 10 MB — comprimido a 1600 px e guardado como ficheiro).
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 pt-4">
         {/* ── formulário ── */}
         <div className="space-y-3 rounded-lg border bg-blue-50/40 dark:bg-blue-950/20 p-3">
           <div className="flex items-center justify-between">

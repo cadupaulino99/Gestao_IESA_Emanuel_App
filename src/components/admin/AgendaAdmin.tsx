@@ -125,16 +125,21 @@ export default function AgendaAdmin() {
   })).filter((g) => g.items.length > 0);
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base"><CalendarDays className="h-4 w-4" /> Agenda semanal</CardTitle>
+    <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm">
+      <CardHeader className="space-y-1 border-b bg-muted/20 pb-4">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/15 text-sky-700 dark:text-sky-300">
+            <CalendarDays className="h-4 w-4" />
+          </span>
+          Agenda semanal
+        </CardTitle>
         <CardDescription>
           Programação regular (cultos, ensaios, reuniões). Para suspender um dia, use «Suspender ocorrência» —
           a programação mantém-se e os membros vêem a data riscada com «Cancelado».
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-3 rounded-lg border bg-slate-50 dark:bg-slate-900 p-3">
+      <CardContent className="space-y-4 pt-4">
+        <div className="space-y-3 rounded-xl border bg-muted/30 p-3 sm:p-4">
           <div className="flex items-center justify-between">
             <Label className="text-xs font-bold uppercase tracking-wide">{editing ? 'Editar atividade' : 'Nova atividade regular'}</Label>
             {editing && <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={reset}>Cancelar edição</Button>}

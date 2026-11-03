@@ -954,7 +954,7 @@ export default function Admin() {
       </div>
 
       <Tabs defaultValue={isSuperAdmin ? "users" : "members"} className="w-full">
-        <TabsList className="mb-4 flex-wrap">
+        <TabsList className="mb-4 flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card">
           {isSuperAdmin && (<TabsTrigger value="users"><Shield className="h-4 w-4 mr-2" /> Administradores</TabsTrigger>)}
           {/* v1.14: auto-cadastro — só perfil admin vê; o servidor (rules) confirma nas escritas */}
           {userRole === 'admin' && (<TabsTrigger value="signups"><UserPlus className="h-4 w-4 mr-2" /> Cadastros Pendentes</TabsTrigger>)}
@@ -1339,9 +1339,19 @@ export default function Admin() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="mural" className="space-y-6">
+        <TabsContent value="mural" className="space-y-5">
           {/* v1.13.0 — «Avisos, Agenda e Eventos»: gestão pela liderança, leitura
               pelos membros no Portal (mesmas colecções — fonte única). */}
+          <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 px-4 py-5 text-white shadow-sm sm:px-6">
+            <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+            <div className="relative">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">Comunicação</p>
+              <h3 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">Avisos, Agenda e Eventos</h3>
+              <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                Gestão da liderança · o que publicar aqui aparece no Portal do Membro (fonte única de dados).
+              </p>
+            </div>
+          </div>
           <AnnouncementsAdmin />
           <AgendaAdmin />
           <EventsAdmin />
