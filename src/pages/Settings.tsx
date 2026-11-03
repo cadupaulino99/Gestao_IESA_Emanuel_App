@@ -90,16 +90,33 @@ export default function Settings() {
   const deviceInfo = useDevice();
   
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <SettingsIcon className="h-8 w-8 text-primary" />
-          Definições Gerais
-        </h2>
-        <p className="text-muted-foreground mt-1">Configure as preferências do aplicativo, acessibilidade e aparência.</p>
-      </div>
+    <div className="mx-auto w-full max-w-6xl space-y-7 pb-8">
+      <header className="relative overflow-hidden rounded-2xl border bg-card px-5 py-6 shadow-sm sm:px-7 sm:py-7">
+        <div className="pointer-events-none absolute -right-12 -top-16 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+              <SettingsIcon className="h-3.5 w-3.5 text-primary" />
+              CENTRO DE CONTROLO
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Definições</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">
+              Personalize a experiência da aplicação, proteja a sua conta e ajuste o comportamento do sistema.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3 rounded-xl border bg-background/80 p-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Conta protegida</p>
+              <p className="text-xs text-muted-foreground">Preferências da sessão</p>
+            </div>
+          </div>
+        </div>
+      </header>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2">
         {/* ── Palavra-passe (v1.16.0) ── */}
         <Card>
           <CardHeader>
@@ -134,7 +151,7 @@ export default function Settings() {
         </Card>
 
         {/* Aparência */}
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+        <Card className="h-full rounded-2xl border-border/70 shadow-sm transition-shadow duration-200 hover:shadow-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Palette className="h-5 w-5 text-muted-foreground" />
@@ -142,7 +159,7 @@ export default function Settings() {
             </CardTitle>
             <CardDescription>Personalize o tema e a densidade visual.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-5">
             <div className="space-y-3">
               <Label htmlFor="mode-select">Modo (claro / escuro)</Label>
               <Select value={mode} onValueChange={(m) => setMode(m as Mode)}>
@@ -214,7 +231,7 @@ export default function Settings() {
         </Card>
 
         {/* Preferências */}
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+        <Card className="h-full rounded-2xl border-border/70 shadow-sm transition-shadow duration-200 hover:shadow-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <LayoutTemplate className="h-5 w-5 text-muted-foreground" />
@@ -259,7 +276,7 @@ export default function Settings() {
         </Card>
 
         {/* Notificações e Comportamento */}
-        <Card className="shadow-sm md:col-span-2 border-slate-200 dark:border-slate-800">
+        <Card className="rounded-2xl border-border/70 shadow-sm md:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Globe className="h-5 w-5 text-muted-foreground" />
@@ -307,7 +324,7 @@ export default function Settings() {
           </CardContent>
         </Card>
       {isAdmin && nsLoaded && (
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+        <Card className="h-full rounded-2xl border-border/70 shadow-sm transition-shadow duration-200 hover:shadow-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">Notificações & Lembretes</CardTitle>
             <CardDescription>Configuração única dos lembretes de contribuições (hora de Luanda, UTC+1).</CardDescription>
