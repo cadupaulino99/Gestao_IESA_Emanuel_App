@@ -342,7 +342,6 @@ export default function Members() {
                 </form>
               </DialogContent>
             </Dialog>
-
             <div className="relative">
               <Input type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} disabled={isImporting} className="absolute inset-0 cursor-pointer opacity-0" />
               <Button variant="outline" disabled={isImporting} className="pointer-events-none gap-1.5"><Upload className="h-4 w-4" /> Importar</Button>
@@ -350,7 +349,6 @@ export default function Members() {
             <Button variant="outline" className="gap-1.5" onClick={exportPDF}><Printer className="h-4 w-4" /> Imprimir Lista</Button>
             <Button variant="outline" className="gap-1.5" onClick={exportExcel}><Download className="h-4 w-4" /> Excel</Button>
           </div>
-
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -373,7 +371,6 @@ export default function Members() {
               </SelectContent>
             </Select>
           </div>
-
           <Card className="overflow-hidden border-slate-200/80 shadow-sm dark:border-slate-800">
             <CardContent className="p-0">
               <div className="hidden overflow-x-auto md:block">
@@ -424,7 +421,6 @@ export default function Members() {
                   </TableBody>
                 </Table>
               </div>
-
               <div className="space-y-2 p-3 md:hidden">
                 {filteredMembers.map((m) => (
                   <Card key={m.id}>
@@ -441,7 +437,6 @@ export default function Members() {
                   </Card>
                 ))}
               </div>
-
               <div className="flex flex-col items-center justify-between gap-2 border-t px-4 py-3 text-xs text-muted-foreground sm:flex-row">
                 <span>Mostrando {filteredMembers.length} membro{filteredMembers.length === 1 ? '' : 's'}</span>
                 {hasNextPage && (
@@ -453,11 +448,9 @@ export default function Members() {
             </CardContent>
           </Card>
         </TabsContent>
-
         <TabsContent value="dizimos" className="mt-0"><MemberTithesTracker /></TabsContent>
         <TabsContent value="comunhao" className="mt-0"><CommunionTracker /></TabsContent>
       </Tabs>
-
       <Sheet open={!!selectedMember} onOpenChange={(o) => { if (!o) setSelectedMember(null); }}>
         <SheetContent className="w-full sm:max-w-md">
           <SheetHeader>
@@ -480,7 +473,6 @@ export default function Members() {
           )}
         </SheetContent>
       </Sheet>
-
       {cardMember && (
         <MemberCardModal member={cardMember} open={!!cardMember} onOpenChange={(o) => { if (!o) setCardMember(null); }} />
       )}
