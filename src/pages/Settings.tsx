@@ -119,8 +119,8 @@ export default function Settings() {
       <div className="grid gap-5 md:grid-cols-2">
         {/* ── Palavra-passe (v1.16.0) ── */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+          <CardHeader className="space-y-1 pb-4">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <KeyRound className="h-5 w-5 text-primary" /> A minha palavra-passe
             </CardTitle>
             <CardDescription>
@@ -143,7 +143,7 @@ export default function Settings() {
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void changeOwnPassword(); } }} />
             </div>
             {pwErr && <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive font-medium">{pwErr}</p>}
-            <Button onClick={changeOwnPassword} disabled={pwBusy} className="w-full gap-2">
+            <Button onClick={changeOwnPassword} disabled={pwBusy} className="w-full gap-2 rounded-lg">
               {pwBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
               Alterar palavra-passe
             </Button>
@@ -152,8 +152,8 @@ export default function Settings() {
 
         {/* Aparência */}
         <Card className="h-full rounded-2xl border-border/70 shadow-sm transition-shadow duration-200 hover:shadow-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+          <CardHeader className="space-y-1 pb-4">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <Palette className="h-5 w-5 text-muted-foreground" />
               Aparência do Aplicativo
             </CardTitle>
@@ -167,9 +167,9 @@ export default function Settings() {
                   <SelectValue placeholder="Seleccione o modo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="system"><div className="flex items-center gap-2"><Monitor className="h-4 w-4" /> Padrão do Sistema</div></SelectItem>
-                  <SelectItem value="light"><div className="flex items-center gap-2"><Sun className="h-4 w-4" /> Claro</div></SelectItem>
-                  <SelectItem value="dark"><div className="flex items-center gap-2"><Moon className="h-4 w-4" /> Escuro</div></SelectItem>
+                  <SelectItem value="system"><div className="flex items-center gap-2 text-base font-semibold tracking-tight"><Monitor className="h-4 w-4" /> Padrão do Sistema</div></SelectItem>
+                  <SelectItem value="light"><div className="flex items-center gap-2 text-base font-semibold tracking-tight"><Sun className="h-4 w-4" /> Claro</div></SelectItem>
+                  <SelectItem value="dark"><div className="flex items-center gap-2 text-base font-semibold tracking-tight"><Moon className="h-4 w-4" /> Escuro</div></SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -182,30 +182,30 @@ export default function Settings() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="iesa">
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-2 text-base font-semibold tracking-tight">
                       <span className="w-3 h-3 rounded-full" style={{ background: '#B4232A' }} />
                       <span className="w-3 h-3 rounded-full -ml-1" style={{ background: '#C99A2E' }} />
                       IESA Clássico (vermelho + dourado)
                     </span>
                   </SelectItem>
                   <SelectItem value="executivo">
-                    <span className="flex items-center gap-2">
+                    <span className="flex items-center gap-2 text-base font-semibold tracking-tight">
                       <span className="w-3 h-3 rounded-full" style={{ background: '#101828' }} />
                       <span className="w-3 h-3 rounded-full -ml-1" style={{ background: '#C99A2E' }} />
                       Executivo (grafite + dourado)
                     </span>
                   </SelectItem>
                   <SelectItem value="cosmic">
-                    <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-purple-500" /> Cósmico (tema completo)</span>
+                    <span className="flex items-center gap-2 text-base font-semibold tracking-tight"><span className="w-3 h-3 rounded-full bg-purple-500" /> Cósmico (tema completo)</span>
                   </SelectItem>
                   <SelectItem value="forest">
-                    <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-green-700" /> Floresta (tema completo)</span>
+                    <span className="flex items-center gap-2 text-base font-semibold tracking-tight"><span className="w-3 h-3 rounded-full bg-green-700" /> Floresta (tema completo)</span>
                   </SelectItem>
                   <SelectItem value="ocean">
-                    <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500" /> Oceano (tema completo)</span>
+                    <span className="flex items-center gap-2 text-base font-semibold tracking-tight"><span className="w-3 h-3 rounded-full bg-blue-500" /> Oceano (tema completo)</span>
                   </SelectItem>
                   <SelectItem value="sunset">
-                    <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-orange-500" /> Pôr do Sol (tema completo)</span>
+                    <span className="flex items-center gap-2 text-base font-semibold tracking-tight"><span className="w-3 h-3 rounded-full bg-orange-500" /> Pôr do Sol (tema completo)</span>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -232,8 +232,8 @@ export default function Settings() {
 
         {/* Preferências */}
         <Card className="h-full rounded-2xl border-border/70 shadow-sm transition-shadow duration-200 hover:shadow-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+          <CardHeader className="space-y-1 pb-4">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <LayoutTemplate className="h-5 w-5 text-muted-foreground" />
               Preferências Locais
             </CardTitle>
@@ -248,9 +248,9 @@ export default function Settings() {
                   <SelectValue placeholder="Seleccione o idioma" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pt-AO"><div className="flex items-center gap-2"><Languages className="h-4 w-4" /> Português (Angola)</div></SelectItem>
-                  <SelectItem value="pt-BR"><div className="flex items-center gap-2"><Languages className="h-4 w-4" /> Português (Brasil)</div></SelectItem>
-                  <SelectItem value="en-US"><div className="flex items-center gap-2"><Languages className="h-4 w-4" /> English (US)</div></SelectItem>
+                  <SelectItem value="pt-AO"><div className="flex items-center gap-2 text-base font-semibold tracking-tight"><Languages className="h-4 w-4" /> Português (Angola)</div></SelectItem>
+                  <SelectItem value="pt-BR"><div className="flex items-center gap-2 text-base font-semibold tracking-tight"><Languages className="h-4 w-4" /> Português (Brasil)</div></SelectItem>
+                  <SelectItem value="en-US"><div className="flex items-center gap-2 text-base font-semibold tracking-tight"><Languages className="h-4 w-4" /> English (US)</div></SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">Aviso: A alteração de idioma pode requerer recarregar a página para ter efeito completo.</p>
@@ -258,7 +258,7 @@ export default function Settings() {
 
             <div className="flex items-center justify-between border-t pt-4 border-slate-100 dark:border-slate-800">
               <div className="space-y-0.5">
-                <Label className="flex items-center gap-2">Ocultar Valores Financeiros <ShieldCheck className="h-3 w-3 text-green-600" /></Label>
+                <Label className="flex items-center gap-2 text-base font-semibold tracking-tight">Ocultar Valores Financeiros <ShieldCheck className="h-3 w-3 text-green-600" /></Label>
                 <p className="text-[12px] text-muted-foreground">Oculta os montantes com asteriscos (***) por privacidade.</p>
               </div>
               <Switch checked={hideFinancials} onCheckedChange={setHideFinancials} />
@@ -277,16 +277,16 @@ export default function Settings() {
 
         {/* Notificações e Comportamento */}
         <Card className="rounded-2xl border-border/70 shadow-sm md:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+          <CardHeader className="space-y-1 pb-4">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">
               <Globe className="h-5 w-5 text-muted-foreground" />
               Diagnóstico do Ambiente
             </CardTitle>
             <CardDescription>O sistema reconheceu o seu ambiente e está adaptado automaticamente.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-xl p-4">
-               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm font-mono text-muted-foreground">
+            <div className="rounded-xl border bg-muted/30 p-4">
+               <div className="grid grid-cols-1 gap-4 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-5">
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-semibold text-foreground font-sans">Navegador</span>
                     <span className="truncate">{deviceInfo.browser}</span>
@@ -316,7 +316,7 @@ export default function Settings() {
             <Button
               variant="outline"
               size="sm"
-              className="mt-3 gap-2"
+              className="mt-4 gap-2 rounded-lg"
               onClick={() => window.dispatchEvent(new CustomEvent('iesa:check-update'))}
             >
               <ArrowDownToLine className="h-4 w-4" /> Verificar atualizações
@@ -325,8 +325,8 @@ export default function Settings() {
         </Card>
       {isAdmin && nsLoaded && (
         <Card className="h-full rounded-2xl border-border/70 shadow-sm transition-shadow duration-200 hover:shadow-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">Notificações & Lembretes</CardTitle>
+          <CardHeader className="space-y-1 pb-4">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight">Notificações & Lembretes</CardTitle>
             <CardDescription>Configuração única dos lembretes de contribuições (hora de Luanda, UTC+1).</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
