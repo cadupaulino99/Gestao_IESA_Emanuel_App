@@ -36,6 +36,8 @@ export const memberSchema = z.object({
   profession: z.string().optional(),
   address: z.string().optional(),
   groupCell: z.string().optional(),
+  /** Departamento / ministério (ex.: JIESA, SOSIESA). */
+  role: z.string().optional(),
   status: z.string().default("Activo"),
 });
 
