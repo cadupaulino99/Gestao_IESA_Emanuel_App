@@ -195,14 +195,8 @@ export default function Members() {
 
   const exportExcel = async () => {
     const rows = filteredMembers.map((m, i) => ({
-      'Nº': i + 1,
-      Nome: m.name,
-      Género: m.gender || '',
-      Tipo: memberKind(m),
-      Área: m.groupCell || '',
-      Departamento: m.role || '',
-      Telefone: m.phone || '',
-      Estado: m.status || 'Activo',
+      'Nº': i + 1, Nome: m.name, Género: m.gender || '', Tipo: memberKind(m),
+      Área: m.groupCell || '', Departamento: m.role || '', Telefone: m.phone || '', Estado: m.status || 'Activo',
     }));
     await saveXlsx(rows, 'membros-iesa.xlsx');
     toast.success('Excel exportado.');
@@ -215,9 +209,7 @@ export default function Members() {
     (docPdf as any).autoTable({
       startY: 22,
       head: [['Nº', 'Nome', 'Género', 'Tipo', 'Área', 'Telefone', 'Estado']],
-      body: filteredMembers.map((m, i) => [
-        i + 1, m.name, m.gender || '—', memberKind(m), m.groupCell || '—', m.phone || '—', m.status || 'Activo',
-      ]),
+      body: filteredMembers.map((m, i) => [i + 1, m.name, m.gender || '—', memberKind(m), m.groupCell || '—', m.phone || '—', m.status || 'Activo']),
       styles: { fontSize: 8 },
     });
     docPdf.save('lista-membros.pdf');
@@ -256,21 +248,13 @@ export default function Members() {
 
   const ActionBtns = ({ m }: { m: Member }) => (
     <div className="flex justify-end gap-1">
-      <Button size="icon" className="h-8 w-8 bg-blue-600 hover:bg-blue-700" title="Cartão" onClick={() => setCardMember(m)}>
-        <CreditCard className="h-3.5 w-3.5" />
-      </Button>
-      <Button size="icon" className="h-8 w-8 bg-emerald-600 hover:bg-emerald-700" title="Ver" onClick={() => openProfile(m)}>
-        <Eye className="h-3.5 w-3.5" />
-      </Button>
-      <Button size="icon" className="h-8 w-8 bg-amber-500 hover:bg-amber-600" title="Editar" onClick={() => openEdit(m)}>
-        <Pencil className="h-3.5 w-3.5" />
-      </Button>
+      <Button size="icon" className="h-8 w-8 bg-blue-600 hover:bg-blue-700" title="Cartão" onClick={() => setCardMember(m)}><CreditCard className="h-3.5 w-3.5" /></Button>
+      <Button size="icon" className="h-8 w-8 bg-emerald-600 hover:bg-emerald-700" title="Ver" onClick={() => openProfile(m)}><Eye className="h-3.5 w-3.5" /></Button>
+      <Button size="icon" className="h-8 w-8 bg-amber-500 hover:bg-amber-600" title="Editar" onClick={() => openEdit(m)}><Pencil className="h-3.5 w-3.5" /></Button>
       <Button size="icon" className="h-8 w-8 bg-rose-600 hover:bg-rose-700" title="Eliminar" onClick={async () => {
         const ok = await confirmDialog('Eliminar este membro? A acção move para a lixeira.', 'APAGAR');
         if (ok) deleteMutation.mutate(m.id);
-      }}>
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      }}><Trash2 className="h-3.5 w-3.5" /></Button>
     </div>
   );
 
@@ -295,14 +279,9 @@ export default function Members() {
 
         <TabsContent value="lista" className="mt-0 space-y-3">
           <div className="flex flex-col gap-2 rounded-2xl border bg-white p-2.5 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:flex-wrap sm:items-center">
-            <Dialog open={isDialogOpen} onOpenChange={(open) => {
-              if (!open) { reset(); setEditingMember(null); }
-              setIsDialogOpen(open);
-            }}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { reset(); setEditingMember(null); } setIsDialogOpen(open); }}>
               <DialogTrigger asChild>
-                <Button className="gap-1.5 bg-blue-600 hover:bg-blue-700">
-                  <Plus className="h-4 w-4" /> Novo Membro
-                </Button>
+                <Button className="gap-1.5 bg-blue-600 hover:bg-blue-700"><Plus className="h-4 w-4" /> Novo Membro</Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
                 <DialogHeader>
@@ -339,55 +318,28 @@ export default function Members() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Telefone</Label>
-                      <Input {...register('phone')} />
-                    </div>
-                    <div>
-                      <Label>Área / Célula</Label>
-                      <Input {...register('groupCell')} />
-                    </div>
+                    <div><Label>Telefone</Label><Input {...register('phone')} /></div>
+                    <div><Label>Área / Célula</Label><Input {...register('groupCell')} /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Departamento</Label>
-                      <Input {...register('role')} placeholder="ex: JIESA" />
-                    </div>
-                    <div>
-                      <Label>Nascimento</Label>
-                      <Input type="date" {...register('birthDate')} />
-                    </div>
+                    <div><Label>Departamento</Label><Input {...register('role')} placeholder="ex: JIESA" /></div>
+                    <div><Label>Nascimento</Label><Input type="date" {...register('birthDate')} /></div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>Baptismo</Label>
-                      <Input type="date" {...register('baptismDate')} />
-                    </div>
-                    <div>
-                      <Label>BI</Label>
-                      <Input {...register('documentNumber')} />
-                    </div>
+                    <div><Label>Baptismo</Label><Input type="date" {...register('baptismDate')} /></div>
+                    <div><Label>BI</Label><Input {...register('documentNumber')} /></div>
                   </div>
-                  <Button type="submit" className="w-full" disabled={mutation.isPending}>
-                    {mutation.isPending ? 'A guardar…' : 'Guardar'}
-                  </Button>
+                  <Button type="submit" className="w-full" disabled={mutation.isPending}>{mutation.isPending ? 'A guardar…' : 'Guardar'}</Button>
                 </form>
               </DialogContent>
             </Dialog>
 
             <div className="relative">
-              <Input type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} disabled={isImporting}
-                className="absolute inset-0 cursor-pointer opacity-0" />
-              <Button variant="outline" disabled={isImporting} className="pointer-events-none gap-1.5">
-                <Upload className="h-4 w-4" /> Importar
-              </Button>
+              <Input type="file" accept=".csv,.xlsx,.xls" onChange={handleImport} disabled={isImporting} className="absolute inset-0 cursor-pointer opacity-0" />
+              <Button variant="outline" disabled={isImporting} className="pointer-events-none gap-1.5"><Upload className="h-4 w-4" /> Importar</Button>
             </div>
-            <Button variant="outline" className="gap-1.5" onClick={exportPDF}>
-              <Printer className="h-4 w-4" /> Imprimir Lista
-            </Button>
-            <Button variant="outline" className="gap-1.5" onClick={exportExcel}>
-              <Download className="h-4 w-4" /> Excel
-            </Button>
+            <Button variant="outline" className="gap-1.5" onClick={exportPDF}><Printer className="h-4 w-4" /> Imprimir Lista</Button>
+            <Button variant="outline" className="gap-1.5" onClick={exportExcel}><Download className="h-4 w-4" /> Excel</Button>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -521,7 +473,7 @@ export default function Members() {
       </Sheet>
 
       {cardMember && (
-        <MemberCardModal member={cardMember} open={!!cardMember} onClose={() => setCardMember(null)} />
+        <MemberCardModal member={cardMember} open={!!cardMember} onOpenChange={(o) => { if (!o) setCardMember(null); }} />
       )}
     </div>
   );
