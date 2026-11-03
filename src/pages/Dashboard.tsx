@@ -1,31 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { deliveryOf } from '../lib/tithes';
 import { toMonthIdx } from '../lib/months';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Users, Wallet, TrendingUp, HandHeart, Activity, Cake, AlertTriangle, Heart } from 'lucide-react';
+import { Users, Activity, Cake, AlertTriangle, Handshake, BarChart3, CalendarDays, FileText, ArrowRight, Megaphone, Radio as RadioIcon, Play, Pause, MapPin, ChevronRight } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, where, orderBy, limit, doc, getDoc } from 'firebase/firestore';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/ui/badge';
-import { useDevice } from '../hooks/useDevice';
 import { formatKz } from '../lib/money';
 import { AIExecutiveAnalysis } from '../components/finances/AIExecutiveAnalysis';
+import { RADIO, livePlayer } from '../lib/radio';
 import {
-  luandaYear, luandaMonth, luandaDayOfMonth, luandaMonthStr, luandaMonthNamePT,
+  luandaYear, luandaMonth, luandaMonthStr, luandaMonthNamePT,
   monthNamePT, normalizeBirthDate, isBirthdayToday,
 } from '../lib/luanda';
 
 export default function Dashboard() {
   const { userRole } = useAuth();
-  const { isMobile, isTablet } = useDevice();
   const year = luandaYear();
   const currentMonth = luandaMonth();
-  const currentDay = luandaDayOfMonth();
   const isFinancialStaff = userRole === 'admin' || userRole === 'treasurer';
+  const navigate = useNavigate();
+  const [tab, setTab] = useState('overview');
+  const [, tick] = useState(0);
+  useEffect(() => livePlayer.subscribe(() => tick((n) => n + 1)), []);
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats', year, isFinancialStaff],
@@ -109,8 +112,7 @@ export default function Dashboard() {
           ].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 5);
         }
 
-        let statusStats: Record<string, { men: number; women: number }> = {};
-        let activeMen = 0, activeWomen = 0, men = 0, women = 0;
+        let activeMen = 0, activeWomen = 0;
         let tithingMenThisMonth = 0, tithingWomenThisMonth = 0;
         const tithingMembersSet = new Set<string>();
         if (isFinancialStaff) {
@@ -123,11 +125,7 @@ export default function Dashboard() {
           const g = (m.gender || '').toLowerCase();
           const isMan = g.includes('masc') || g.includes('homem');
           const isWoman = g.includes('fem') || g.includes('mulher');
-          if (isMan) men++; if (isWoman) women++;
           const status = m.status || 'Activo';
-          if (!statusStats[status]) statusStats[status] = { men: 0, women: 0 };
-          if (isMan) statusStats[status].men++;
-          if (isWoman) statusStats[status].women++;
           if (status === 'Activo') { if (isMan) activeMen++; if (isWoman) activeWomen++; }
           if (tithingMembersSet.has(m.id)) { if (isMan) tithingMenThisMonth++; if (isWoman) tithingWomenThisMonth++; }
         });
@@ -143,8 +141,6 @@ export default function Dashboard() {
 
         const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
         let inactiveTithers: any[] = [];
-        let topContributors: any[] = [];
-        let cellStats: any[] = [];
         let globalRetentionRate = 0;
 
         if (isFinancialStaff) {
@@ -158,37 +154,6 @@ export default function Dashboard() {
             if (!m.createdAt || m.createdAt > threeMonthsAgo) return false;
             return !allTithes.some((t: any) => t.memberId === m.id && t.createdAt && t.createdAt >= threeMonthsAgo);
           });
-          const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-          const currMonthText = MONTHS[currentMonth - 1] || 'Janeiro';
-          const currentMonthTithes = allTithes.filter((t: any) => {
-            const d = deliveryOf(t); return d.month === toMonthIdx(currMonthText) && d.year === year;
-          });
-          const memberTotals: Record<string, number> = {};
-          currentMonthTithes.forEach((t: any) => {
-            if (t.memberId) memberTotals[t.memberId] = (memberTotals[t.memberId] || 0) + (t.amount || 0);
-          });
-          topContributors = Object.entries(memberTotals).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([mId, amt]) => {
-            const mem = membersData.find((m: any) => m.id === mId) as any;
-            return { role: mem?.groupCell || mem?.role || 'Membro', amount: amt };
-          });
-          const cStats: Record<string, { totalAmount: number; membersWithTithes: Set<string>; totalMembers: number }> = {};
-          membersData.forEach((m: any) => {
-            const cell = m.groupCell || 'Sem Célula';
-            if (!cStats[cell]) cStats[cell] = { totalAmount: 0, membersWithTithes: new Set(), totalMembers: 0 };
-            if (m.status === 'Activo' || !m.status) cStats[cell].totalMembers++;
-          });
-          allTithes.filter((t: any) => t.year === year).forEach((t: any) => {
-            const mem = membersData.find((m: any) => m.id === t.memberId) as any;
-            if (mem) {
-              const cell = mem.groupCell || 'Sem Célula';
-              cStats[cell].totalAmount += (t.amount || 0);
-              cStats[cell].membersWithTithes.add(mem.id);
-            }
-          });
-          cellStats = Object.entries(cStats).map(([name, data]) => ({
-            name, amount: data.totalAmount,
-            retention: data.totalMembers > 0 ? Math.round((data.membersWithTithes.size / data.totalMembers) * 100) : 0,
-          })).sort((a, b) => b.amount - a.amount);
           const activeMembersCount = membersData.filter((m: any) => m.status === 'Activo' || !m.status).length;
           const tithedMembersSet = new Set(allTithes.filter((t: any) => t.year === year).map((t: any) => t.memberId));
           globalRetentionRate = activeMembersCount > 0 ? Math.round((tithedMembersSet.size / activeMembersCount) * 100) : 0;
@@ -212,11 +177,8 @@ export default function Dashboard() {
             { name: 'Homens', value: tithingMenThisMonth, color: '#0ea5e9' },
             { name: 'Mulheres', value: tithingWomenThisMonth, color: '#f43f5e' },
           ],
-          statusStats,
           birthdays,
           inactiveTithers,
-          topContributors,
-          cellStats,
           globalRetentionRate,
           budgetStats,
           events: eventsData,
@@ -228,23 +190,180 @@ export default function Dashboard() {
     },
   });
 
-  const tabCls = 'rounded-lg px-2.5 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-800 dark:data-[state=active]:text-white';
+  const goTab = (value: string) => {
+    setTab(value);
+    requestAnimationFrame(() => {
+      document.getElementById('inicio-detalhe')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const tiles = [
+    { id: 'overview', title: 'Visão Geral', desc: 'Resumo da Igreja', icon: BarChart3, from: 'from-blue-600', to: 'to-blue-500' },
+    { id: 'members', title: 'Membros', desc: 'Gerir membros', icon: Users, from: 'from-emerald-600', to: 'to-emerald-500', path: '/members' },
+    { id: 'calendar', title: 'Calendário', desc: 'Eventos e agenda', icon: CalendarDays, from: 'from-amber-500', to: 'to-orange-500' },
+    { id: 'birthdays', title: 'Aniversariantes', desc: 'Celebre vidas', icon: Cake, from: 'from-violet-600', to: 'to-purple-500' },
+    ...(isFinancialStaff
+      ? [{ id: 'parecer', title: 'Parecer', desc: 'Análise da tesouraria', icon: FileText, from: 'from-teal-600', to: 'to-cyan-500' }]
+      : []),
+  ] as const;
+
+  const todayBirthdays = (stats?.birthdays || []).filter((m: any) => isBirthdayToday(m.birthDate));
+  const upcomingEvents = (stats?.events || []).slice(0, 3);
+
+  const toggleRadio = async () => {
+    if (livePlayer.playing || livePlayer.loading) {
+      livePlayer.pause();
+      return;
+    }
+    try { await livePlayer.play(); } catch { /* ok */ }
+  };
 
   return (
-    <div className="space-y-4 pb-2">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-            Igreja · {luandaMonthNamePT()} {year}
+    <div className="space-y-3 pb-3">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-700 via-blue-700 to-indigo-800 text-white shadow-md">
+        <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(circle at 80% 40%, rgba(255,255,255,0.25), transparent 55%)' }} />
+        <div className="relative p-3.5 sm:p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-100/90">Palavra do dia</p>
+          <p className="mt-1 text-[13px] leading-snug text-white/95 sm:text-sm">
+            «Porque onde estiverem dois ou três reunidos em meu nome, ali estou eu no meio deles.»
           </p>
-          <h2 className="text-xl md:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Bom trabalho hoje</h2>
-          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-            Resumo claro do que importa — membros, finanças e vida da igreja.
+          <p className="mt-1.5 text-xs font-semibold text-amber-300">Mateus 18:20</p>
+        </div>
+      </div>
+
+      <div className="flex items-start gap-2.5 px-0.5">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+          <Handshake className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-white sm:text-lg">Bem-vindo(a)!</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
+            Que a graça de Deus continue guiando o nosso trabalho na Sua Igreja.
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-emerald-200/80 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
-          <Heart className="h-3.5 w-3.5 fill-current opacity-80" />
-          {isLoading ? '…' : `${stats?.activeMembers ?? 0} membros activos`}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {tiles.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                if ('path' in t && (t as any).path) {
+                  navigate((t as any).path);
+                  return;
+                }
+                goTab(t.id === 'parecer' ? 'overview' : t.id);
+                if (t.id === 'parecer') {
+                  requestAnimationFrame(() => document.getElementById('parecer-box')?.scrollIntoView({ behavior: 'smooth' }));
+                }
+              }}
+              className={`group relative flex flex-col items-start gap-2 overflow-hidden rounded-2xl bg-gradient-to-br ${t.from} ${t.to} p-3 text-left text-white shadow-md transition active:scale-[0.98]`}
+            >
+              <Icon className="h-6 w-6 opacity-95" />
+              <div className="min-w-0 pr-6">
+                <p className="text-sm font-bold leading-tight">{t.title}</p>
+                <p className="mt-0.5 text-[10px] leading-snug text-white/85">{t.desc}</p>
+              </div>
+              <span className="absolute bottom-2.5 right-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/20">
+                <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <div className="mb-2.5 flex items-center justify-between">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-white">
+            <BarChart3 className="h-4 w-4 text-sky-600" /> Resumo da Igreja
+          </h3>
+          <button type="button" onClick={() => goTab('overview')} className="text-[11px] font-medium text-sky-600 hover:underline">Ver mais</button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-2.5 text-white">
+            <p className="text-xl font-bold tabular-nums leading-none">{isLoading ? '…' : stats?.totalMembers ?? 0}</p>
+            <p className="mt-1 text-[10px] text-white/90">Membros no total</p>
+          </div>
+          <div className="rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-2.5 text-white">
+            <p className="text-xl font-bold tabular-nums leading-none">{isLoading ? '…' : stats?.activeMembers ?? 0}</p>
+            <p className="mt-1 text-[10px] text-white/90">Membros activos</p>
+          </div>
+          <div className="rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 p-2.5 text-white">
+            <p className="text-xl font-bold tabular-nums leading-none">{isLoading ? '…' : stats?.events?.length ?? 0}</p>
+            <p className="mt-1 text-[10px] text-white/90">Eventos registados</p>
+          </div>
+          <div className="rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 p-2.5 text-white">
+            <p className="text-xl font-bold tabular-nums leading-none">{isLoading ? '…' : stats?.birthdays?.length ?? 0}</p>
+            <p className="mt-1 text-[10px] text-white/90">Aniversários do mês</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-2.5 lg:grid-cols-5">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 lg:col-span-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+              <Megaphone className="h-4 w-4 text-sky-600" /> Últimas notícias
+            </h3>
+            <button type="button" onClick={() => goTab('calendar')} className="text-[11px] font-medium text-sky-600 hover:underline">Ver todas</button>
+          </div>
+          {upcomingEvents.length === 0 ? (
+            <p className="rounded-xl border border-dashed py-6 text-center text-xs text-muted-foreground">Ainda não há eventos ou avisos.</p>
+          ) : (
+            <ul className="space-y-2">
+              {upcomingEvents.map((ev: any) => (
+                <li key={ev.id} className="flex gap-2.5 rounded-xl border border-slate-100 bg-slate-50/80 p-2.5 dark:border-slate-800 dark:bg-slate-900/40">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-lg dark:bg-sky-950">📖</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{ev.title || ev.name || 'Evento'}</p>
+                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <CalendarDays className="h-3 w-3" />{ev.date || ev.when || 'Data a definir'}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {todayBirthdays.length > 0 && (
+            <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50/80 px-2.5 py-2 dark:border-rose-900 dark:bg-rose-950/30">
+              <p className="text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                🎂 Hoje: {todayBirthdays.map((m: any) => m.name).join(', ')}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 lg:col-span-2">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+              <RadioIcon className="h-4 w-4 text-sky-600" /> {RADIO.name}
+            </h3>
+            <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Online
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">{RADIO.freq} · Louvor, Palavra e Vida</p>
+          <div className="mt-3 flex items-center gap-3">
+            <button type="button" onClick={toggleRadio} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white shadow-md active:scale-95" aria-label={livePlayer.playing ? 'Pausar' : 'Tocar'}>
+              {livePlayer.loading ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              ) : livePlayer.playing ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                <div className={`h-full rounded-full bg-sky-500 ${livePlayer.playing ? 'w-2/3 animate-pulse' : 'w-0'}`} />
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {livePlayer.playing ? 'A tocar ao vivo' : livePlayer.loading ? 'A ligar…' : 'Parado'}
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={() => navigate('/radio')} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-2.5 text-xs font-semibold text-white dark:bg-slate-100 dark:text-slate-900">
+            <RadioIcon className="h-3.5 w-3.5" /> Ouça a {RADIO.name}
+          </button>
         </div>
       </div>
 
@@ -253,96 +372,44 @@ export default function Dashboard() {
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100">Pendências de discipulado</AlertTitle>
           <AlertDescription className="text-amber-800 dark:text-amber-200/90">
-            <strong>{stats.inactiveTithers.length}</strong> membros activos sem dízimo nos últimos 3 meses. Veja a aba Pendências.
+            <strong>{stats.inactiveTithers.length}</strong> membros activos sem dízimo nos últimos 3 meses.
           </AlertDescription>
         </Alert>
       )}
 
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="mb-3 h-auto flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-slate-100/80 p-1 dark:border-slate-800 dark:bg-slate-900/60">
-          <TabsTrigger value="overview" className={tabCls}><Activity className="mr-1.5 h-3.5 w-3.5" /> Visão Geral</TabsTrigger>
-          <TabsTrigger value="members" className={tabCls}><Users className="mr-1.5 h-3.5 w-3.5" /> Membros</TabsTrigger>
-          <TabsTrigger value="calendar" className={tabCls}>Calendário</TabsTrigger>
-          <TabsTrigger value="birthdays" className={tabCls}><Cake className="mr-1.5 h-3.5 w-3.5" /> Aniversários ({stats?.birthdays?.length || 0})</TabsTrigger>
-          {isFinancialStaff && !!stats?.inactiveTithers?.length && (
-            <TabsTrigger value="inactive" className="rounded-lg px-2.5 py-1.5 text-xs data-[state=active]:bg-amber-50 data-[state=active]:text-amber-800">
-              <AlertTriangle className="mr-1.5 h-3.5 w-3.5 text-amber-500" /> Pendências ({stats.inactiveTithers.length})
-            </TabsTrigger>
-          )}
-        </TabsList>
+      <div id="inicio-detalhe">
+        <Tabs value={tab} onValueChange={setTab} className="w-full">
+          <TabsList className="mb-3 h-auto w-full flex-wrap justify-start gap-1 rounded-xl border border-slate-200/70 bg-slate-100/80 p-1 dark:border-slate-800 dark:bg-slate-900/60">
+            <TabsTrigger value="overview" className="rounded-lg px-2.5 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-800"><Activity className="mr-1 h-3.5 w-3.5" /> Visão Geral</TabsTrigger>
+            <TabsTrigger value="members" className="rounded-lg px-2.5 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-800"><Users className="mr-1 h-3.5 w-3.5" /> Membros</TabsTrigger>
+            <TabsTrigger value="calendar" className="rounded-lg px-2.5 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-800">Calendário</TabsTrigger>
+            <TabsTrigger value="birthdays" className="rounded-lg px-2.5 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-slate-800"><Cake className="mr-1 h-3.5 w-3.5" /> Aniversários ({stats?.birthdays?.length || 0})</TabsTrigger>
+            {isFinancialStaff && !!stats?.inactiveTithers?.length && (
+              <TabsTrigger value="inactive" className="rounded-lg px-2.5 py-1.5 text-xs data-[state=active]:bg-amber-50 data-[state=active]:text-amber-800"><AlertTriangle className="mr-1 h-3.5 w-3.5 text-amber-500" /> Pendências</TabsTrigger>
+            )}
+          </TabsList>
 
-        <TabsContent value="overview" className="m-0 space-y-3">
-          {isFinancialStaff && !isLoading && stats && (
-            <AIExecutiveAnalysis
-              financialStats={{
-                totalTithes: stats.totalTithes || 0,
-                totalOfferings: stats.totalOfferings || 0,
-                totalExpenses: stats.totalExpenses || 0,
-                balance: stats.balance || 0,
-                totalMembers: stats.totalMembers || 0,
-                activeMembers: stats.activeMembers || 0,
-                year: year,
-              }}
-            />
-          )}
-
-          <div className="grid grid-cols-2 gap-2.5 md:gap-3 lg:grid-cols-4">
-            <Card className="border-l-4 border-l-sky-500 bg-gradient-to-br from-sky-50/80 to-white shadow-sm dark:from-sky-950/30 dark:to-slate-950">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 text-muted-foreground">
-                <CardTitle className="text-xs font-medium sm:text-sm">{isFinancialStaff ? 'Saldo do ano' : 'Finanças'}</CardTitle>
-                <Wallet className="h-4 w-4 text-sky-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-base font-bold tabular-nums tracking-tight md:text-xl">
-                  {isLoading ? '…' : isFinancialStaff ? formatKz(stats?.balance || 0) : 'Confidencial'}
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50/80 to-white shadow-sm dark:from-emerald-950/30 dark:to-slate-950">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 text-muted-foreground">
-                <CardTitle className="text-xs font-medium sm:text-sm">Membros</CardTitle>
-                <Users className="h-4 w-4 text-emerald-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-base font-bold tabular-nums tracking-tight md:text-xl">{isLoading ? '…' : stats?.totalMembers || 0}</div>
-                <p className="text-[10px] text-muted-foreground">{stats?.activeMembers ?? 0} activos</p>
-              </CardContent>
-            </Card>
-            <Card className="border-l-4 border-l-amber-500 bg-gradient-to-br from-amber-50/80 to-white shadow-sm dark:from-amber-950/30 dark:to-slate-950">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 text-muted-foreground">
-                <CardTitle className="text-xs font-medium sm:text-sm">{isFinancialStaff ? 'Dízimos' : 'Ofertas'}</CardTitle>
-                <HandHeart className="h-4 w-4 text-amber-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-base font-bold tabular-nums tracking-tight md:text-xl">
-                  {isLoading ? '…' : isFinancialStaff ? formatKz(stats?.totalTithes || 0) : '—'}
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-l-4 border-l-rose-500 bg-gradient-to-br from-rose-50/80 to-white shadow-sm dark:from-rose-950/30 dark:to-slate-950">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 text-muted-foreground">
-                <CardTitle className="text-xs font-medium sm:text-sm">{isFinancialStaff ? 'Despesas' : 'Retenção'}</CardTitle>
-                <TrendingUp className="h-4 w-4 text-rose-500" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-base font-bold tabular-nums tracking-tight md:text-xl">
-                  {isLoading ? '…' : isFinancialStaff ? formatKz(stats?.totalExpenses || 0) : `${stats?.globalRetentionRate || 0}%`}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {isFinancialStaff && (
-            <div className="grid gap-3 lg:grid-cols-12">
-              <Card className="border-slate-200/80 shadow-sm lg:col-span-7">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Fluxo mensal ({year})</CardTitle>
-                  <CardDescription className="text-xs">Entradas vs saídas ao longo do ano</CardDescription>
-                </CardHeader>
-                <CardContent className="h-56 pt-0">
-                  {isLoading ? (
-                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">A carregar…</div>
-                  ) : (
+          <TabsContent value="overview" className="m-0 space-y-3">
+            {isFinancialStaff && !isLoading && stats && (
+              <div id="parecer-box">
+                <AIExecutiveAnalysis financialStats={{
+                  totalTithes: stats.totalTithes || 0,
+                  totalOfferings: stats.totalOfferings || 0,
+                  totalExpenses: stats.totalExpenses || 0,
+                  balance: stats.balance || 0,
+                  totalMembers: stats.totalMembers || 0,
+                  activeMembers: stats.activeMembers || 0,
+                  year,
+                }} />
+              </div>
+            )}
+            {isFinancialStaff && (
+              <div className="grid gap-3 lg:grid-cols-12">
+                <Card className="border-slate-200/80 shadow-sm lg:col-span-7">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Fluxo mensal ({year})</CardTitle>
+                  </CardHeader>
+                  <CardContent className="h-52 pt-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={stats?.chartData || []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -354,22 +421,14 @@ export default function Dashboard() {
                         <Bar dataKey="Saídas" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={28} />
                       </BarChart>
                     </ResponsiveContainer>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="border-slate-200/80 shadow-sm lg:col-span-5">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Movimentos recentes</CardTitle>
-                  <CardDescription className="text-xs">Últimos registos de ofertas e despesas</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 pt-0">
-                  {isLoading ? (
-                    <p className="text-sm text-muted-foreground">A carregar…</p>
-                  ) : !stats?.activities?.length ? (
-                    <p className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">Sem movimentos recentes.</p>
-                  ) : (
-                    stats.activities.map((act: any) => (
+                  </CardContent>
+                </Card>
+                <Card className="border-slate-200/80 shadow-sm lg:col-span-5">
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">Movimentos recentes</CardTitle></CardHeader>
+                  <CardContent className="space-y-2 pt-0">
+                    {!stats?.activities?.length ? (
+                      <p className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">Sem movimentos recentes.</p>
+                    ) : stats.activities.map((act: any) => (
                       <div key={act.id} className="flex items-center justify-between rounded-lg border bg-slate-50/60 px-2.5 py-2 dark:bg-slate-900/40">
                         <div className="min-w-0">
                           <p className="truncate text-xs font-medium">{act.description || act.category || (act.type === 'expense' ? 'Despesa' : 'Oferta')}</p>
@@ -379,98 +438,46 @@ export default function Dashboard() {
                           {act.type === 'expense' ? '−' : '+'}{formatKz(act.amount)}
                         </span>
                       </div>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
 
-              <Card className="border-slate-200/80 shadow-sm lg:col-span-12">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Execução orçamental</CardTitle>
-                  <CardDescription className="text-xs">Despesas face ao planeado em {year}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {!stats?.budgetStats?.length ? (
-                    <p className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">Orçamento por definir na aba Orçamento.</p>
-                  ) : (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {stats.budgetStats.map((b: any, idx: number) => {
-                        const over = b.percentage >= 100;
-                        return (
-                          <div key={idx} className="space-y-1.5 rounded-xl border bg-slate-50/50 p-3 dark:bg-slate-900/40">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-medium">{b.category}</span>
-                              <span className={over ? 'font-semibold text-rose-600' : 'text-muted-foreground'}>{b.percentage}%</span>
-                            </div>
-                            <div className="-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                              <div className={`h-full rounded-full ${over ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(b.percentage, 100)}%` }} />
-                            </div>
-                            <p className="text-right text-[10px] text-muted-foreground">{formatKz(b.actual)} / {formatKz(b.expected)}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="members" className="m-0 space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Membros activos por género</CardTitle>
-              </CardHeader>
-              <CardContent className="h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={stats?.demographics || []} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={3}>
-                      {(stats?.demographics || []).map((e: any, i: number) => (
-                        <Cell key={i} fill={e.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-            {isFinancialStaff && (
+          <TabsContent value="members" className="m-0 space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <Card className="shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Dizimistas deste mês</CardTitle>
-                </CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Membros activos por género</CardTitle></CardHeader>
                 <CardContent className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={stats?.genders || []} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={3}>
-                        {(stats?.genders || []).map((e: any, i: number) => (
-                          <Cell key={i} fill={e.color} />
-                        ))}
+                      <Pie data={stats?.demographics || []} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={3}>
+                        {(stats?.demographics || []).map((e: any, i: number) => (<Cell key={i} fill={e.color} />))}
                       </Pie>
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Tooltip /><Legend wrapperStyle={{ fontSize: 11 }} />
                     </PieChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
-            )}
-          </div>
-        </TabsContent>
+              <Card className="shadow-sm">
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Gestão de membros</CardTitle></CardHeader>
+                <CardContent>
+                  <button type="button" onClick={() => navigate('/members')} className="flex w-full items-center justify-between rounded-xl border px-3 py-3 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-900">
+                    Ir para Membros <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
-        <TabsContent value="calendar" className="m-0">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Eventos da igreja</CardTitle>
-              <CardDescription className="text-xs">Próximas actividades registadas</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {!stats?.events?.length ? (
-                <p className="py-8 text-center text-xs text-muted-foreground">Ainda não há eventos registados.</p>
-              ) : (
-                stats.events.slice(0, 12).map((ev: any) => (
+          <TabsContent value="calendar" className="m-0">
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Eventos da igreja</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {!stats?.events?.length ? (
+                  <p className="py-8 text-center text-xs text-muted-foreground">Ainda não há eventos registados.</p>
+                ) : stats.events.slice(0, 12).map((ev: any) => (
                   <div key={ev.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
                     <div>
                       <p className="text-sm font-medium">{ev.title || ev.name || 'Evento'}</p>
@@ -478,76 +485,61 @@ export default function Dashboard() {
                     </div>
                     <Badge variant="outline" className="text-[10px]">{ev.type || 'Evento'}</Badge>
                   </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="birthdays" className="m-0">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Aniversariantes de {luandaMonthNamePT()}</CardTitle>
-              <CardDescription className="text-xs">Celebre com a família da fé</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {!stats?.birthdays?.length ? (
-                <p className="py-8 text-center text-xs text-muted-foreground">Sem aniversários este mês.</p>
-              ) : (
-                stats.birthdays.map((m: any) => {
-                  const isToday = isBirthdayToday(m.birthDate);
-                  return (
-                    <div key={m.id} className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${isToday ? 'border-rose-200 bg-rose-50/80 dark:border-rose-900 dark:bg-rose-950/30' : 'bg-card'}`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-full ${isToday ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-800'}`}>
-                          <Cake className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{m.name}</span>
-                            {isToday && <Badge className="bg-rose-500 text-[10px] hover:bg-rose-600">Hoje!</Badge>}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">Dia {m.bDay} · {m.groupCell || 'Membro'}</p>
-                        </div>
-                      </div>
-                      {isToday && <span className="text-xs font-semibold text-rose-600">Parabéns!</span>}
-                    </div>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {isFinancialStaff && !!stats?.inactiveTithers?.length && (
-          <TabsContent value="inactive" className="m-0">
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Sem dízimo recente</CardTitle>
-                <CardDescription className="text-xs">Activos há +3 meses, sem registo nos últimos 3 meses</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {stats.inactiveTithers.map((m: any) => (
-                  <div key={m.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                        <AlertTriangle className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">{m.name}</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {m.phone ? `Tel: ${m.phone} · ` : ''}Registo: {m.createdAt ? new Date(m.createdAt).toLocaleDateString('pt-AO') : '—'}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] text-amber-800">Contactar</Badge>
-                  </div>
                 ))}
               </CardContent>
             </Card>
           </TabsContent>
-        )}
-      </Tabs>
+
+          <TabsContent value="birthdays" className="m-0">
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Aniversariantes de {luandaMonthNamePT()}</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {!stats?.birthdays?.length ? (
+                  <p className="py-8 text-center text-xs text-muted-foreground">Sem aniversários este mês.</p>
+                ) : stats.birthdays.map((m: any) => {
+                  const isToday = isBirthdayToday(m.birthDate);
+                  return (
+                    <div key={m.id} className={`flex items-center justify-between rounded-xl border px-3 py-2.5 ${isToday ? 'border-rose-200 bg-rose-50/80 dark:border-rose-900 dark:bg-rose-950/30' : 'bg-card'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-full ${isToday ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 dark:bg-slate-800'}`}><Cake className="h-4 w-4" /></div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{m.name}</span>
+                            {isToday && <Badge className="bg-rose-500 text-[10px]">Hoje!</Badge>}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">Dia {m.bDay} · {m.groupCell || 'Membro'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {isFinancialStaff && !!stats?.inactiveTithers?.length && (
+            <TabsContent value="inactive" className="m-0">
+              <Card className="shadow-sm">
+                <CardHeader className="pb-2"><CardTitle className="text-sm">Sem dízimo recente</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  {stats.inactiveTithers.map((m: any) => (
+                    <div key={m.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700"><AlertTriangle className="h-4 w-4" /></div>
+                        <div>
+                          <p className="text-sm font-medium">{m.name}</p>
+                          <p className="text-[11px] text-muted-foreground">{m.phone ? `Tel: ${m.phone}` : '—'}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[10px] text-amber-800">Contactar</Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+        </Tabs>
+      </div>
     </div>
   );
 }
