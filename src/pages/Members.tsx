@@ -161,16 +161,21 @@ export default function Members() {
     },
   });
 
-  const handleSave = async (formData: any) => {
-    if (formData.phone) {
-      const err = phoneError(formData.phone);
+  const handleSave = async (formData: MemberForm) => {
+    const data: MemberForm & { internalCode?: string } = { ...formData };
+    if (data.phone) {
+      const err = phoneError(data.phone);
       if (err) { toast.error(err); return; }
-      formData.phone = normalizePhoneAO(formData.phone)!;
+      data.phone = normalizePhoneAO(data.phone)!;
     }
-    if (!editingMember && !formData.internalCode) formData.internalCode = await nextInternalCode();
-    Object.keys(formData).forEach((k) => { if (formData[k] === undefined) delete formData[k]; });
+    if (!editingMember && !(data as { internalCode?: string }).internalCode) {
+      (data as { internalCode?: string }).internalCode = await nextInternalCode();
+    }
+    Object.keys(data).forEach((k) => {
+      if ((data as Record<string, unknown>)[k] === undefined) delete (data as Record<string, unknown>)[k];
+    });
     const ok = await confirmDialog('Deseja guardar esta informação?');
-    if (ok) mutation.mutate(formData);
+    if (ok) mutation.mutate(data);
   };
 
   const openEdit = (m: Member) => {
@@ -187,7 +192,7 @@ export default function Members() {
       baptismDate: m.baptismDate || '',
       address: m.address || '',
       email: m.email || '',
-    } as any);
+    });
     setIsDialogOpen(true);
   };
 
@@ -198,7 +203,11 @@ export default function Members() {
       'Nº': i + 1, Nome: m.name, Género: m.gender || '', Tipo: memberKind(m),
       Área: m.groupCell || '', Departamento: m.role || '', Telefone: m.phone || '', Estado: m.status || 'Activo',
     }));
-    await saveXlsx(rows, 'membros-iesa.xlsx');
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Membros');
+    await saveXlsx(XLSX, wb, 'membros-iesa.xlsx');
     toast.success('Excel exportado.');
   };
 
@@ -224,13 +233,13 @@ export default function Members() {
       const XLSX = await import('xlsx');
       const buf = await file.arrayBuffer();
       const workbook = XLSX.read(new Uint8Array(buf), { type: 'array' });
-      const rows: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
       if (rows.length < 2) { toast.error('Ficheiro vazio.'); return; }
-      const headers: string[] = (rows[0] || []).map((h: any) => String(h || '').toLowerCase());
+      const headers: string[] = (rows[0] || []).map((h) => String(h || '').toLowerCase());
       const nameIdx = headers.findIndex((h) => h.includes('nome'));
       let n = 0;
       for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
+        const row = rows[i] as unknown[];
         const name = String((nameIdx >= 0 ? row[nameIdx] : row[0]) || '').trim();
         if (!name) continue;
         await addDoc(collection(db, 'members'), { name, status: 'Activo', createdAt: Date.now(), updatedAt: Date.now() });
