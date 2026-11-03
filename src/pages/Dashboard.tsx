@@ -225,13 +225,13 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-3 pb-3">
+    <div className="mx-auto w-full max-w-6xl space-y-4 pb-6">
       {isAdminHome ? (
         <>
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-700 via-blue-700 to-indigo-800 text-white shadow-md">
+          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-sky-700 via-blue-700 to-indigo-800 text-white shadow-md">
             <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(circle at 80% 40%, rgba(255,255,255,0.25), transparent 55%)' }} />
-            <div className="relative p-3.5 sm:p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-100/90">Palavra do dia</p>
+            <div className="relative p-4 sm:p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-100/90">Palavra do dia</p>
               <p className="mt-1 text-[13px] leading-snug text-white/95 sm:text-sm">
                 «Porque onde estiverem dois ou três reunidos em meu nome, ali estou eu no meio deles.»
               </p>
@@ -239,11 +239,12 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="flex items-start gap-2.5 px-0.5">
-            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+          <div className="flex items-start gap-3 rounded-2xl border bg-card px-3 py-3 shadow-sm sm:px-4">
+            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
               <Handshake className="h-4 w-4" />
             </span>
             <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Painel</p>
               <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-white sm:text-lg">Bem-vindo(a)!</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
                 Que a graça de Deus continue guiando o nosso trabalho na Sua Igreja.
@@ -321,7 +322,7 @@ export default function Dashboard() {
                 ) : (
                   <div className="grid gap-3 lg:grid-cols-12">
                     <Card className="border-slate-200/80 shadow-sm lg:col-span-7">
-                      <CardHeader className="pb-2"><CardTitle className="text-sm">Fluxo mensal ({year})</CardTitle></CardHeader>
+                      <CardHeader className="border-b bg-muted/20 pb-3"><CardTitle className="text-sm font-semibold tracking-tight">Fluxo mensal ({year})</CardTitle></CardHeader>
                       <CardContent className="h-52 pt-0">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={stats?.chartData || []} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -337,7 +338,7 @@ export default function Dashboard() {
                       </CardContent>
                     </Card>
                     <Card className="border-slate-200/80 shadow-sm lg:col-span-5">
-                      <CardHeader className="pb-2"><CardTitle className="text-sm">Movimentos recentes</CardTitle></CardHeader>
+                      <CardHeader className="border-b bg-muted/20 pb-3"><CardTitle className="text-sm font-semibold tracking-tight">Movimentos recentes</CardTitle></CardHeader>
                       <CardContent className="space-y-2 pt-0">
                         {!stats?.activities?.length ? (
                           <p className="rounded-lg border border-dashed py-6 text-center text-xs text-muted-foreground">Sem movimentos recentes.</p>
@@ -502,7 +503,10 @@ export default function Dashboard() {
       ) : (
         <>
           <div className="space-y-1 px-0.5 pb-1">
-            <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Início</h2>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Início</p>
+              <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Painel do membro</h2>
+            </div>
             <p className="text-sm text-muted-foreground">Resumo operacional da sua área.</p>
           </div>
           <Tabs value={tab} onValueChange={setTab} className="w-full">
@@ -526,14 +530,14 @@ export default function Dashboard() {
               )}
             </TabsContent>
             <TabsContent value="members" className="m-0">
-              <Card className="shadow-sm"><CardContent className="pt-4">
+              <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm"><CardContent className="pt-4">
                 <button type="button" onClick={() => navigate('/members')} className="flex w-full items-center justify-between rounded-xl border px-3 py-3 text-sm font-medium">
                   Ir para Membros <ChevronRight className="h-4 w-4" />
                 </button>
               </CardContent></Card>
             </TabsContent>
             <TabsContent value="calendar" className="m-0">
-              <Card className="shadow-sm"><CardContent className="space-y-2 pt-4">
+              <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm"><CardContent className="space-y-2 pt-4">
                 {(stats?.events || []).slice(0, 12).map((ev: any) => (
                   <div key={ev.id} className="flex justify-between border-b py-2 text-sm">
                     <span>{ev.title || ev.name || 'Evento'}</span>
@@ -543,7 +547,7 @@ export default function Dashboard() {
               </CardContent></Card>
             </TabsContent>
             <TabsContent value="birthdays" className="m-0">
-              <Card className="shadow-sm"><CardContent className="space-y-2 pt-4">
+              <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm"><CardContent className="space-y-2 pt-4">
                 {(stats?.birthdays || []).map((m: any) => (
                   <div key={m.id} className="flex items-center gap-2 text-sm">
                     <Cake className="h-4 w-4 text-rose-500" /> {m.name}

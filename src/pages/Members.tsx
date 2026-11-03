@@ -268,26 +268,32 @@ export default function Members() {
   );
 
   return (
-    <div className="space-y-4 pb-2">
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-700 via-blue-700 to-indigo-800 p-4 text-white shadow-md">
-        <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15"><Users className="h-6 w-6" /></span>
+    <div className="mx-auto w-full max-w-6xl space-y-4 pb-6">
+      <header className="relative overflow-hidden rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-6 sm:py-6">
+        <div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-sky-500/10 blur-3xl" />
+        <div className="relative flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+            <Users className="h-5 w-5" />
+          </span>
           <div>
+            <div className="mb-1 inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Comunidade
+            </div>
             <h2 className="text-xl font-bold tracking-tight sm:text-2xl">Membros da Igreja</h2>
-            <p className="mt-0.5 text-xs text-sky-100/90 sm:text-sm">Gerencie os membros da nossa comunidade de fé</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Cadastro, dízimos por membro e registo de comunhão</p>
           </div>
         </div>
-      </div>
+      </header>
 
       <Tabs defaultValue="lista" className="space-y-3">
-        <TabsList className="h-auto flex-wrap gap-1 rounded-xl border p-1">
+        <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card md:w-auto">
           <TabsTrigger value="lista" className="rounded-lg text-xs sm:text-sm">Lista de Membros</TabsTrigger>
           <TabsTrigger value="dizimos" className="rounded-lg text-xs sm:text-sm">Dízimos por Membro</TabsTrigger>
           <TabsTrigger value="comunhao" className="rounded-lg text-xs sm:text-sm">Comunhão</TabsTrigger>
         </TabsList>
 
         <TabsContent value="lista" className="mt-0 space-y-3">
-          <div className="flex flex-col gap-2 rounded-2xl border bg-white p-2.5 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-card p-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-center">
             <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) { reset(); setEditingMember(null); } setIsDialogOpen(open); }}>
               <DialogTrigger asChild>
                 <Button className="gap-1.5 bg-blue-600 hover:bg-blue-700"><Plus className="h-4 w-4" /> Novo Membro</Button>
