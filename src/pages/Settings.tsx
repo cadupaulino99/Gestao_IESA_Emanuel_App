@@ -5,18 +5,17 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useTheme, type Mode, type Palette as PaletteId } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
-import { Settings as SettingsIcon, Monitor, Moon, Sun, Smartphone, Globe, Bell, AppWindow, Palette, EyeOff, LayoutTemplate, Languages, ShieldCheck, KeyRound, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, Monitor, Moon, Sun, Smartphone, Globe, Bell, AppWindow, Palette, LayoutTemplate, Languages, ShieldCheck, KeyRound, Loader2 } from 'lucide-react';
 import { useDevice } from '../hooks/useDevice';
 import { Switch } from '../components/ui/switch';
 import { Button } from '../components/ui/button';
-import { currentVersion, lastKnownTag } from '../lib/updateCheck';
+import { currentVersion } from '../lib/updateCheck';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { NOTIF_SETTINGS_DEFAULT, type NotifSettings } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
-import { ArrowDownToLine } from 'lucide-react';
 
 export default function Settings() {
   const { user, isAdmin } = useAuth();
