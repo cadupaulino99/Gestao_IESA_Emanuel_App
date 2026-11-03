@@ -1,0 +1,62 @@
+name: restore-contributions
+on:
+  workflow_dispatch: {}
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Modernize Contributions UI
+        run: |
+          set -euo pipefail
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path('src/pages/Contributions.tsx')
+          t = p.read_text()
+          if 'CONTRIBUIÇÕES' in t and 'rounded-2xl border bg-card px-4 py-5' in t:
+              print('already modernized')
+              raise SystemExit(0)
+          old = '''  return (\n    <div className="space-y-6">\n      <div>\n        <h2 className="text-3xl font-bold tracking-tight">Orçamento & Contribuições</h2>\n        <p className="text-muted-foreground">Orçamento único por membro/ano, contribuições com pagamentos parciais, fila de mensagens e modelos por IA.</p>\n      </div>\n\n      <Tabs defaultValue="orcamento">\n        <TabsList className="flex-wrap">\n          <TabsTrigger value="orcamento" className="gap-1.5"><PiggyBank className="h-4 w-4" /> Orçamento único</TabsTrigger>\n          <TabsTrigger value="contrib" className="gap-1.5"><HandCoins className="h-4 w-4" /> Contribuições</TabsTrigger>\n          <TabsTrigger value="msg" className="gap-1.5"><Send className="h-4 w-4" /> Mensagens & fila</TabsTrigger>\n        </TabsList>'''
+          new = '''  return (\n    <div className="mx-auto w-full max-w-6xl space-y-5 pb-6">\n      <header className="relative overflow-hidden rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-6 sm:py-6">\n        <div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-amber-500/10 blur-3xl" />\n        <div className="relative max-w-2xl">\n          <div className="mb-2 inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground">\n            <HandCoins className="h-3.5 w-3.5 text-amber-600" />\n            CONTRIBUIÇÕES\n          </div>\n          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Orçamento & Contribuições</h2>\n          <p className="mt-1 text-sm text-muted-foreground sm:text-base">\n            Orçamento único por membro/ano, pagamentos parciais, fila de mensagens e modelos.\n          </p>\n        </div>\n      </header>\n\n      <Tabs defaultValue="orcamento">\n        <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card md:w-auto">\n          <TabsTrigger value="orcamento" className="gap-1.5 rounded-lg text-xs sm:text-sm"><PiggyBank className="h-4 w-4" /> Orçamento único</TabsTrigger>\n          <TabsTrigger value="contrib" className="gap-1.5 rounded-lg text-xs sm:text-sm"><HandCoins className="h-4 w-4" /> Contribuições</TabsTrigger>\n          <TabsTrigger value="msg" className="gap-1.5 rounded-lg text-xs sm:text-sm"><Send className="h-4 w-4" /> Mensagens & fila</TabsTrigger>\n        </TabsList>'''
+          if old not in t:
+              raise SystemExit('header block not found')
+          t = t.replace(old, new, 1)
+          t = t.replace(
+              '''    return (\n      <Card className="max-w-xl mx-auto mt-10">\n        <CardContent className="p-6 text-sm text-muted-foreground">''',
+              '''    return (\n      <Card className="mx-auto mt-10 max-w-xl rounded-2xl border-border/70 shadow-sm">\n        <CardContent className="p-6 text-sm text-muted-foreground">''',
+              1,
+          )
+          t = t.replace(
+              '''<CardTitle className="text-base flex items-center gap-2"><Sparkles className="h-4 w-4 text-purple-500" /> Modelos por IA (só marcadores)</CardTitle>''',
+              '''<CardTitle className="flex items-center gap-2 text-base font-semibold tracking-tight"><Sparkles className="h-4 w-4 text-amber-600" /> Modelos de mensagem</CardTitle>''',
+              1,
+          )
+          t = t.replace('<Card className="border-dashed">', '<Card className="rounded-2xl border-dashed border-border/70 shadow-sm">')
+          t = t.replace(
+              '''                  <CardTitle className="text-base">{memberPick.name}</CardTitle>''',
+              '''                  <CardTitle className="text-base font-semibold tracking-tight">{memberPick.name}</CardTitle>''',
+              1,
+          )
+          t = t.replace(
+              '''                <CardTitle className="text-base">Fila de mensagens externas</CardTitle>''',
+              '''                <CardTitle className="text-base font-semibold tracking-tight">Fila de mensagens externas</CardTitle>''',
+              1,
+          )
+          t = t.replace(
+              'className="rounded-lg border p-2.5 text-xs space-y-1.5"',
+              'className="space-y-1.5 rounded-xl border bg-card p-3 text-xs shadow-sm"',
+          )
+          t = t.replace('rounded-lg border p-3', 'rounded-xl border bg-card p-3 shadow-sm')
+          if 'CONTRIBUIÇÕES' not in t or 'export default function Contributions' not in t:
+              raise SystemExit('validation failed')
+          p.write_text(t)
+          print('ok', len(t))
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Contributions.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "ui(contribuicoes): modernizar cabeçalho, abas e cartões" && git push; fi
