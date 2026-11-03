@@ -1,0 +1,75 @@
+name: restore-dashboard-members
+on:
+  workflow_dispatch: {}
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Modernize Dashboard + Members UI
+        run: |
+          set -euo pipefail
+          python3 << 'PY'
+          from pathlib import Path
+
+          p = Path('src/pages/Dashboard.tsx')
+          t = p.read_text()
+          if 'max-w-6xl space-y-4 pb-6' in t and 'Painel do membro' in t:
+              print('Dashboard already modernized')
+          else:
+              old = '''  return (\n    <div className="space-y-3 pb-3">\n      {isAdminHome ? (\n        <>\n          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-700 via-blue-700 to-indigo-800 text-white shadow-md">\n            <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(circle at 80% 40%, rgba(255,255,255,0.25), transparent 55%)' }} />\n            <div className="relative p-3.5 sm:p-4">\n              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-100/90">Palavra do dia</p>'''
+              new = '''  return (\n    <div className="mx-auto w-full max-w-6xl space-y-4 pb-6">\n      {isAdminHome ? (\n        <>\n          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-sky-700 via-blue-700 to-indigo-800 text-white shadow-md">\n            <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(circle at 80% 40%, rgba(255,255,255,0.25), transparent 55%)' }} />\n            <div className="relative p-4 sm:p-5">\n              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-100/90">Palavra do dia</p>'''
+              if old not in t:
+                  raise SystemExit('dashboard admin header not found')
+              t = t.replace(old, new, 1)
+              t = t.replace(
+                  '''          <div className="flex items-start gap-2.5 px-0.5">\n            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">\n              <Handshake className="h-4 w-4" />\n            </span>\n            <div className="min-w-0">\n              <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-white sm:text-lg">Bem-vindo(a)!</h2>''',
+                  '''          <div className="flex items-start gap-3 rounded-2xl border bg-card px-3 py-3 shadow-sm sm:px-4">\n            <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">\n              <Handshake className="h-4 w-4" />\n            </span>\n            <div className="min-w-0">\n              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Painel</p>\n              <h2 className="text-base font-bold tracking-tight text-slate-900 dark:text-white sm:text-lg">Bem-vindo(a)!</h2>''',
+                  1,
+              )
+              t = t.replace(
+                  '''            <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Início</h2>''',
+                  '''            <div>\n              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Início</p>\n              <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Painel do membro</h2>\n            </div>''',
+                  1,
+              )
+              t = t.replace(
+                  '<CardHeader className="pb-2"><CardTitle className="text-sm">Fluxo mensal ({year})</CardTitle></CardHeader>',
+                  '<CardHeader className="border-b bg-muted/20 pb-3"><CardTitle className="text-sm font-semibold tracking-tight">Fluxo mensal ({year})</CardTitle></CardHeader>',
+              )
+              t = t.replace(
+                  '<CardHeader className="pb-2"><CardTitle className="text-sm">Movimentos recentes</CardTitle></CardHeader>',
+                  '<CardHeader className="border-b bg-muted/20 pb-3"><CardTitle className="text-sm font-semibold tracking-tight">Movimentos recentes</CardTitle></CardHeader>',
+              )
+              t = t.replace('<Card className="shadow-sm">', '<Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm">')
+              p.write_text(t)
+              print('Dashboard ok')
+
+          p = Path('src/pages/Members.tsx')
+          t = p.read_text()
+          if 'Comunidade' in t and 'max-w-6xl space-y-4 pb-6' in t:
+              print('Members already modernized')
+          else:
+              old = '''  return (\n    <div className="space-y-4 pb-2">\n      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-700 via-blue-700 to-indigo-800 p-4 text-white shadow-md">\n        <div className="flex items-start gap-3">\n          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15"><Users className="h-6 w-6" /></span>\n          <div>\n            <h2 className="text-xl font-bold tracking-tight sm:text-2xl">Membros da Igreja</h2>\n            <p className="mt-0.5 text-xs text-sky-100/90 sm:text-sm">Gerencie os membros da nossa comunidade de fé</p>\n          </div>\n        </div>\n      </div>\n\n      <Tabs defaultValue="lista" className="space-y-3">\n        <TabsList className="h-auto flex-wrap gap-1 rounded-xl border p-1">\n          <TabsTrigger value="lista" className="rounded-lg text-xs sm:text-sm">Lista de Membros</TabsTrigger>\n          <TabsTrigger value="dizimos" className="rounded-lg text-xs sm:text-sm">Dízimos por Membro</TabsTrigger>\n          <TabsTrigger value="comunhao" className="rounded-lg text-xs sm:text-sm">Comunhão</TabsTrigger>\n        </TabsList>'''
+              new = '''  return (\n    <div className="mx-auto w-full max-w-6xl space-y-4 pb-6">\n      <header className="relative overflow-hidden rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-6 sm:py-6">\n        <div className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-sky-500/10 blur-3xl" />\n        <div className="relative flex items-start gap-3">\n          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">\n            <Users className="h-5 w-5" />\n          </span>\n          <div>\n            <div className="mb-1 inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">\n              Comunidade\n            </div>\n            <h2 className="text-xl font-bold tracking-tight sm:text-2xl">Membros da Igreja</h2>\n            <p className="mt-0.5 text-sm text-muted-foreground">Cadastro, dízimos por membro e registo de comunhão</p>\n          </div>\n        </div>\n      </header>\n\n      <Tabs defaultValue="lista" className="space-y-3">\n        <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card md:w-auto">\n          <TabsTrigger value="lista" className="rounded-lg text-xs sm:text-sm">Lista de Membros</TabsTrigger>\n          <TabsTrigger value="dizimos" className="rounded-lg text-xs sm:text-sm">Dízimos por Membro</TabsTrigger>\n          <TabsTrigger value="comunhao" className="rounded-lg text-xs sm:text-sm">Comunhão</TabsTrigger>\n        </TabsList>'''
+              if old not in t:
+                  raise SystemExit('members header not found')
+              t = t.replace(old, new, 1)
+              t = t.replace(
+                  'className="flex flex-col gap-2 rounded-2xl border bg-white p-2.5 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:flex-wrap sm:items-center"',
+                  'className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-card p-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-center"',
+              )
+              p.write_text(t)
+              print('Members ok')
+
+          assert 'export default function Dashboard' in Path('src/pages/Dashboard.tsx').read_text()
+          assert 'export default function Members' in Path('src/pages/Members.tsx').read_text()
+          print('validation ok')
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Dashboard.tsx src/pages/Members.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "ui(dashboard,membros): modernizar início e gestão de membros" && git push; fi
