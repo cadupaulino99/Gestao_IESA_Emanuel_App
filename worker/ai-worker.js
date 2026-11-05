@@ -42,8 +42,8 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.11.0';
-const WORKER_BUILD = '2026-11-05 (P1: auth IA, rate limit visao, auditoria AI)';
+const WORKER_VERSION = '2.11.1';
+const WORKER_BUILD = '2026-11-05 (P1: sanitizar prompts, anonimizar financas, auth/rate/audit)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -375,6 +375,37 @@ function visionRateOk(email) {
   }
   b.count += 1;
   return b.count <= VISION_RATE_LIMIT;
+}
+
+
+function sanitizeUserText(input, maxLen) {
+  let s = String(input == null ? '' : input);
+  s = s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ');
+  s = s.replace(/<[^>]*>/g, ' ');
+  s = s.replace(/\b(ignore|disregard|forget)\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?|rules?)\b/gi, '[filtrado]');
+  s = s.replace(/\b(system\s*:|assistant\s*:|developer\s*:)\s*/gi, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  const lim = typeof maxLen === 'number' ? maxLen : 4000;
+  if (s.length > lim) s = s.slice(0, lim);
+  return s;
+}
+
+function anonymizeFinancialSummary(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {};
+  const num = (v) => {
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return Math.abs(n) >= 1000 && Number.isInteger(n) ? Math.round(n / 100) : Math.round(n);
+  };
+  return {
+    year: (typeof s.year === 'number' || typeof s.year === 'string') ? s.year : null,
+    totalTithesKz: num(s.totalTithesKz != null ? s.totalTithesKz : s.totalTithes),
+    totalOfferingsKz: num(s.totalOfferingsKz != null ? s.totalOfferingsKz : s.totalOfferings),
+    totalExpensesKz: num(s.totalExpensesKz != null ? s.totalExpensesKz : s.totalExpenses),
+    balanceKz: num(s.balanceKz != null ? s.balanceKz : s.balance),
+    totalMembers: typeof s.totalMembers === 'number' ? s.totalMembers : null,
+    activeMembers: typeof s.activeMembers === 'number' ? s.activeMembers : null,
+  };
 }
 
 async function logAiAudit(env, entry) {
@@ -1583,22 +1614,28 @@ export default {
       }
 
       if (path === '/assistant/chat') {
-        const { prompt, context } = await request.json();
+        const bodyChat = await request.json();
+        const prompt = sanitizeUserText(bodyChat && bodyChat.prompt, 4000);
+        const context = bodyChat && bodyChat.context != null ? sanitizeUserText(bodyChat.context, 6000) : '';
         if (!prompt) return json({ error: 'Prompt obrigatório.' }, 400);
         const contents = context ? `[Contexto:\n${context}]\n\nPedido:\n${prompt}` : prompt;
         { const text = await gemini(env, contents, SYSTEM_ASSISTANT); await logAiAudit(env, { action: 'ai.chat', email: claims.email, uid: claims.sub, role, path, ok: true }); return json({ text }); }
       }
 
       if (path === '/assistant/financial-insights') {
-        const { financialSummary } = await request.json();
-        const prompt = `Analise os dados financeiros da igreja e forneça um resumo executivo com 3 pontos fortes e 2 recomendações prudentes para a tesouraria:\n\n${JSON.stringify(financialSummary, null, 2)}`;
+        const bodyFin = await request.json();
+        const financialSummary = anonymizeFinancialSummary(bodyFin && bodyFin.financialSummary);
+        const prompt = `Analise os totais agregados (sem nomes nem identificadores pessoais) e forneça um resumo executivo com 3 pontos fortes e 2 recomendações prudentes para a tesouraria:\n\n${JSON.stringify(financialSummary, null, 2)}`;
         { const text = await gemini(env, prompt, 'Você é um consultor financeiro cristão experiente em gestão eclesiástica em Angola.'); await logAiAudit(env, { action: 'ai.financial-insights', email: claims.email, uid: claims.sub, role, path, ok: true }); return json({ text }); }
       }
 
       if (path === '/assistant/draft-message') {
-        const { memberName, occasion, tone } = await request.json();
+        const bodyDraft = await request.json();
+        const memberName = sanitizeUserText(bodyDraft && bodyDraft.memberName, 120);
+        const occasion = sanitizeUserText(bodyDraft && bodyDraft.occasion, 200);
+        const tone = sanitizeUserText((bodyDraft && bodyDraft.tone) || 'afetuoso e inspirador', 80);
         if (!memberName || !occasion) return json({ error: 'memberName e occasion obrigatórios.' }, 400);
-        const prompt = `Escreva uma mensagem pastoral inspiradora e bíblica para o membro "${memberName}", por ocasião de "${occasion}". Tom: "${tone || 'afetuoso e inspirador'}". Inclua um versículo bíblico apropriado e felicitações em nome da Igreja Emanuel - Xangongo.`;
+        const prompt = `Escreva uma mensagem pastoral inspiradora e bíblica para o membro "${memberName}", por ocasião de "${occasion}". Tom: "${tone}". Inclua um versículo bíblico apropriado e felicitações em nome da Igreja Emanuel - Xangongo.`;
         { const text = await gemini(env, prompt, 'Você é o pastor da Igreja Evangélica Sinodal de Angola (Emanuel em Xangongo). Escreva com elegância, calor e brevidade para WhatsApp.'); await logAiAudit(env, { action: 'ai.draft-message', email: claims.email, uid: claims.sub, role, path, ok: true }); return json({ text }); }
       }
 
@@ -1704,7 +1741,7 @@ export const __test = {
   WORKER_VERSION, WORKER_BUILD, PROVIDERS,
   SIGNUP_RATE_LIMIT, RATE_LIMIT, RATE_WINDOW, BUCKET_MAX, TEMP_PASS_ALPHABET,
   validateSignup, validateTempPassword, genTempPassword, isRealIsoDate, isLeapYear,
-  signupRateOk, rateOk, visionRateOk, pruneBuckets, resetBuckets,
+  signupRateOk, rateOk, visionRateOk, sanitizeUserText, anonymizeFinancialSummary, pruneBuckets, resetBuckets,
   verifyFirebaseIdToken, b64urlDecode,
   luandaNow, luandaEndOfDayMs, fmtKz,
   fv, fvStr, fvInt, fnum, eq, le, isRetryable,
