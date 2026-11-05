@@ -11,7 +11,7 @@ if "useNavigate" not in t:
         "import React, { useEffect, useState } from 'react';",
         "import React, { useEffect, useState } from 'react';\nimport { useNavigate } from 'react-router-dom';",
         1,
-   )
+    )
 if "ArrowDownLeft" not in t:
     t = t.replace(
         "Wallet } from 'lucide-react';",
@@ -61,4 +61,8 @@ if "const totalEntradas" not in t:
 
 start = t.index(marker)
 end = t.index("          </TabsList>", start) + len("          </TabsList>")
-header = open("scripts/_finances_header_snippet.txt").read() if False else None
+header_txt = Path("scripts/_finances_header_snippet.txt").read_text()
+t = t[:start] + header_txt + t[end:]
+assert "handleAddTithe" in t and "Total de Entradas" in t
+p.write_text(t)
+print("ok", len(t))
