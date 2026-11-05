@@ -35,12 +35,18 @@ service cloud.firestore {
 
     // Bootstrap AUTO-EXTINGUÍVEL: enquanto não existir admins/<email do fundador>,
     // esse email pode criar o PRÓPRIO documento (uma vez). Depois morre para sempre.
+    // Endurecido (2026-11-05): obriga role=admin, isSuper=true e email = token
+    // (evita o fundador criar um doc fraco ou com papel errado na 1.ª escrita).
     function isBootstrapCreate(adminId) {
       return isAuthenticated() &&
         (request.auth.token.email == "Cadupaulino99@gmail.com" ||
          request.auth.token.email == "cadupaulino99@gmail.com") &&
         adminId == request.auth.token.email &&
-        !exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+        !exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) &&
+        incoming().keys().hasAll(['email', 'role', 'createdAt', 'isSuper']) &&
+        incoming().email == request.auth.token.email &&
+        incoming().role == 'admin' &&
+        incoming().isSuper == true;
     }
     function isTreasurer() {
       return isAuthenticated() && getRole() == 'treasurer';
@@ -216,10 +222,13 @@ service cloud.firestore {
 
     // --- Admin Collection ---
     function isValidAdmin(data) {
-      return data.keys().hasAll(['email', 'role', 'createdAt']) && data.keys().size() <= 10 &&
+      return data.keys().hasAll(['email', 'role', 'createdAt']) && data.keys().size() <= 12 &&
              data.email is string && data.email.size() <= 200 && data.email.size() > 0 &&
-             data.role is string &&
-             data.createdAt is number;
+             data.role is string && data.role in ['admin', 'pastor', 'treasurer'] &&
+             data.createdAt is number &&
+             (!('isSuper' in data.keys()) || data.isSuper is bool) &&
+             (!('disabled' in data.keys()) || data.disabled is bool) &&
+             (!('mustChangePassword' in data.keys()) || data.mustChangePassword is bool);
     }
 
     // O próprio só pode tocar nestes dois campos (último login e troca da

@@ -1092,7 +1092,7 @@ export default function Admin() {
                     {loading ? (
                         <TableRow><TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell></TableRow>
                     ) : users.map(u => {
-                        const isSuperRow = u.isSuper === true || u.id.toLowerCase() === 'cadupaulino99@gmail.com';
+                        const isSuperRow = u.isSuper === true;
                         return (
                         <TableRow key={u.id}>
                           <TableCell className="font-medium">{u.name || '—'}{isSuperRow && <Badge variant="secondary" className="ml-2 text-[10px]">SUPER</Badge>}</TableCell>
