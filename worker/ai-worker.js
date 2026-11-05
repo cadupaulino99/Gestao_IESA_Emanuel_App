@@ -42,8 +42,8 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.10.0';
-const WORKER_BUILD = '2026-10-31 (P3: cron resiliente por tarefa + heartbeat com erros, token Firebase mais estrito, palavra-passe temporaria validada, prazos em Luanda, paidAmount sem escritas repetidas)';
+const WORKER_VERSION = '2.11.0';
+const WORKER_BUILD = '2026-11-05 (P1: auth IA, rate limit visao, auditoria AI)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -361,6 +361,50 @@ function rateOk(email) {
   b.count += 1;
   return b.count <= RATE_LIMIT;
 }
+
+const visionBuckets = new Map();
+const VISION_RATE_LIMIT = 15;
+function visionRateOk(email) {
+  const now = Date.now();
+  pruneBuckets(visionBuckets, now);
+  const key = email || 'anon';
+  const b = visionBuckets.get(key);
+  if (!b || now - b.start > RATE_WINDOW) {
+    visionBuckets.set(key, { start: now, count: 1 });
+    return true;
+  }
+  b.count += 1;
+  return b.count <= VISION_RATE_LIMIT;
+}
+
+async function logAiAudit(env, entry) {
+  try {
+    const at = Date.now();
+    const who = String((entry && (entry.email || entry.uid)) || 'unknown').slice(0, 200);
+    const payload = {
+      path: (entry && entry.path) || '',
+      ok: !!(entry && entry.ok),
+      ms: entry && typeof entry.ms === 'number' ? entry.ms : null,
+      model: (entry && entry.model) || null,
+      role: (entry && entry.role) || null,
+      uid: (entry && entry.uid) || null,
+      error: entry && entry.error ? String(entry.error).slice(0, 300) : null,
+    };
+    await fsAdd(env, 'audit_logs', {
+      action: String((entry && entry.action) || 'ai').slice(0, 80),
+      targetEmail: who,
+      byEmail: who,
+      at,
+      adminEmail: who,
+      createdAt: at,
+      collectionName: 'ai',
+      detail: JSON.stringify(payload).slice(0, 2000),
+    });
+  } catch (e) {
+    console.error('ai audit log falhou:', (e && e.message) || e);
+  }
+}
+
 
 /* Sem admins hardcoded (auditoria 2026-10-24): o papel vem UNICAMENTE do
    documento admins/<email> no Firestore. O bootstrap das regras e auto-
@@ -1285,6 +1329,8 @@ export default {
           PROJECT_ID: env.PROJECT_ID || null,
         },
         time: new Date().toISOString(),
+        auth: 'Bearer Firebase ID token obrigatorio (excepto /__health e /auth/self-register)',
+        rateLimit: { aiPer10min: RATE_LIMIT, visionPer10min: VISION_RATE_LIMIT },
       });
     }
 
@@ -1500,6 +1546,13 @@ export default {
       if (!rateOk(claims.email || claims.sub)) {
         return json({ error: 'Muitos pedidos em pouco tempo. Aguarde alguns minutos e tente novamente.' }, 429);
       }
+      if (path.startsWith('/assistant/') && request.method !== 'POST') {
+        return json({ error: 'Metodo nao permitido nas rotas de IA.' }, 405);
+      }
+      if ((path === '/assistant/extract-member' || path === '/assistant/extract-receipt')
+          && !visionRateOk(claims.email || claims.sub)) {
+        return json({ error: 'Limite de leituras de documentos atingido. Aguarde alguns minutos.' }, 429);
+      }
 
       /* --- Autodiagnostico (lideranca): confirma segredos, papel e o Gemini.
              Usado pelo ecra Suporte → "Testar ligação da IA". --- */
@@ -1525,6 +1578,7 @@ export default {
         } catch (e) {
           out.gemini = { reachable: false, model: e?.model || null, error: e?.message || 'erro desconhecido' };
         }
+        await logAiAudit(env, { action: 'ai.selftest', email: claims.email, uid: claims.sub, role, path, ok: !!(out.gemini && out.gemini.reachable) });
         return json(out);
       }
 
@@ -1532,20 +1586,20 @@ export default {
         const { prompt, context } = await request.json();
         if (!prompt) return json({ error: 'Prompt obrigatório.' }, 400);
         const contents = context ? `[Contexto:\n${context}]\n\nPedido:\n${prompt}` : prompt;
-        return json({ text: await gemini(env, contents, SYSTEM_ASSISTANT) });
+        { const text = await gemini(env, contents, SYSTEM_ASSISTANT); await logAiAudit(env, { action: 'ai.chat', email: claims.email, uid: claims.sub, role, path, ok: true }); return json({ text }); }
       }
 
       if (path === '/assistant/financial-insights') {
         const { financialSummary } = await request.json();
         const prompt = `Analise os dados financeiros da igreja e forneça um resumo executivo com 3 pontos fortes e 2 recomendações prudentes para a tesouraria:\n\n${JSON.stringify(financialSummary, null, 2)}`;
-        return json({ text: await gemini(env, prompt, 'Você é um consultor financeiro cristão experiente em gestão eclesiástica em Angola.') });
+        { const text = await gemini(env, prompt, 'Você é um consultor financeiro cristão experiente em gestão eclesiástica em Angola.'); await logAiAudit(env, { action: 'ai.financial-insights', email: claims.email, uid: claims.sub, role, path, ok: true }); return json({ text }); }
       }
 
       if (path === '/assistant/draft-message') {
         const { memberName, occasion, tone } = await request.json();
         if (!memberName || !occasion) return json({ error: 'memberName e occasion obrigatórios.' }, 400);
         const prompt = `Escreva uma mensagem pastoral inspiradora e bíblica para o membro "${memberName}", por ocasião de "${occasion}". Tom: "${tone || 'afetuoso e inspirador'}". Inclua um versículo bíblico apropriado e felicitações em nome da Igreja Emanuel - Xangongo.`;
-        return json({ text: await gemini(env, prompt, 'Você é o pastor da Igreja Evangélica Sinodal de Angola (Emanuel em Xangongo). Escreva com elegância, calor e brevidade para WhatsApp.') });
+        { const text = await gemini(env, prompt, 'Você é o pastor da Igreja Evangélica Sinodal de Angola (Emanuel em Xangongo). Escreva com elegância, calor e brevidade para WhatsApp.'); await logAiAudit(env, { action: 'ai.draft-message', email: claims.email, uid: claims.sub, role, path, ok: true }); return json({ text }); }
       }
 
       /* --- IA: modelos para mensagens em massa (só liderança) ---
@@ -1596,8 +1650,10 @@ Responde APENAS com JSON: {"groupId": "texto do modelo", ...}.`;
             env, prompt, SYS_EXTRACTOR, imageBase64, mime,
             isCartao ? SCHEMA_MEMBER_CARTAO : SCHEMA_MEMBER_BI
           );
+          await logAiAudit(env, { action: 'ai.extract-member', email: claims.email, uid: claims.sub, role, path, ok: true });
           return json({ fields: fields || {}, workerVersion: WORKER_VERSION });
         } catch (e) {
+          await logAiAudit(env, { action: 'ai.extract-member', email: claims.email, uid: claims.sub, role, path, ok: false, error: e?.message, model: e?.model });
           return json(
             { error: e?.message || 'Falha na leitura.', detalhe: e?.raw || undefined, status: e?.status, model: e?.model, workerVersion: WORKER_VERSION },
             e?.status === 429 ? 429 : 502
@@ -1612,8 +1668,10 @@ Responde APENAS com JSON: {"groupId": "texto do modelo", ...}.`;
         const prompt = 'A fotografia pode estar rodada; leia-a na orientacao correta. Este documento e um COMPROVATIVO BANCARIO angolano (transferencia, deposito ou Multicaixa Express — bancos: BAI, BFA, BIC, BPC, Standard Bank, Millennium Atlantico, Sol, Keve, etc.). Extraia APENAS o que estiver visivel (null caso contrario, sem inventar): amount (valor numerico em AOA, sem simbolos), currency ("AOA"), date (data da operacao em AAAA-MM-DD), method ("transferencia" | "deposito" | "multicaixa" | "outro"), bank (nome do banco), payerName (nome de quem pagou), reference (numero da operacao/comprovativo/referencia), notes (observacoes).';
         try {
           const fields = await geminiVision(env, prompt, SYS_EXTRACTOR, imageBase64, mimeType || 'image/jpeg', SCHEMA_RECEIPT);
+          await logAiAudit(env, { action: 'ai.extract-receipt', email: claims.email, uid: claims.sub, role, path, ok: true });
           return json({ fields: fields || {}, workerVersion: WORKER_VERSION });
         } catch (e) {
+          await logAiAudit(env, { action: 'ai.extract-receipt', email: claims.email, uid: claims.sub, role, path, ok: false, error: e?.message, model: e?.model });
           return json(
             { error: e?.message || 'Falha na leitura.', detalhe: e?.raw || undefined, status: e?.status, model: e?.model, workerVersion: WORKER_VERSION },
             e?.status === 429 ? 429 : 502
@@ -1640,13 +1698,13 @@ Responde APENAS com JSON: {"groupId": "texto do modelo", ...}.`;
    (1500 linhas: validação do auto-cadastro, rate limits, verificação do token
    do Firebase, moeda, Luanda, cron). Testes: worker/__tests__/ai-worker.test.js
    ───────────────────────────────────────────────────────────────────────────── */
-function resetBuckets() { signupBuckets.clear(); rateBuckets.clear(); }
+function resetBuckets() { signupBuckets.clear(); rateBuckets.clear(); visionBuckets.clear(); }
 
 export const __test = {
   WORKER_VERSION, WORKER_BUILD, PROVIDERS,
   SIGNUP_RATE_LIMIT, RATE_LIMIT, RATE_WINDOW, BUCKET_MAX, TEMP_PASS_ALPHABET,
   validateSignup, validateTempPassword, genTempPassword, isRealIsoDate, isLeapYear,
-  signupRateOk, rateOk, pruneBuckets, resetBuckets,
+  signupRateOk, rateOk, visionRateOk, pruneBuckets, resetBuckets,
   verifyFirebaseIdToken, b64urlDecode,
   luandaNow, luandaEndOfDayMs, fmtKz,
   fv, fvStr, fvInt, fnum, eq, le, isRetryable,
