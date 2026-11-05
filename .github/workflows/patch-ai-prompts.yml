@@ -1,0 +1,20 @@
+name: patch-ai-prompts
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply prompt sanitization patch
+        run: python3 scripts/patch_ai_prompts.py
+      - name: Syntax check
+        run: node --check worker/ai-worker.js
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker/ai-worker.js
+          if git diff --cached --quiet; then echo No changes; else git commit -m "security(ai): sanitizar prompts e anonimizar finanças (worker 2.11.1)" && git push; fi
