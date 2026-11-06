@@ -1,0 +1,17 @@
+name: patch-communion-nav
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/patch_communion_nav.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Communion.tsx src/App.tsx src/components/Layout.tsx src/pages/Admin.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "feat(nav): aba Comunhão própria após Finanças" && git push; fi
