@@ -8,8 +8,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Apply UI files
-        run: python3 scripts/apply_event_feed_ui.py
+      - name: Apply feed UI
+        run: python3 scripts/patch_event_feed_ui.py
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
