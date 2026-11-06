@@ -41,16 +41,16 @@ export async function uploadEventPoster(id: string, file: File): Promise<PosterU
 
   const big = await compressImageFile(file, { max: 1600, quality: 0.8 });
   const thumb = await compressImageFile(file, { max: 400, quality: 0.7 });
-  const ext = POSTER_TYPES[big.mimeType] || POSTER_TYPES[file.type] || 'jpg';
+  // Sempre JPEG no Storage (compressão canvas → image/jpeg)
+  const mime = 'image/jpeg';
+  const ext = 'jpg';
 
   const posterPath = `posters/${id}.${ext}`;
   const posterThumbPath = `posters/thumbs/${id}.${ext}`;
-  await uploadBytes(ref(storage, posterPath), dataUrlToBlob(`data:${big.mimeType};base64,${big.base64}`), {
-    contentType: big.mimeType,
-  });
-  await uploadBytes(ref(storage, posterThumbPath), dataUrlToBlob(`data:${thumb.mimeType};base64,${thumb.base64}`), {
-    contentType: thumb.mimeType,
-  });
+  const bigBlob = dataUrlToBlob(`data:${mime};base64,${big.base64}`);
+  const thumbBlob = dataUrlToBlob(`data:${mime};base64,${thumb.base64}`);
+  await uploadBytes(ref(storage, posterPath), bigBlob, { contentType: mime });
+  await uploadBytes(ref(storage, posterThumbPath), thumbBlob, { contentType: mime });
   return { posterPath, posterThumbPath };
 }
 

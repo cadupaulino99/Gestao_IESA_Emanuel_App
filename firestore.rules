@@ -675,23 +675,19 @@ service cloud.firestore {
     }
 
     // Engajamento do mural (likes + comentários) — autenticados
+    // v1.21.19: regras mais simples (evitar permission-denied por hasOnly).
     match /events/{eventId}/likes/{userId} {
       allow read, list: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId
-                    && incoming().keys().hasOnly(['uid', 'createdAt'])
-                    && incoming().uid == request.auth.uid
-                    && incoming().createdAt is number;
-      allow delete: if isAuthenticated() && request.auth.uid == userId;
+      allow create, delete: if isAuthenticated() && request.auth.uid == userId;
       allow update: if false;
     }
     match /events/{eventId}/comments/{commentId} {
       allow read, list: if isAuthenticated();
       allow create: if isAuthenticated()
-                    && incoming().keys().hasOnly(['authorUid', 'authorName', 'text', 'createdAt'])
-                    && incoming().authorUid == request.auth.uid
-                    && incoming().authorName is string && incoming().authorName.size() > 0 && incoming().authorName.size() <= 80
-                    && incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 500
-                    && incoming().createdAt is number;
+                    && request.resource.data.authorUid == request.auth.uid
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 500;
       allow update: if false;
       allow delete: if isAuthenticated() && (
         resource.data.authorUid == request.auth.uid || isAdmin() || isPastor()
@@ -699,21 +695,16 @@ service cloud.firestore {
     }
     match /announcements/{annId}/likes/{userId} {
       allow read, list: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId
-                    && incoming().keys().hasOnly(['uid', 'createdAt'])
-                    && incoming().uid == request.auth.uid
-                    && incoming().createdAt is number;
-      allow delete: if isAuthenticated() && request.auth.uid == userId;
+      allow create, delete: if isAuthenticated() && request.auth.uid == userId;
       allow update: if false;
     }
     match /announcements/{annId}/comments/{commentId} {
       allow read, list: if isAuthenticated();
       allow create: if isAuthenticated()
-                    && incoming().keys().hasOnly(['authorUid', 'authorName', 'text', 'createdAt'])
-                    && incoming().authorUid == request.auth.uid
-                    && incoming().authorName is string && incoming().authorName.size() > 0 && incoming().authorName.size() <= 80
-                    && incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 500
-                    && incoming().createdAt is number;
+                    && request.resource.data.authorUid == request.auth.uid
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 500;
       allow update: if false;
       allow delete: if isAuthenticated() && (
         resource.data.authorUid == request.auth.uid || isAdmin() || isPastor()

@@ -38,7 +38,7 @@ export default function BoardEngagementBar({ target, shareText }: { target: Boar
     setLiked(!was);
     setLikeCount((c) => c + (was ? -1 : 1));
     try { await toggleLike(target, uid, was); }
-    catch { setLiked(was); setLikeCount((c) => c + (was ? 1 : -1)); toast.error('Falha ao registar gosto.'); }
+    catch { setLiked(was); setLikeCount((c) => c + (was ? 1 : -1)); toast.error('Sem permissão para gostar. Publique as regras Firestore (Deploy Firebase).'); }
   };
 
   const onSend = async () => {
@@ -51,7 +51,7 @@ export default function BoardEngagementBar({ target, shareText }: { target: Boar
       setDraft('');
       setOpen(true);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Falha ao comentar.');
+      toast.error(e instanceof Error && /permission|insufficient/i.test(e.message) ? 'Sem permissão para comentar. Publique as regras Firestore (Deploy Firebase).' : (e instanceof Error ? e.message : 'Falha ao comentar.'));
     } finally { setBusy(false); }
   };
 

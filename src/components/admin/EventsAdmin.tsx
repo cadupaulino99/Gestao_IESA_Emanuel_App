@@ -223,6 +223,9 @@ export default function EventsAdmin() {
         toast.warning(`Evento guardado SEM cartaz: ${posterWarning}.`);
       }
 
+      // Libertar o botão antes das notificações (podem demorar com muitos membros)
+      setSaving(false);
+
       // notificações (só do que está publicado)
       if (publishStatus === 'publicado') {
         const after = normalizeEvent({ ...data, id });
