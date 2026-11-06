@@ -1,0 +1,18 @@
+name: apply-event-feed-ui
+on:
+  workflow_dispatch: {}
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply UI files
+        run: python3 scripts/apply_event_feed_ui.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/portal/MemberBoard.tsx src/components/admin/EventsAdmin.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "feat(eventos): feed estilo Facebook no portal e admin" && git push; fi
