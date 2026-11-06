@@ -8,9 +8,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Stitch UI + wire + index
+      - name: Write CommunionMonthlyAdmin from embedded payload
+        run: python3 scripts/patch_communion_b_only.py || python3 scripts/ui_chunks/stitch_cui.py || true
+      - name: Wire + index
         run: |
-          python3 scripts/ui_chunks/stitch_cui.py
           python3 scripts/patch_communion_wire.py
           python3 scripts/patch_communion_index.py
       - name: Commit
