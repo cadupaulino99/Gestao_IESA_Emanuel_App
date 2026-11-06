@@ -1,0 +1,21 @@
+name: apply-communion-monthly
+on:
+  workflow_dispatch: {}
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install feature files
+        run: |
+          python3 scripts/patch_communion_a.py
+          python3 scripts/patch_communion_b.py
+          python3 scripts/patch_communion_wire.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/communion.ts src/components/admin/CommunionMonthlyAdmin.tsx firestore.indexes.json src/pages/Admin.tsx src/pages/Members.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "feat(comunhao): presença mensal admin com estatísticas por género" && git push; fi
