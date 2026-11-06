@@ -6,9 +6,9 @@ import pkg from './package.json';
 
 export default defineConfig(() => {
   return {
-    // base relativo: garante que os assets carregam dentro da WebView do
-    // Capacitor (https://localhost) e em qualquer subpasta de hosting web.
-    base: './',
+    // base absoluto: Firebase Hosting + Capacitor (origem https://localhost).
+    // Com base './', rotas profundas no hosting quebram os assets (/finances/assets/...).
+    base: '/',
     plugins: [
       react(),
       tailwindcss(),
