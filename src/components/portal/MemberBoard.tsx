@@ -22,6 +22,7 @@ import {
   luandaDayKey, fmtDatePT, fmtDateTimePT, dayLabelLuanda, weekdayNameOfDate,
 } from '../../lib/luanda';
 import { AgendaItem } from '../../types';
+import EventFeedPost from '../board/EventFeedPost';
 
 const STATUS_LABEL: Record<string, string> = { marcado: 'Marcado', adiado: 'ADIADO', cancelado: 'CANCELADO', realizado: 'Realizado' };
 const STATUS_CLASS: Record<string, string> = {
@@ -173,7 +174,7 @@ export default function MemberBoard() {
         ))}
       </TabsContent>
 
-      <TabsContent value="eventos" className="pt-4 space-y-3">
+      <TabsContent value="eventos" className="pt-4 space-y-4">
         <div className="flex rounded-lg border bg-muted/40 p-0.5 text-xs">
           {(['proximos', 'passados'] as const).map((f) => (
             <button
@@ -190,42 +191,20 @@ export default function MemberBoard() {
         {shownEvents.length === 0 && (
           <Empty icon={<CalendarPlus className="h-8 w-8" />} text={evFilter === 'proximos' ? 'Sem eventos próximos.' : 'Sem eventos passados.'} />
         )}
-        {shownEvents.map((e) => {
-          const label = dayLabelLuanda(e.date, now);
-          return (
-            <button
+
+        {/* Feed estilo publicações (tipo Facebook) */}
+        <div className="mx-auto flex max-w-xl flex-col gap-4">
+          {shownEvents.map((e) => (
+            <EventFeedPost
               key={e.id}
-              type="button"
-              onClick={() => setOpenEvent(e)}
-              className={`w-full text-left rounded-xl border p-3 flex gap-3 bg-white/60 dark:bg-slate-900/40 hover:border-blue-300 transition-colors ${
-                e.status === 'cancelado' ? 'border-red-300 bg-red-50/50 dark:bg-red-950/20' : ''
-              }`}
-            >
-              <PosterImg path={e.posterThumbPath || e.posterPath} className="h-16 w-12 shrink-0 rounded border object-cover" />
-              <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-sm font-bold truncate">{e.title}</span>
-                  {e.status !== 'marcado' && (
-                    <Badge variant="outline" className={`text-[9px] ${STATUS_CLASS[e.status] || ''}`}>{STATUS_LABEL[e.status]}</Badge>
-                  )}
-                </span>
-                <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Clock className="h-3 w-3" /> {fmtDateTimePT(e.date, e.time)}
-                </span>
-                {e.location && (
-                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <MapPin className="h-3 w-3" /> {e.location}
-                  </span>
-                )}
-                <span className={`mt-1 inline-block text-[10px] font-bold ${
-                  label === 'Hoje' ? 'text-emerald-600' : evFilter === 'proximos' ? 'text-blue-700 dark:text-blue-300' : 'text-slate-400'
-                }`}>
-                  {label}
-                </span>
-              </span>
-            </button>
-          );
-        })}
+              event={e}
+              now={now}
+              expandable
+              onOpen={setOpenEvent}
+              onFullPoster={setFullPoster}
+            />
+          ))}
+        </div>
       </TabsContent>
 
       <Dialog open={!!openEvent} onOpenChange={(o) => !o && setOpenEvent(null)}>

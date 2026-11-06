@@ -22,6 +22,7 @@ import {
 import { validateRichText, hasDangerousPattern } from '../../lib/richtext';
 import { luandaDayKey, fmtDateTimePT, fmtDatePT, isDateIso, isTimeHHMM } from '../../lib/luanda';
 import { uploadEventPoster, deleteEventPoster, posterUrl, validatePosterFile } from '../../lib/posters';
+import EventFeedPost from '../board/EventFeedPost';
 
 const EMPTY = {
   title: '', html: '', date: '', time: '', dateEnd: '', timeEnd: '',
@@ -61,34 +62,47 @@ function EventItem({ e, section, onEdit, onRemove }: {
   onEdit: (e: NormalizedEvent) => void;
   onRemove: (e: NormalizedEvent, permanent: boolean) => void;
 }) {
-  return (
-    <div className={`rounded-lg border p-3 flex gap-3 ${e.status === 'cancelado' ? 'border-red-300 bg-red-50/40 dark:bg-red-950/20' : ''}`}>
-      <PosterThumb path={e.posterThumbPath || e.posterPath} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <h4 className="text-sm font-bold truncate">{e.title}</h4>
-          <Badge variant="outline" className={`text-[9px] ${STATUS_CLASS[e.status] || ''}`}>{STATUS_LABEL[e.status] || e.status}</Badge>
-          {section === 'draft' && <Badge variant="secondary" className="text-[9px]">Rascunho</Badge>}
-          {e.reminder1d && <Badge variant="outline" className="text-[9px]">Lembrete 1 dia antes</Badge>}
-        </div>
-        <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5"><Clock className="h-3 w-3" /> {fmtDateTimePT(e.date, e.time)}{e.dateEnd ? ` → ${fmtDateTimePT(e.dateEnd, e.timeEnd)}` : ''}</p>
-        {e.location && <p className="text-[11px] text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> {e.location}</p>}
-        {e.responsible && <p className="text-[11px] text-muted-foreground flex items-center gap-1"><UserRound className="h-3 w-3" /> {e.responsible}</p>}
-        {(e.createdBy || e.updatedBy) && (
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            {e.createdBy ? `Criado por ${e.createdBy}` : ''}{e.updatedBy ? ` · editado por ${e.updatedBy}` : ''}
+  const actions = (
+    <>
+      <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => onEdit(e)}>
+        <Pencil className="h-3 w-3" /> Editar
+      </Button>
+      {section === 'past' ? (
+        <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs text-destructive" onClick={() => onRemove(e, true)}>
+          <Trash2 className="h-3 w-3" /> Apagar
+        </Button>
+      ) : (
+        <Button variant="ghost" size="sm" className="h-8 gap-1 text-xs text-destructive" onClick={() => onRemove(e, false)}>
+          <Trash2 className="h-3 w-3" /> Apagar
+        </Button>
+      )}
+    </>
+  );
+
+  if (section === 'draft') {
+    return (
+      <div className="flex gap-3 rounded-lg border border-dashed p-3">
+        <PosterThumb path={e.posterThumbPath || e.posterPath} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h4 className="truncate text-sm font-bold">{e.title}</h4>
+            <Badge variant="secondary" className="text-[9px]">Rascunho</Badge>
+          </div>
+          <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Clock className="h-3 w-3" /> {fmtDateTimePT(e.date, e.time)}
           </p>
-        )}
+        </div>
+        <div className="flex shrink-0 flex-col gap-1">{actions}</div>
       </div>
-      <div className="flex shrink-0 flex-col gap-1">
-        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => onEdit(e)}><Pencil className="h-3 w-3" /> Editar</Button>
-        {section === 'past' ? (
-          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive" onClick={() => onRemove(e, true)}><Trash2 className="h-3 w-3" /> Apagar (definitivo)</Button>
-        ) : (
-          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-destructive" onClick={() => onRemove(e, false)}><Trash2 className="h-3 w-3" /> Apagar</Button>
-        )}
-      </div>
-    </div>
+    );
+  }
+
+  return (
+    <EventFeedPost
+      event={e}
+      expandable={false}
+      footer={<div className="flex flex-wrap gap-1.5">{actions}</div>}
+    />
   );
 }
 
