@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import {
-  Bell, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, Clock, Loader2,
+  Bell, CalendarDays, CalendarPlus, LayoutGrid, ChevronLeft, ChevronRight, Clock, Loader2,
   MapPin, Pin, UserRound, XCircle, Maximize2,
 } from 'lucide-react';
 import { db } from '../../lib/firebase';
@@ -23,6 +23,7 @@ import {
 } from '../../lib/luanda';
 import { AgendaItem } from '../../types';
 import EventFeedPost from '../board/EventFeedPost';
+import AnnouncementFeedPost from '../board/AnnouncementFeedPost';
 
 const STATUS_LABEL: Record<string, string> = { marcado: 'Marcado', adiado: 'ADIADO', cancelado: 'CANCELADO', realizado: 'Realizado' };
 const STATUS_CLASS: Record<string, string> = {
@@ -92,39 +93,65 @@ export default function MemberBoard() {
   const upcoming = sortEventsByDate(visibleEvents.filter((e) => !isEventPast(e, dayKey)));
   const past = sortEventsByDate(visibleEvents.filter((e) => isEventPast(e, dayKey))).reverse();
   const shownEvents = evFilter === 'proximos' ? upcoming : past;
+  type FeedEntry =
+    | { kind: 'announcement'; at: number; a: NormalizedAnnouncement }
+    | { kind: 'event'; at: number; e: NormalizedEvent };
+  const feed: FeedEntry[] = [
+    ...visibleAnnouncements.map((a) => ({
+      kind: 'announcement' as const,
+      at: (a.createdAt || 0) + (a.pinned ? 1e15 : 0) + (a.level === 'urgente' ? 1e14 : 0),
+      a,
+    })),
+    ...visibleEvents.map((e) => ({
+      kind: 'event' as const,
+      at: (typeof e.updatedAt === 'number' ? e.updatedAt : e.createdAt) || 0,
+      e,
+    })),
+  ].sort((x, y) => y.at - x.at);
 
   if (loading) {
     return <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> A carregar…</div>;
   }
 
   return (
-    <Tabs defaultValue="avisos" className="space-y-1">
+    <Tabs defaultValue="feed" className="space-y-1">
       <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card">
+        <TabsTrigger value="feed" className="gap-1 rounded-lg text-xs sm:text-sm"><LayoutGrid className="h-3.5 w-3.5" /> Feed</TabsTrigger>
         <TabsTrigger value="avisos" className="gap-1 rounded-lg text-xs sm:text-sm"><Bell className="h-3.5 w-3.5" /> Avisos</TabsTrigger>
         <TabsTrigger value="agenda" className="gap-1 rounded-lg text-xs sm:text-sm"><CalendarDays className="h-3.5 w-3.5" /> Agenda</TabsTrigger>
         <TabsTrigger value="eventos" className="gap-1 rounded-lg text-xs sm:text-sm"><CalendarPlus className="h-3.5 w-3.5" /> Eventos</TabsTrigger>
       </TabsList>
 
+      <TabsContent value="feed" className="pt-4">
+        {feed.length === 0 && (
+          <Empty icon={<LayoutGrid className="h-8 w-8" />} text="Ainda não há publicações no mural." />
+        )}
+        <div className="mx-auto flex max-w-xl flex-col gap-4">
+          {feed.map((item) =>
+            item.kind === 'announcement' ? (
+              <AnnouncementFeedPost key={`a-${item.a.id}`} announcement={item.a} now={now} />
+            ) : (
+              <EventFeedPost
+                key={`e-${item.e.id}`}
+                event={item.e}
+                now={now}
+                expandable
+                onOpen={setOpenEvent}
+                onFullPoster={setFullPoster}
+              />
+            ),
+          )}
+        </div>
+      </TabsContent>
+
       <TabsContent value="avisos" className="pt-4 space-y-3">
         {visibleAnnouncements.length === 0 && <Empty icon={<Bell className="h-8 w-8" />} text="Não há avisos de momento." />}
-        {visibleAnnouncements.map((a) => (
-          <article
-            key={a.id}
-            className={`rounded-xl border p-3.5 space-y-1.5 ${
-              a.level === 'urgente'
-                ? 'border-red-300 bg-red-50/70 dark:border-red-800 dark:bg-red-950/30'
-                : 'bg-white shadow-sm dark:bg-slate-900/40'
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-1.5">
-              {a.level === 'urgente' && <Badge className="bg-red-600 hover:bg-red-600 text-[10px]">URGENTE</Badge>}
-              {a.pinned && <Badge variant="secondary" className="gap-0.5 text-[10px]"><Pin className="h-2.5 w-2.5" /> Fixado</Badge>}
-              <h3 className="text-sm font-bold flex-1 min-w-0">{a.title}</h3>
-              <span className="text-[10px] text-slate-400 shrink-0">{fmtDatePT(luandaDayKey(a.createdAt))}</span>
-            </div>
-            <ExpandableRichText html={a.html} />
-          </article>
-        ))}
+        {/* avisos posts */}
+        <div className="mx-auto flex max-w-xl flex-col gap-4">
+          {visibleAnnouncements.map((a) => (
+            <AnnouncementFeedPost key={a.id} announcement={a} now={now} />
+          ))}
+        </div>
       </TabsContent>
 
       <TabsContent value="agenda" className="pt-4 space-y-3">

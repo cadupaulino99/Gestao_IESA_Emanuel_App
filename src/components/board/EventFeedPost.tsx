@@ -5,7 +5,9 @@ import { Button } from '../ui/button';
 import RichTextView, { ExpandableRichText } from '../richtext/RichTextView';
 import { posterUrl } from '../../lib/posters';
 import { fmtDateTimePT, dayLabelLuanda, luandaDayKey, fmtDatePT } from '../../lib/luanda';
-import type { NormalizedEvent } from '../../lib/board';
+import { plainOf, type NormalizedEvent } from '../../lib/board';
+import BoardEngagementBar from './BoardEngagementBar';
+import { buildShareText } from '../../lib/boardEngagement';
 
 const STATUS_LABEL: Record<string, string> = {
   marcado: 'Marcado',
@@ -193,6 +195,16 @@ export default function EventFeedPost({
           )}
           {footer}
         </div>
+        <BoardEngagementBar
+          target={{ collection: 'events', id: e.id }}
+          shareText={buildShareText({
+            kind: 'event',
+            title: e.title,
+            when: fmtDateTimePT(e.date, e.time),
+            location: e.location || undefined,
+            bodyPlain: plainOf(e.html || ''),
+          })}
+        />
       </div>
     </article>
   );
