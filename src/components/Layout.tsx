@@ -4,7 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { BarChart, Users, Wallet, Building2, Landmark, ReceiptText, DoorClosed, Menu, PieChart, Settings, Shield, HeartHandshake, MessageSquare, Radio as RadioIcon, Home, MoreHorizontal, Pause, Maximize2, X, HandCoins } from 'lucide-react';
+import { BarChart, Users, Wallet, Building2, Landmark, ReceiptText, DoorClosed, Menu, PieChart, Settings, Shield, HeartHandshake, MessageSquare, Radio as RadioIcon, Home, MoreHorizontal, Pause, Maximize2, X, HandCoins, Church } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Button } from './ui/button';
@@ -63,6 +63,7 @@ export default function Layout() {
     { name: 'Início', path: '/', icon: PieChart },
     { name: 'Membros', path: '/members', icon: Users },
     { name: 'Finanças', path: '/finances', icon: Wallet },
+    ...(userRole === 'admin' ? [{ name: 'Comunhão', path: '/communion', icon: Church }] : []),
     { name: 'Obrigações', path: '/obligations', icon: HeartHandshake },
     { name: 'Fundo de Construção', path: '/building-fund', icon: Building2 },
     { name: 'Património', path: '/assets', icon: Landmark },
@@ -79,6 +80,7 @@ export default function Layout() {
     { name: 'Início', path: '/', icon: Home },
     { name: 'Membros', path: '/members', icon: Users },
     { name: 'Finanças', path: '/finances', icon: Wallet },
+    ...(userRole === 'admin' ? [{ name: 'Comunhão', path: '/communion', icon: Church }] : []),
     { name: 'Rádio', path: '/radio', icon: RadioIcon },
   ];
   const bottomPaths = bottomTabs.map((t) => t.path);

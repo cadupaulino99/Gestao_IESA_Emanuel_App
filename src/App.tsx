@@ -24,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './com
 import Dashboard from './pages/Dashboard';
 const Members = lazy(() => import('./pages/Members'));
 const Finances = lazy(() => import('./pages/Finances'));
+const Communion = lazy(() => import('./pages/Communion'));
 const BuildingFund = lazy(() => import('./pages/BuildingFund'));
 const Assets = lazy(() => import('./pages/Assets'));
 const Budget = lazy(() => import('./pages/Budget'));
@@ -324,6 +325,7 @@ export default function App() {
                       <Route index element={<Dashboard />} />
                       <Route path="members" element={<Members />} />
                       <Route path="finances" element={<Finances />} />
+                      <Route path="communion" element={<Communion />} />
                       <Route path="obligations" element={<Obligations />} />
                       <Route path="building-fund" element={<BuildingFund />} />
                       <Route path="assets" element={<Assets />} />
