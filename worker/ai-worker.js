@@ -1537,6 +1537,48 @@ export default {
         return json({ ok: true, disabled: !!disabled });
       }
 
+      /* --- apagar administrador (super): Auth + documento admins/<email> --- */
+      if (path === '/admin/delete-admin') {
+        if (!isSuper) return json({ error: 'Só o super administrador pode apagar administradores.' }, 403);
+        const body = await request.json().catch(() => ({}));
+        const target = String(body.email || '').toLowerCase().trim();
+        if (!target || !target.includes('@')) return json({ error: 'Email obrigatório.' }, 400);
+        const caller = String(claims.email || '').toLowerCase();
+        if (target === caller) return json({ error: 'Não pode apagar a sua própria conta.' }, 403);
+        const tDoc = await getAdminDoc(target, env);
+        if (!tDoc) return json({ error: 'Este email não está na coleção admins.' }, 404);
+        if (tDoc.isSuper === true) return json({ error: 'A conta de super administrador não pode ser apagada.' }, 403);
+        let accountDeleted = false;
+        const localId = await itGetLocalId(env, target);
+        if (localId) {
+          const tok = await saAccessToken(env.FIREBASE_SA_JSON);
+          const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+            body: JSON.stringify({ localId }),
+          });
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            return json({ error: 'Falha ao apagar a conta Auth: ' + ((j.error && j.error.message) || r.status) }, 500);
+          }
+          accountDeleted = true;
+        }
+        await fsDeleteDoc(env, 'admins', target);
+        roleCache = { ts: 0, map: {} };
+        try {
+          await fsAdd(env, 'audit_logs', {
+            action: 'admin.deleted',
+            targetEmail: target,
+            byEmail: caller,
+            adminEmail: caller,
+            at: Date.now(),
+            createdAt: Date.now(),
+            accountDeleted,
+          });
+        } catch (_) {}
+        return json({ ok: true, accountDeleted, email: target });
+      }
+
       /* --- v2.9.0: apagar CONTA+PEDIDO de um cadastro REJEITADO (admin).
              Liberta o email (o Auth deixava-o preso para sempre) e remove o
              member_signups. Só rejeitados — nunca contas de membros activos. */

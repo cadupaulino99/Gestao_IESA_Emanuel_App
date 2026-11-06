@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { prefGet,prefSet } from '../lib/prefs';
-import { createAuthAccount, resetTempPassword, setAccountDisabled } from '../lib/ai';
+import { createAuthAccount, resetTempPassword, setAccountDisabled, deleteAdminAccount } from '../lib/ai';
 import { genTempPassword, type ShareCtx } from '../lib/admins';
 import OneTimeCredentials from '../components/admin/OneTimeCredentials';
 import AnnouncementsAdmin from '../components/admin/AnnouncementsAdmin';
@@ -776,6 +776,35 @@ export default function Admin() {
     }
   };
 
+  const handleDeleteAdmin = async (u: any) => {
+    if (!isSuperAdmin) {
+      toast.error('Só o super administrador pode apagar administradores.');
+      return;
+    }
+    if (u?.isSuper === true) {
+      toast.error('A conta de super administrador não pode ser apagada.');
+      return;
+    }
+    if (String(u?.email || '').toLowerCase() === String(user?.email || '').toLowerCase()) {
+      toast.error('Não pode apagar a sua própria conta.');
+      return;
+    }
+    const confirmed = await confirmDialog(
+      `Apagar definitivamente o administrador «${u.name || u.email}»?\n\nIsto remove o acesso e a conta de autenticação. Não pode ser desfeito pelo painel.`,
+      'APAGAR',
+    );
+    if (!confirmed) return;
+    try {
+      const r = await deleteAdminAccount({ email: u.email });
+      setUsers((prev) => prev.filter((x) => String(x.email || x.id).toLowerCase() !== String(u.email).toLowerCase()));
+      toast.success(r.accountDeleted
+        ? `Administrador ${u.email} apagado (conta Auth removida).`
+        : `Administrador ${u.email} removido (não havia conta Auth).`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Falha ao apagar administrador.');
+    }
+  };
+
   const deleteDocSafely = async (col: string, id: string) => {
     let confirmMsg = "Tem certeza de que deseja eliminar esta informação?";
     let requireText = undefined;
@@ -1114,6 +1143,11 @@ export default function Admin() {
                                 <Button variant="ghost" size="sm" title={u.disabled ? 'Reativar' : 'Desativar'} onClick={() => handleToggleDisabled(u)}>
                                   {u.disabled ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-amber-600" />}
                                 </Button>
+                                {isSuperAdmin && (
+                                  <Button variant="ghost" size="sm" title="Apagar administrador" className="text-destructive hover:text-destructive" onClick={() => handleDeleteAdmin(u)}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             )}
                           </TableCell>

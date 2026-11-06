@@ -149,6 +149,14 @@ export async function setAccountDisabled(input: { email: string; disabled: boole
   return callWorker<{ ok: boolean; disabled: boolean }>('/admin/set-account-disabled', input);
 }
 
+/** Apaga administrador: documento admins/ + conta Auth (SÓ super; Worker valida). */
+export async function deleteAdminAccount(input: { email: string }) {
+  return callWorker<{ ok: boolean; accountDeleted: boolean; email: string }>(
+    '/admin/delete-admin',
+    input,
+  );
+}
+
 /** v1.17: apaga a conta Auth + o pedido de um cadastro REJEITADO (só admin;
  *  o Worker confirma o estado). Liberta o email para novo cadastro. */
 export async function deleteSignupAccount(signupId: string) {
