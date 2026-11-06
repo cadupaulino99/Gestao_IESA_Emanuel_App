@@ -1,0 +1,60 @@
+name: Deploy Firebase Hosting (web)
+
+# Publica a app web em https://iesa-emanuel-xangongo.web.app
+# Secrets: FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/deploy-hosting.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: build + hosting
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build web
+        run: npm run build
+
+      - name: Autenticar Firebase
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::Secret FIREBASE_SERVICE_ACCOUNT em falta"
+            exit 1
+          fi
+          echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json" >> $GITHUB_ENV
+
+      - name: Deploy Hosting
+        env:
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          set -o pipefail
+          PID="${PROJECT_ID:-iesa-emanuel-xangongo}"
+          npx --yes firebase-tools@14 deploy --only hosting --project "$PID" --non-interactive
+          echo "Site: https://${PID}.web.app"

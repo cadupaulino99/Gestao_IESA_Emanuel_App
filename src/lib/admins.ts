@@ -16,7 +16,7 @@ export function genTempPassword(len = 12): string {
   return out;
 }
 
-export const APP_ACCESS_URL = 'https://iesa-emanuel.web.app';
+export const APP_ACCESS_URL = 'https://iesa-emanuel-xangongo.web.app';
 
 export interface ShareCtx {
   appName: string;
@@ -28,32 +28,19 @@ export interface ShareCtx {
 }
 
 /** Mensagem pronta a partilhar (copiar / WhatsApp / SMS / email). */
-export function buildShareMessage(c: ShareCtx): string {
-  const url = c.accessUrl || APP_ACCESS_URL;
-  return [
-    `${c.appName} — credenciais de administrador`,
-    c.name ? `Olá, ${c.name}.` : 'Olá.',
-    `Utilizador: ${c.email}`,
-    `Palavra-passe temporária: ${c.tempPassword}`,
-    `Acesso: ${url}`,
-    'Por segurança, terá de definir uma palavra-passe nova no primeiro acesso.',
-    'Esta mensagem mostra-se uma única vez a quem a criou — não a reencaminhe.',
-  ].join('\n');
-}
-
-export function shareLinks(msg: string, phone?: string | null, email?: string | null) {
-  const raw = String(phone || '').replace(/\D/g, '');
-  const digits = raw ? (raw.startsWith('244') ? raw : '244' + raw) : '';
-  return {
-    wa: digits ? `https://wa.me/${digits}?text=${encodeURIComponent(msg)}` : null,
-    sms: digits ? `sms:+${digits}?body=${encodeURIComponent(msg)}` : null,
-    mail: email ? `mailto:${email}?subject=${encodeURIComponent('Credenciais — Gestão IESA Emanuel')}&body=${encodeURIComponent(msg)}` : null,
-  };
-}
-
-/** A temporária expira aos 7 dias. */
-export const TEMP_PASSWORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-export function isTempExpired(issuedAt: number | null | undefined, now = Date.now()): boolean {
-  if (!issuedAt) return false;
-  return now - issuedAt > TEMP_PASSWORD_TTL_MS;
+export function buildShareMessage(ctx: ShareCtx): string {
+  const url = ctx.accessUrl || APP_ACCESS_URL;
+  const lines = [
+    ctx.appName || 'Gestão IESA Emanuel',
+    ctx.name ? `Olá, ${ctx.name}.` : 'Olá.',
+    '',
+    'Credenciais de acesso (temporárias):',
+    `Email: ${ctx.email}`,
+    `Palavra-passe: ${ctx.tempPassword}`,
+    '',
+    `Entre em: ${url}`,
+    'Altere a palavra-passe após o primeiro acesso.',
+  ];
+  if (ctx.phone) lines.push('', `Contacto: ${ctx.phone}`);
+  return lines.join('\n');
 }
