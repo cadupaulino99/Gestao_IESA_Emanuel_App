@@ -7,6 +7,7 @@ import AnnouncementsAdmin from '../components/admin/AnnouncementsAdmin';
 import PendingSignups from '../components/admin/PendingSignups';
 import AgendaAdmin from '../components/admin/AgendaAdmin';
 import EventsAdmin from '../components/admin/EventsAdmin';
+import CommunionMonthlyAdmin from '../components/admin/CommunionMonthlyAdmin';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, setDoc, deleteDoc, doc, where, updateDoc, addDoc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -960,6 +961,7 @@ export default function Admin() {
           {userRole === 'admin' && (<TabsTrigger value="signups"><UserPlus className="h-4 w-4 mr-2" /> Cadastros Pendentes</TabsTrigger>)}
           <TabsTrigger value="members"><Shield className="h-4 w-4 mr-2" /> Membros Inativos</TabsTrigger>
           <TabsTrigger value="mural"><Bell className="h-4 w-4 mr-2" /> Avisos, Agenda e Eventos</TabsTrigger>
+          {userRole === 'admin' && (<TabsTrigger value="comunhao"><Church className="h-4 w-4 mr-2" /> Comunhão</TabsTrigger>)}
           <TabsTrigger value="church"><Church className="h-4 w-4 mr-2" /> Dados da Instituição</TabsTrigger>
           <TabsTrigger value="data"><Database className="h-4 w-4 mr-2" /> Gestão de Dados</TabsTrigger>
           <TabsTrigger value="trash"><Trash2 className="h-4 w-4 mr-2" /> Lixeira</TabsTrigger>
@@ -1356,6 +1358,11 @@ export default function Admin() {
           <AgendaAdmin />
           <EventsAdmin />
         </TabsContent>
+        {userRole === 'admin' && (
+          <TabsContent value="comunhao" className="space-y-4">
+            <CommunionMonthlyAdmin />
+          </TabsContent>
+        )}
 
         <TabsContent value="church">
           <Card>

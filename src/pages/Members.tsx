@@ -32,7 +32,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
 export default function Members() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, userRole } = useAuth();
   const queryClient = useQueryClient();
   const confirmDialog = useConfirm();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -455,7 +455,16 @@ export default function Members() {
           </Card>
         </TabsContent>
         <TabsContent value="dizimos" className="mt-0"><MemberTithesTracker /></TabsContent>
-        <TabsContent value="comunhao" className="mt-0"><CommunionTracker /></TabsContent>
+        <TabsContent value="comunhao" className="mt-0">
+          {userRole === 'admin' ? (
+            <CommunionTracker />
+          ) : (
+            <p className="rounded-xl border bg-muted/40 p-6 text-center text-sm text-muted-foreground">
+              O registo de comunhão está disponível apenas para administradores.
+              Use Administração - Comunhão para a presença mensal da Santa Ceia.
+            </p>
+          )}
+        </TabsContent>
       </Tabs>
       <Sheet open={!!selectedMember} onOpenChange={(o) => { if (!o) setSelectedMember(null); }}>
         <SheetContent className="w-full sm:max-w-md">
