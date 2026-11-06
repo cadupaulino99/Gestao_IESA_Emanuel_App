@@ -1,0 +1,20 @@
+name: apply-board-engagement
+on:
+  workflow_dispatch: {}
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rules + copy UI from scripts if present
+        run: |
+          python3 scripts/patch_board_engagement_rules.py
+          python3 scripts/patch_board_engagement_ui.py || true
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add firestore.rules src/lib/boardEngagement.ts src/components/board src/components/portal/MemberBoard.tsx || true
+          if git diff --cached --quiet; then echo No changes; else git commit -m "feat(mural): feed unificado + likes/comentários/WhatsApp" && git push; fi
