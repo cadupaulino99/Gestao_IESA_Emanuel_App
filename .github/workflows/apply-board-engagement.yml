@@ -8,15 +8,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Stitch UI installer
-        run: python3 scripts/ui_chunks/stitch_board_ui.py
-      - name: Apply rules + UI
+      - name: Apply rules + wire feed/engagement
         run: |
           python3 scripts/patch_board_engagement_rules.py
-          python3 scripts/patch_board_engagement_ui.py
+          python3 scripts/patch_board_feed_wire.py
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add firestore.rules src/lib/boardEngagement.ts src/components/board src/components/portal/MemberBoard.tsx
-          if git diff --cached --quiet; then echo No changes; else git commit -m "feat(mural): feed unificado + likes/comentários/WhatsApp" && git push; fi
+          git add firestore.rules src/components/board/EventFeedPost.tsx src/components/portal/MemberBoard.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "feat(mural): feed unificado + engajamento nos posts" && git push; fi
