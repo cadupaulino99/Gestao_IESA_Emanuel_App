@@ -1,13 +1,9 @@
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from './firebase';
+import { storage, auth } from './firebase';
 import { compressImageFile } from './ai';
 import { dataUrlToBlob } from './download';
 
-/* ═══════════════════════════════════════════════════════════════════════
-   CARTAZES DE EVENTOS — v1.13.0+
-   Comprime no aparelho, guarda no Firebase Storage e grava só o caminho
-   no documento Firestore. Operações têm TIMEOUT para não bloquear a UI.
-   ═══════════════════════════════════════════════════════════════════════ */
+const WORKER_URL = 'https://iesa-ai.cadupaulino99.workers.dev';
 
 export const POSTER_MAX_BYTES = 10 * 1024 * 1024;
 export const POSTER_TYPES: Record<string, string> = {
@@ -17,28 +13,23 @@ export const POSTER_TYPES: Record<string, string> = {
   'image/webp': 'webp',
 };
 
-/** Timeout padrão das operações Storage (ms). */
 const STORAGE_TIMEOUT_MS = 12_000;
 
 export interface PosterUploadResult {
-  posterPath: string;
-  posterThumbPath: string;
+  posterUrl?: string | null;
+  posterPath?: string | null;
+  posterThumbPath?: string | null;
+  key?: string | null;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(`${label} esgotou o tempo (${Math.round(ms / 1000)}s). Verifique se o Firebase Storage está activo e a rede.`));
+      reject(new Error(`${label} esgotou o tempo (${Math.round(ms / 1000)}s).`));
     }, ms);
     promise.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(timer);
-        reject(e);
-      },
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
     );
   });
 }
@@ -49,7 +40,6 @@ function extFromName(name: string): string | null {
   return m[1] === 'jpeg' ? 'jpg' : m[1];
 }
 
-/** Valida o ficheiro ANTES de comprimir (tipo ou extensão + 10 MB). */
 export function validatePosterFile(file: File): string | null {
   const type = (file.type || '').toLowerCase();
   const byType = !!POSTER_TYPES[type];
@@ -64,21 +54,17 @@ export function validatePosterFile(file: File): string | null {
 
 function friendlyStorageError(err: unknown): string {
   const m = String((err as any)?.code || (err as any)?.message || err || '');
-  if (/esgotou o tempo|timeout/i.test(m)) {
-    return m;
+  if (/esgotou o tempo|timeout/i.test(m)) return m;
+  if (/R2_NOT_CONFIGURED|R2 não/i.test(m)) {
+    return 'Cloudflare R2 ainda não está configurado. Crie o bucket «iesa-event-posters» e faça deploy do Worker.';
   }
   if (/storage\/unauthorized|permission-denied|PERMISSION_DENIED/i.test(m)) {
-    return 'Sem permissão no Storage. Confirme que está autenticado e que as regras do Storage estão publicadas (Firebase → Storage → Rules).';
+    return 'Sem permissão no armazenamento de ficheiros.';
   }
-  if (/bucket|not exist|404|storage\/object-not-found|storage\/bucket-not-found/i.test(m)) {
-    return 'Firebase Storage ainda não está activo no projecto. Consola Firebase → Storage → «Começar».';
+  if (/bucket|not exist|404|storage\/bucket-not-found/i.test(m)) {
+    return 'Armazenamento de ficheiros indisponível (Firebase Storage ou R2).';
   }
-  if (/storage\/retry-limit-exceeded|network|Failed to fetch/i.test(m)) {
-    return 'Falha de rede ao enviar o cartaz. Tente novamente.';
-  }
-  if (/storage\/quota/i.test(m)) {
-    return 'Quota do Storage esgotada.';
-  }
+  if (/network|Failed to fetch/i.test(m)) return 'Falha de rede ao enviar o cartaz. Tente novamente.';
   return m || 'Falha desconhecida no carregamento do cartaz.';
 }
 
@@ -87,54 +73,91 @@ async function fileToJpegBlob(file: File, max: number, quality: number): Promise
     const compressed = await compressImageFile(file, { max, quality });
     const blob = dataUrlToBlob(`data:image/jpeg;base64,${compressed.base64}`);
     if (blob.size > 64) return blob;
-  } catch {
-    /* fallback */
-  }
+  } catch { /* fallback */ }
   if (file.type && file.type.startsWith('image/')) return file;
   return new Blob([await file.arrayBuffer()], { type: 'image/jpeg' });
 }
 
-/**
- * Comprime + envia cartaz e miniatura para o Storage (com timeout).
- * Se a miniatura falhar, o cartaz principal ainda é guardado.
- */
-export async function uploadEventPoster(id: string, file: File): Promise<PosterUploadResult> {
+/** Upload preferencial: Cloudflare Worker → R2. */
+export async function uploadPosterToR2(
+  file: File,
+  eventId?: string,
+): Promise<PosterUploadResult> {
   const err = validatePosterFile(file);
   if (err) throw new Error(err);
-  if (!id) throw new Error('ID do evento em falta para o cartaz.');
+  if (!WORKER_URL) throw new Error('WORKER_URL não configurado.');
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sessão terminada — entre novamente.');
+  const idToken = await user.getIdToken();
 
+  const blob = await withTimeout(fileToJpegBlob(file, 1600, 0.82), 15_000, 'Processamento da imagem');
+  const res = await withTimeout(
+    fetch(`${WORKER_URL}/admin/upload-poster`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        'Content-Type': 'image/jpeg',
+        ...(eventId ? { 'X-Event-Id': eventId } : {}),
+      },
+      body: blob,
+    }),
+    STORAGE_TIMEOUT_MS,
+    'Upload do cartaz (R2)',
+  );
+  const data = await res.json().catch(() => ({} as any));
+  if (!res.ok) {
+    throw new Error(data?.error || `Erro ${res.status} no upload R2`);
+  }
+  return {
+    posterUrl: data.posterUrl as string,
+    key: data.key as string,
+    posterPath: null,
+    posterThumbPath: null,
+  };
+}
+
+async function uploadEventPosterFirebase(id: string, file: File): Promise<PosterUploadResult> {
+  const err = validatePosterFile(file);
+  if (err) throw new Error(err);
   const posterPath = `posters/${id}.jpg`;
   const posterThumbPath = `posters/thumbs/${id}.jpg`;
-
-  let bigBlob: Blob;
+  const bigBlob = await withTimeout(fileToJpegBlob(file, 1600, 0.82), 15_000, 'Processamento');
+  await withTimeout(
+    uploadBytes(ref(storage, posterPath), bigBlob, { contentType: 'image/jpeg' }),
+    STORAGE_TIMEOUT_MS,
+    'Upload Firebase',
+  );
   try {
-    bigBlob = await withTimeout(fileToJpegBlob(file, 1600, 0.82), 15_000, 'Processamento da imagem');
-  } catch (e) {
-    throw new Error(`Não foi possível processar a imagem: ${friendlyStorageError(e)}`);
-  }
-
-  try {
-    await withTimeout(
-      uploadBytes(ref(storage, posterPath), bigBlob, { contentType: 'image/jpeg' }),
-      STORAGE_TIMEOUT_MS,
-      'Upload do cartaz',
-    );
-  } catch (e) {
-    throw new Error(friendlyStorageError(e));
-  }
-
-  try {
-    const thumbBlob = await withTimeout(fileToJpegBlob(file, 400, 0.7), 10_000, 'Miniatura');
+    const thumbBlob = await fileToJpegBlob(file, 400, 0.7);
     await withTimeout(
       uploadBytes(ref(storage, posterThumbPath), thumbBlob, { contentType: 'image/jpeg' }),
       STORAGE_TIMEOUT_MS,
-      'Upload da miniatura',
+      'Thumb Firebase',
     );
   } catch {
     return { posterPath, posterThumbPath: posterPath };
   }
-
   return { posterPath, posterThumbPath };
+}
+
+/** Tenta R2 (Worker); se indisponível, tenta Firebase Storage. */
+export async function uploadEventPoster(id: string, file: File): Promise<PosterUploadResult> {
+  try {
+    return await uploadPosterToR2(file, id);
+  } catch (e: any) {
+    const msg = String(e?.message || e || '');
+    if (/R2|503|não está configurado|não configurado/i.test(msg)) {
+      try {
+        return await uploadEventPosterFirebase(id, file);
+      } catch (e2) {
+        throw new Error(
+          friendlyStorageError(e2) +
+            ' · Active o Cloudflare R2 (bucket iesa-event-posters) e faça deploy do Worker.',
+        );
+      }
+    }
+    throw new Error(friendlyStorageError(e));
+  }
 }
 
 export async function posterUrl(path: string): Promise<string> {
@@ -152,39 +175,30 @@ export async function resolvePosterUrl(
     if (!c) continue;
     try {
       return await posterUrl(c);
-    } catch {
-      /* tenta o seguinte */
-    }
+    } catch { /* next */ }
   }
   return null;
 }
 
 export async function deleteEventPoster(paths: (string | null | undefined)[]): Promise<void> {
   await Promise.all(
-    paths.filter(Boolean).map((p) =>
-      withTimeout(deleteObject(ref(storage, p as string)), 8_000, 'Apagar cartaz').catch(() => {}),
-    ),
+    paths.filter(Boolean).map((p) => {
+      const s = String(p);
+      if (/^https?:\/\//i.test(s)) return Promise.resolve();
+      return withTimeout(deleteObject(ref(storage, s)), 8_000, 'Apagar').catch(() => {});
+    }),
   );
 }
 
-/** Teste de escrita/leitura no Storage — nunca fica pendente mais de ~12s. */
+/** Teste R2 via Worker. */
 export async function testStorageActive(): Promise<{ ok: boolean; detail: string }> {
-  const id = `__health_${Date.now()}`;
-  const path = `posters/${id}.jpg`;
-  // JPEG 1×1 mínimo
-  const b64 =
-    '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=';
-  const minimalJpeg = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
   try {
-    const r = ref(storage, path);
-    await withTimeout(
-      uploadBytes(r, minimalJpeg, { contentType: 'image/jpeg' }),
-      STORAGE_TIMEOUT_MS,
-      'Teste de upload',
-    );
-    await withTimeout(getDownloadURL(r), 8_000, 'Teste de leitura').catch(() => null);
-    await withTimeout(deleteObject(r), 5_000, 'Limpeza do teste').catch(() => {});
-    return { ok: true, detail: `Storage activo. Teste OK (${path}).` };
+    const b64 =
+      '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=';
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const file = new File([bytes], 'health.jpg', { type: 'image/jpeg' });
+    const up = await uploadPosterToR2(file, 'health');
+    return { ok: true, detail: `R2 activo. Teste OK (${up.posterUrl}).` };
   } catch (e) {
     return { ok: false, detail: friendlyStorageError(e) };
   }
