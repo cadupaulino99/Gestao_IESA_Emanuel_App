@@ -56,7 +56,28 @@ export async function uploadEventPoster(id: string, file: File): Promise<PosterU
 
 /** URL de apresentação (exige sessão; o token do URL não é público). */
 export async function posterUrl(path: string): Promise<string> {
-  return getDownloadURL(ref(storage, path));
+  const p = String(path || '').trim();
+  if (!p) throw new Error('caminho vazio');
+  // Já é URL completa (legado / partilha)
+  if (/^https?:\/\//i.test(p)) return p;
+  // Normalizar caminhos relativos
+  const clean = p.replace(/^\/+/, '');
+  return getDownloadURL(ref(storage, clean));
+}
+
+/** Tenta vários caminhos (cartaz completo e miniatura) até um resolver. */
+export async function resolvePosterUrl(
+  ...candidates: (string | null | undefined)[]
+): Promise<string | null> {
+  for (const c of candidates) {
+    if (!c) continue;
+    try {
+      return await posterUrl(c);
+    } catch {
+      /* tenta o seguinte */
+    }
+  }
+  return null;
 }
 
 /** Apaga os ficheiros do cartaz (falha silenciosa — órfãos não bloqueiam). */
