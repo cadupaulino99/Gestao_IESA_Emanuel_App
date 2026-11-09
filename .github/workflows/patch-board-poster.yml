@@ -1,0 +1,17 @@
+name: patch-board-poster
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/patch_board_poster_normalize.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/board.ts src/components/board/EventFeedPost.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "fix(feed): cartazes de eventos no portal do membro" && git push; fi
