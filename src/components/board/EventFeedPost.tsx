@@ -155,14 +155,20 @@ export default function EventFeedPost({
         ) : null}
       </div>
 
-      {(e.posterPath || e.posterThumbPath) && (
+      {(e.posterUrl || e.posterPath || e.posterThumbPath) && (
         <div className="relative bg-slate-100 dark:bg-slate-800/80">
+          {e.posterUrl ? (
+            <button type="button" className="block w-full border-0 bg-transparent p-0" onClick={() => (onFullPoster ? onFullPoster(e) : onOpen?.(e))}>
+              <img src={e.posterUrl} alt="Cartaz do evento" className="max-h-[480px] w-full object-cover" loading="lazy" />
+            </button>
+          ) : (
           <PosterImg
             path={e.posterThumbPath || e.posterPath}
             altPath={e.posterPath || e.posterThumbPath}
             className="max-h-[480px] w-full object-cover"
             onClick={() => (onFullPoster ? onFullPoster(e) : onOpen?.(e))}
           />
+          )}
           {onFullPoster && (
             <Button
               type="button"

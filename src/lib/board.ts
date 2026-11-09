@@ -94,6 +94,7 @@ export function normalizeEvent(raw: any): NormalizedEvent {
     responsible: raw?.responsible || '',
     posterPath,
     posterThumbPath,
+    posterUrl: (typeof raw?.posterUrl === 'string' && raw.posterUrl) || null,
     html: raw?.descriptionHtml
       ? sanitizeHtml(raw.descriptionHtml)
       : raw?.description

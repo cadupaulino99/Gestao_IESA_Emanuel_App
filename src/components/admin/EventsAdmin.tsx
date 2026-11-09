@@ -208,10 +208,14 @@ export default function EventsAdmin() {
         if (posterFile) {
           const up = await uploadEventPoster(id, posterFile);
           const oldPaths = editing ? [editing.posterPath, editing.posterThumbPath] : [];
-          await updateDoc(doc(db, 'events', id), { ...up });
+          await updateDoc(doc(db, 'events', id), {
+            posterUrl: up.posterUrl || null,
+            posterPath: up.posterPath || null,
+            posterThumbPath: up.posterThumbPath || null,
+          });
           await deleteEventPoster(oldPaths);
-        } else if (removePoster && editing?.posterPath) {
-          await updateDoc(doc(db, 'events', id), { posterPath: null, posterThumbPath: null });
+        } else if (removePoster && (editing?.posterPath || editing?.posterUrl)) {
+          await updateDoc(doc(db, 'events', id), { posterPath: null, posterThumbPath: null, posterUrl: null });
           await deleteEventPoster([editing.posterPath, editing.posterThumbPath]);
         }
       } catch (pe: any) {
@@ -343,7 +347,7 @@ export default function EventsAdmin() {
         </CardTitle>
         <CardDescription>
           Atividades com data própria. Estados: marcado, adiado, cancelado, realizado.
-          Cartaz opcional (JPG/PNG/WEBP até 10 MB — comprimido a 1600 px e guardado como ficheiro).
+          Cartaz opcional (JPG/PNG/WEBP até 10 MB). Preferência: Cloudflare R2 via Worker; se R2 falhar, tenta Firebase Storage.
         </CardDescription>
         <div className="pt-2">
           <Button

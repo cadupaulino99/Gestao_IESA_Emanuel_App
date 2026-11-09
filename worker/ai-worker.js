@@ -42,7 +42,7 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.11.1';
+const WORKER_VERSION = '2.12.0';
 const WORKER_BUILD = '2026-11-05 (P1: sanitizar prompts, anonimizar financas, auth/rate/audit)';
 
 const CORS = {
@@ -1308,6 +1308,23 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    /* --- Media pública (cartazes no R2) --- */
+    if (request.method === 'GET' && path.startsWith('/media/')) {
+      try {
+        if (!env.POSTERS_BUCKET) return json({ error: 'R2 não configurado (binding POSTERS_BUCKET).' }, 503);
+        const key = decodeURIComponent(path.slice('/media/'.length)).replace(/^\/+/, '');
+        if (!key.startsWith('posters/') || key.includes('..')) return json({ error: 'Não encontrado.' }, 404);
+        const obj = await env.POSTERS_BUCKET.get(key);
+        if (!obj) return json({ error: 'Não encontrado.' }, 404);
+        const headers = new Headers(CORS);
+        obj.writeHttpMetadata(headers);
+        headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        return new Response(obj.body, { headers });
+      } catch (e) {
+        return json({ error: 'Falha ao servir media: ' + ((e && e.message) || e) }, 500);
+      }
+    }
+
     /* --- Diagnostico PUBLICO (sem auth): diz qual versao do Worker esta no ar.
        Abra https://iesa-ai.<conta>.workers.dev/__health no browser.
        Se devolver 404 "Rota nao encontrada", o Worker publicado e ANTIGO
@@ -1457,6 +1474,44 @@ export default {
       if (adminDoc && adminDoc.disabled) return json({ error: 'Conta desativada. Fale com o super administrador.', code: 'ACCOUNT_DISABLED' }, 403);
       /* Palavra-passe temporaria por trocar: so pode usar o sistema depois de a trocar. */
       if (adminDoc && adminDoc.mustChangePassword) return json({ error: 'Troque a palavra-passe temporaria antes de usar o sistema.', code: 'PASSWORD_CHANGE_REQUIRED' }, 403);
+
+      /* --- Upload de cartaz para R2 (qualquer admin autenticado) --- */
+      if (path === '/admin/upload-poster' && request.method === 'POST') {
+        if (!adminDoc) return json({ error: 'Só administradores podem enviar cartazes.' }, 403);
+        if (!env.POSTERS_BUCKET) {
+          return json({
+            error: 'Cloudflare R2 não está ligado a este Worker. Crie o bucket «iesa-event-posters» e faça deploy com binding POSTERS_BUCKET.',
+            code: 'R2_NOT_CONFIGURED',
+          }, 503);
+        }
+        const ct = (request.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+        if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(ct)) {
+          return json({ error: 'Tipo inválido. Use JPG, PNG ou WEBP.' }, 400);
+        }
+        const buf = await request.arrayBuffer();
+        if (!buf || buf.byteLength < 32) return json({ error: 'Ficheiro vazio ou inválido.' }, 400);
+        if (buf.byteLength > 10 * 1024 * 1024) return json({ error: 'Ficheiro demasiado grande (máx. 10 MB).' }, 400);
+        const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg';
+        const eventHint = (request.headers.get('X-Event-Id') || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+        const key = `posters/${eventHint || 'evt'}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}.${ext}`;
+        await env.POSTERS_BUCKET.put(key, buf, {
+          httpMetadata: { contentType: ct === 'image/jpg' ? 'image/jpeg' : ct },
+          customMetadata: { uploadedBy: String(claims.email || ''), at: String(Date.now()) },
+        });
+        const posterUrl = `${url.origin}/media/${key}`;
+        return json({ ok: true, posterUrl, key, bytes: buf.byteLength, workerVersion: WORKER_VERSION });
+      }
+
+      if (path === '/admin/delete-poster' && request.method === 'POST') {
+        if (!adminDoc) return json({ error: 'Só administradores.' }, 403);
+        if (!env.POSTERS_BUCKET) return json({ error: 'R2 não configurado.' }, 503);
+        let body = {};
+        try { body = await request.json(); } catch (_) {}
+        const key = String(body.key || '').replace(/^\/+/, '');
+        if (!key.startsWith('posters/') || key.includes('..')) return json({ error: 'Chave inválida.' }, 400);
+        await env.POSTERS_BUCKET.delete(key);
+        return json({ ok: true });
+      }
 
       /* --- gestão de admins: SÓ super admin (servidor, nao so UI) --- */
       if (path === '/admin/create-auth-account') {

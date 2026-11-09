@@ -230,6 +230,8 @@ export interface ChurchEvent {
   /** Caminhos no Storage (posters/<id>.<ext>); NUNCA base64 no documento. */
   posterPath?: string | null;
   posterThumbPath?: string | null;
+  /** URL público do cartaz (Cloudflare R2 via Worker /media/...). */
+  posterUrl?: string | null;
   /** Lembrete interno 1 dia antes (opcional, activado por evento). */
   reminder1d?: boolean;
   /** 'AAAA-MM-DD' em que o Worker já enviou o lembrete (idempotência). */
