@@ -47,7 +47,7 @@ const WORKER_BUILD = '2026-11-05 (P1: sanitizar prompts, anonimizar financas, au
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Event-Id',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
@@ -1492,7 +1492,7 @@ export default {
         if (!buf || buf.byteLength < 32) return json({ error: 'Ficheiro vazio ou inválido.' }, 400);
         if (buf.byteLength > 10 * 1024 * 1024) return json({ error: 'Ficheiro demasiado grande (máx. 10 MB).' }, 400);
         const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : 'jpg';
-        const eventHint = (request.headers.get('X-Event-Id') || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+        const eventHint = (request.headers.get('X-Event-Id') || url.searchParams.get('eventId') || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
         const key = `posters/${eventHint || 'evt'}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}.${ext}`;
         await env.POSTERS_BUCKET.put(key, buf, {
           httpMetadata: { contentType: ct === 'image/jpg' ? 'image/jpeg' : ct },

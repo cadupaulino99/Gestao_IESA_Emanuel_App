@@ -91,22 +91,33 @@ export async function uploadPosterToR2(
   const idToken = await user.getIdToken();
 
   const blob = await withTimeout(fileToJpegBlob(file, 1600, 0.82), 15_000, 'Processamento da imagem');
-  const res = await withTimeout(
-    fetch(`${WORKER_URL}/admin/upload-poster`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        'Content-Type': 'image/jpeg',
-        ...(eventId ? { 'X-Event-Id': eventId } : {}),
-      },
-      body: blob,
-    }),
-    STORAGE_TIMEOUT_MS,
-    'Upload do cartaz (R2)',
-  );
+  const qs = eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
+  let res: Response;
+  try {
+    res = await withTimeout(
+      fetch(`${WORKER_URL}/admin/upload-poster${qs}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          'Content-Type': 'image/jpeg',
+        },
+        body: blob,
+      }),
+      STORAGE_TIMEOUT_MS,
+      'Upload do cartaz (R2)',
+    );
+  } catch (e: any) {
+    const m = String(e?.message || e || '');
+    if (/Failed to fetch|NetworkError|Load failed|esgotou o tempo/i.test(m)) {
+      throw new Error(
+        'Não foi possível contactar o Worker (rede/CORS). Confirme https://iesa-ai.cadupaulino99.workers.dev/__health e o binding R2 POSTERS_BUCKET.',
+      );
+    }
+    throw e;
+  }
   const data = await res.json().catch(() => ({} as any));
   if (!res.ok) {
-    throw new Error(data?.error || `Erro ${res.status} no upload R2`);
+    throw new Error(data?.error || data?.code || `Erro ${res.status} no upload R2`);
   }
   return {
     posterUrl: data.posterUrl as string,
