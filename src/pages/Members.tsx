@@ -23,9 +23,10 @@ import { MemberTithesTracker } from '../components/members/MemberTithesTracker';
 import MemberCardModal from '../components/members/MemberCardModal';
 import { nextInternalCode } from '../lib/members';
 import { normalizePhoneAO, phoneError } from '../lib/phone';
-import CommunionTracker from '../components/members/CommunionTracker';
+import CommunionMonthlyAdmin from '../components/admin/CommunionMonthlyAdmin';
 import MemberContactActions from '../components/members/MemberContactActions';
 import { memberSchema, type MemberForm } from '../lib/memberSchema';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { logAudit } from '../lib/audit';
 import jsPDF from 'jspdf';
@@ -33,6 +34,9 @@ import 'jspdf-autotable';
 
 export default function Members() {
   const { user, isAdmin, userRole } = useAuth();
+  const location = useLocation();
+  const initialTab = (location.state as { tab?: string } | null)?.tab === 'comunhao' ? 'comunhao' : 'lista';
+  const [tab, setTab] = useState(initialTab);
   const queryClient = useQueryClient();
   const confirmDialog = useConfirm();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -285,7 +289,7 @@ export default function Members() {
         </div>
       </header>
 
-      <Tabs defaultValue="lista" className="space-y-3">
+      <Tabs value={tab} onValueChange={setTab} className="space-y-3">
         <TabsList className="flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card md:w-auto">
           <TabsTrigger value="lista" className="rounded-lg text-xs sm:text-sm">Lista de Membros</TabsTrigger>
           <TabsTrigger value="dizimos" className="rounded-lg text-xs sm:text-sm">Dízimos por Membro</TabsTrigger>
@@ -457,11 +461,10 @@ export default function Members() {
         <TabsContent value="dizimos" className="mt-0"><MemberTithesTracker /></TabsContent>
         <TabsContent value="comunhao" className="mt-0">
           {userRole === 'admin' ? (
-            <CommunionTracker />
+            <CommunionMonthlyAdmin />
           ) : (
-            <p className="rounded-xl border bg-muted/40 p-6 text-center text-sm text-muted-foreground">
+            <p className="rounded-xl border bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground">
               O registo de comunhão está disponível apenas para administradores.
-              Use Administração - Comunhão para a presença mensal da Santa Ceia.
             </p>
           )}
         </TabsContent>
