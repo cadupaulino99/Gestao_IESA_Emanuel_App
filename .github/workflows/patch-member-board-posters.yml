@@ -1,0 +1,17 @@
+name: patch-member-board-posters
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/patch_member_board_posters.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/portal/MemberBoard.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "feat(portal): Avisos & Eventos + cartazes no feed" && git push; fi
