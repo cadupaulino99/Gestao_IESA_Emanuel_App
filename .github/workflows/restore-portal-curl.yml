@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Download good version
         run: |
-          curl -fsSL "https://raw.githubusercontent.com/cadupaulino99/Gestao_IESA_Emanuel_App/f5f33389a1166a80b584388913b1152a09e5e2a5/src/pages/MemberPortal.tsx" -o src/pages/MemberPortal.tsx
+          curl -fsSL "https://raw.githubusercontent.com/cadupaulino99/Gestao_IESA_Emanuel_App/3ae471d76ac05db78ebdbd3d97ede1c69642541a/src/pages/MemberPortal.tsx" -o src/pages/MemberPortal.tsx
           head -3 src/pages/MemberPortal.tsx
           wc -c src/pages/MemberPortal.tsx
       - name: Commit
