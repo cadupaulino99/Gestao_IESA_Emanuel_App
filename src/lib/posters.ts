@@ -138,3 +138,22 @@ export async function deleteEventPoster(paths: (string | null | undefined)[]): P
     paths.filter(Boolean).map((p) => deleteObject(ref(storage, p as string)).catch(() => {}))
   );
 }
+
+/** Teste de escrita/leitura no Storage (cartaz de diagnóstico 1×1). */
+export async function testStorageActive(): Promise<{ ok: boolean; detail: string }> {
+  const id = `__health_${Date.now()}`;
+  const path = `posters/${id}.jpg`;
+  // JPEG mínimo válido (1×1 pixel)
+  const b64 =
+    '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=';
+  const minimalJpeg = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  try {
+    const r = ref(storage, path);
+    await uploadBytes(r, minimalJpeg, { contentType: 'image/jpeg' });
+    await getDownloadURL(r);
+    await deleteObject(r).catch(() => {});
+    return { ok: true, detail: `Storage activo. Teste OK (${path}).` };
+  } catch (e) {
+    return { ok: false, detail: friendlyStorageError(e) };
+  }
+}
