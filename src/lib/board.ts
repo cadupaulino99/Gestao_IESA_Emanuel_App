@@ -77,12 +77,23 @@ export interface NormalizedEvent extends ChurchEvent {
 }
 
 export function normalizeEvent(raw: any): NormalizedEvent {
+  const posterPath =
+    (typeof raw?.posterPath === 'string' && raw.posterPath) ||
+    (typeof raw?.poster === 'string' && raw.poster) ||
+    (typeof raw?.imagePath === 'string' && raw.imagePath) ||
+    null;
+  const posterThumbPath =
+    (typeof raw?.posterThumbPath === 'string' && raw.posterThumbPath) ||
+    (typeof raw?.posterThumb === 'string' && raw.posterThumb) ||
+    null;
   return {
     ...(raw as ChurchEvent),
     status: (['marcado', 'adiado', 'cancelado', 'realizado'] as const).includes(raw?.status) ? raw.status : 'marcado',
     publishStatus: raw?.publishStatus === 'rascunho' ? 'rascunho' : 'publicado',
     location: raw?.location || '',
     responsible: raw?.responsible || '',
+    posterPath,
+    posterThumbPath,
     html: raw?.descriptionHtml
       ? sanitizeHtml(raw.descriptionHtml)
       : raw?.description

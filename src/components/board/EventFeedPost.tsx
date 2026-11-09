@@ -3,7 +3,7 @@ import { CalendarDays, MapPin, UserRound, Maximize2 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import RichTextView, { ExpandableRichText } from '../richtext/RichTextView';
-import { posterUrl } from '../../lib/posters';
+import { resolvePosterUrl } from '../../lib/posters';
 import { fmtDateTimePT, dayLabelLuanda, luandaDayKey, fmtDatePT } from '../../lib/luanda';
 import { plainOf, type NormalizedEvent } from '../../lib/board';
 import BoardEngagementBar from './BoardEngagementBar';
@@ -25,26 +25,35 @@ const STATUS_CLASS: Record<string, string> = {
 
 function PosterImg({
   path,
+  altPath,
   className,
   onClick,
 }: {
   path?: string | null;
+  altPath?: string | null;
   className?: string;
   onClick?: () => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    if (path) posterUrl(path).then((u) => alive && setUrl(u)).catch(() => alive && setUrl(null));
-    else setUrl(null);
-    return () => {
-      alive = false;
-    };
-  }, [path]);
-  if (!path || !url) return null;
+    setUrl(null);
+    resolvePosterUrl(path, altPath)
+      .then((u) => { if (alive) setUrl(u); })
+      .catch(() => { if (alive) setUrl(null); });
+    return () => { alive = false; };
+  }, [path, altPath]);
+  if (!url) {
+    if (!path && !altPath) return null;
+    return (
+      <div className={`flex items-center justify-center bg-slate-100 text-xs text-slate-400 dark:bg-slate-800 ${className || ''}`}>
+        A carregar cartaz…
+      </div>
+    );
+  }
   return (
-    <button type="button" onClick={onClick} className="block w-full p-0 border-0 bg-transparent cursor-pointer">
-      <img src={url} alt="Cartaz do evento" className={className} />
+    <button type="button" onClick={onClick} className="block w-full cursor-pointer border-0 bg-transparent p-0">
+      <img src={url} alt="Cartaz do evento" className={className} loading="lazy" />
     </button>
   );
 }
@@ -149,8 +158,9 @@ export default function EventFeedPost({
       {(e.posterPath || e.posterThumbPath) && (
         <div className="relative bg-slate-100 dark:bg-slate-800/80">
           <PosterImg
-            path={e.posterPath || e.posterThumbPath}
-            className="max-h-[420px] w-full object-cover"
+            path={e.posterThumbPath || e.posterPath}
+            altPath={e.posterPath || e.posterThumbPath}
+            className="max-h-[480px] w-full object-cover"
             onClick={() => (onFullPoster ? onFullPoster(e) : onOpen?.(e))}
           />
           {onFullPoster && (
