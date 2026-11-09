@@ -1,0 +1,24 @@
+name: restore-portal-from-sha
+on:
+  workflow_dispatch: {}
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 40
+      - name: Restore MemberPortal.tsx
+        run: |
+          git show f5f33389a1166a80b584388913b1152a09e5e2a5:src/pages/MemberPortal.tsx > src/pages/MemberPortal.tsx
+          wc -l src/pages/MemberPortal.tsx
+          head -3 src/pages/MemberPortal.tsx
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/MemberPortal.tsx
+          git commit -m "fix: restaurar MemberPortal.tsx (remover PLACEHOLDER)" || echo none
+          git push
