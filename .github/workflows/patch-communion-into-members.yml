@@ -1,0 +1,17 @@
+name: patch-communion-into-members
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/patch_communion_into_members.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Members.tsx src/components/Layout.tsx src/pages/Communion.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "feat(membros): Comunhão unificada (presença mensal) dentro de Membros" && git push; fi
