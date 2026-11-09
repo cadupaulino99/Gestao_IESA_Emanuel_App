@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { CalendarPlus, Pencil, Trash2, Loader2, ImagePlus, MapPin, Clock, UserRound } from 'lucide-react';
+import { CalendarPlus, Pencil, Trash2, Loader2, ImagePlus, MapPin, Clock, UserRound, HardDrive } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { logAudit } from '../../lib/audit';
@@ -21,7 +21,7 @@ import {
 } from '../../lib/board';
 import { validateRichText, hasDangerousPattern } from '../../lib/richtext';
 import { luandaDayKey, fmtDateTimePT, fmtDatePT, isDateIso, isTimeHHMM } from '../../lib/luanda';
-import { uploadEventPoster, deleteEventPoster, posterUrl, validatePosterFile } from '../../lib/posters';
+import { uploadEventPoster, deleteEventPoster, posterUrl, validatePosterFile, testStorageActive } from '../../lib/posters';
 import EventFeedPost from '../board/EventFeedPost';
 
 const EMPTY = {
@@ -123,6 +123,7 @@ export default function EventsAdmin() {
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [removePoster, setRemovePoster] = useState(false);
+  const [storageTesting, setStorageTesting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -304,6 +305,19 @@ export default function EventsAdmin() {
 
 
 
+  const runStorageTest = async () => {
+    setStorageTesting(true);
+    try {
+      const res = await testStorageActive();
+      if (res.ok) toast.success(res.detail);
+      else toast.error(res.detail);
+    } catch (e: any) {
+      toast.error(e?.message || 'Falha ao testar o Storage');
+    } finally {
+      setStorageTesting(false);
+    }
+  };
+
   return (
     <Card className="overflow-hidden rounded-2xl border-border/70 shadow-sm">
       <CardHeader className="space-y-1 border-b bg-muted/20 pb-4">
@@ -317,6 +331,22 @@ export default function EventsAdmin() {
           Atividades com data própria. Estados: marcado, adiado, cancelado, realizado.
           Cartaz opcional (JPG/PNG/WEBP até 10 MB — comprimido a 1600 px e guardado como ficheiro).
         </CardDescription>
+        <div className="pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            disabled={storageTesting}
+            onClick={() => void runStorageTest()}
+          >
+            {storageTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <HardDrive className="h-3.5 w-3.5" />}
+            {storageTesting ? 'A testar Storage…' : 'Testar Storage'}
+          </Button>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Verifica se o Firebase Storage aceita upload de cartazes (escreve e apaga um ficheiro de teste).
+          </p>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
         {/* ── formulário ── */}
