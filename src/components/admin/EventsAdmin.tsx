@@ -227,41 +227,49 @@ export default function EventsAdmin() {
       // Libertar o botão antes das notificações (podem demorar com muitos membros)
       setSaving(false);
 
-      // notificações (só do que está publicado)
+      // Notificações em fundo — não bloqueiam o botão Guardar
       if (publishStatus === 'publicado') {
         const after = normalizeEvent({ ...data, id });
-        if (!editing) {
-          const r = await publishBoardNotification({
-            kind: 'evento', label: boardLabels.newEvent(after), refId: id,
-            alsoSms: form.alsoSms, byEmail: email,
-          });
-          toast.success(`Evento publicado — ${r.notified} membro(s) notificado(s)${r.smsQueued ? ` · ${r.smsQueued} na fila SMS/WhatsApp` : ''}.`);
-          void logAudit('event.published', `events/${id}`, email, form.title.trim());
-        } else {
-          const what = eventChangesForNotification(editing, { ...data, id });
-          if (what) {
-            const r = await publishBoardNotification({
-              kind: 'evento_change', label: boardLabels.eventChanged(after, what), refId: id,
-              alsoSms: form.alsoSms, byEmail: email,
-            });
-            toast.success(`Evento actualizado — ${r.notified} membro(s) notificado(s) da alteração.`);
-            void logAudit('event.changed', `events/${id}`, email, what || '');
-          } else if (editing.publishStatus === 'rascunho') {
-            const r = await publishBoardNotification({
-              kind: 'evento', label: boardLabels.newEvent(after), refId: id, alsoSms: form.alsoSms, byEmail: email,
-            });
-            toast.success(`Evento publicado — ${r.notified} membro(s) notificado(s).`);
-            void logAudit('event.published', `events/${id}`, email, form.title.trim());
-          } else {
-            toast.success('Evento actualizado.');
-            void logAudit('event.updated', `events/${id}`, email, form.title.trim());
+        const notify = async () => {
+          try {
+            if (!editing) {
+              const r = await publishBoardNotification({
+                kind: 'evento', label: boardLabels.newEvent(after), refId: id,
+                alsoSms: form.alsoSms, byEmail: email,
+              });
+              toast.success(`Evento publicado — ${r.notified} membro(s) notificado(s)${r.smsQueued ? ` · ${r.smsQueued} na fila SMS/WhatsApp` : ''}.`);
+              void logAudit('event.published', `events/${id}`, email, form.title.trim());
+            } else {
+              const what = eventChangesForNotification(editing, { ...data, id });
+              if (what) {
+                const r = await publishBoardNotification({
+                  kind: 'evento_change', label: boardLabels.eventChanged(after, what), refId: id,
+                  alsoSms: form.alsoSms, byEmail: email,
+                });
+                toast.success(`Evento actualizado — ${r.notified} membro(s) notificado(s) da alteração.`);
+                void logAudit('event.changed', `events/${id}`, email, what || '');
+              } else if (editing.publishStatus === 'rascunho') {
+                const r = await publishBoardNotification({
+                  kind: 'evento', label: boardLabels.newEvent(after), refId: id, alsoSms: form.alsoSms, byEmail: email,
+                });
+                toast.success(`Evento publicado — ${r.notified} membro(s) notificado(s).`);
+                void logAudit('event.published', `events/${id}`, email, form.title.trim());
+              } else {
+                toast.success('Evento actualizado.');
+                void logAudit('event.updated', `events/${id}`, email, form.title.trim());
+              }
+            }
+          } catch (ne: any) {
+            toast.success('Evento guardado (notificações em atraso ou falharam).');
+            console.warn('notify events', ne);
           }
-        }
+        };
+        void notify();
       } else {
         toast.success('Rascunho gravado (os membros não o vêem).');
       }
       reset();
-      await load();
+      void load();
     } catch (e: any) {
       toast.error(e?.message ? String(e.message) : '');
       handleFirestoreError(e, OperationType.WRITE, 'events');
@@ -306,7 +314,12 @@ export default function EventsAdmin() {
 
 
   const runStorageTest = async () => {
+    if (storageTesting) return;
     setStorageTesting(true);
+    const hardStop = window.setTimeout(() => {
+      setStorageTesting(false);
+      toast.error('Teste do Storage demorou demais (timeout). Verifique se o Storage está activo no Firebase.');
+    }, 15000);
     try {
       const res = await testStorageActive();
       if (res.ok) toast.success(res.detail);
@@ -314,6 +327,7 @@ export default function EventsAdmin() {
     } catch (e: any) {
       toast.error(e?.message || 'Falha ao testar o Storage');
     } finally {
+      window.clearTimeout(hardStop);
       setStorageTesting(false);
     }
   };
