@@ -42,8 +42,8 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.12.0';
-const WORKER_BUILD = '2026-11-05 (P1: sanitizar prompts, anonimizar financas, auth/rate/audit)';
+const WORKER_VERSION = '2.13.0';
+const WORKER_BUILD = '2026-11-11 (R2 cartazes /admin/upload-poster + /media)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',

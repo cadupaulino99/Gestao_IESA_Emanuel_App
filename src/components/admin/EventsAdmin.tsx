@@ -231,6 +231,31 @@ export default function EventsAdmin() {
         await setDoc(doc(db, 'events', id), { ...data, createdAt: now, createdBy: email });
       }
 
+      // 2ª tentativa: se o upload pré-gravação falhou, tenta de novo já com o id do evento
+      if (posterFile && !data.posterUrl && !posterWarning) {
+        try {
+          const up2 = await uploadEventPoster(id, posterFile);
+          if (up2.posterUrl) {
+            data.posterUrl = up2.posterUrl;
+            await updateDoc(doc(db, 'events', id), { posterUrl: up2.posterUrl, posterPath: null, posterThumbPath: null });
+            toast.success('Cartaz associado ao evento.');
+          }
+        } catch (pe2: any) {
+          posterWarning = String(pe2?.message || pe2 || 'falha no carregamento do cartaz');
+        }
+      } else if (posterFile && data.posterUrl) {
+        // Garantir que o URL ficou no documento (update parcial — regras isValidEventDoc)
+        try {
+          await updateDoc(doc(db, 'events', id), {
+            posterUrl: data.posterUrl,
+            posterPath: data.posterPath ?? null,
+            posterThumbPath: data.posterThumbPath ?? null,
+          });
+        } catch (ue: any) {
+          posterWarning = 'cartaz enviado mas o Firestore recusou gravar a URL: ' + String(ue?.message || ue);
+        }
+      }
+
       if (posterWarning) {
         toast.warning(`Evento guardado SEM cartaz: ${posterWarning}.`);
       } else if (posterFile && data.posterUrl) {

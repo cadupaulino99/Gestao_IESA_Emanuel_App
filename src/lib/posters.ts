@@ -100,6 +100,7 @@ export async function uploadPosterToR2(
         headers: {
           Authorization: `Bearer ${idToken}`,
           'Content-Type': 'image/jpeg',
+          ...(eventId ? { 'X-Event-Id': String(eventId).slice(0, 40) } : {}),
         },
         body: blob,
       }),
@@ -117,7 +118,11 @@ export async function uploadPosterToR2(
   }
   const data = await res.json().catch(() => ({} as any));
   if (!res.ok) {
-    throw new Error(data?.error || data?.code || `Erro ${res.status} no upload R2`);
+    const detail = data?.error || data?.code || data?.message || `Erro ${res.status} no upload R2`;
+    throw new Error(String(detail));
+  }
+  if (!data?.posterUrl || typeof data.posterUrl !== 'string' || !data.posterUrl.startsWith('http')) {
+    throw new Error('Worker respondeu sem URL de cartaz válida. Confirme o deploy do Worker e o binding R2.');
   }
   return {
     posterUrl: data.posterUrl as string,
