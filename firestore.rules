@@ -54,8 +54,29 @@ service cloud.firestore {
     function isPastor() {
        return isAuthenticated() && getRole() == 'pastor';
     }
+    // v1.21.25 — matriz de papéis IESA
+    function isSpiritual() {
+      return isAuthenticated() && getRole() in ['pastor', 'evangelista', 'catequista'];
+    }
+    function isOffice() {
+      return isAuthenticated() && getRole() in ['secretario', 'diacono'];
+    }
+    function isFullAccess() {
+      return isSuperAdmin() || isAdmin() || isTreasurer();
+    }
+    function isStaff() {
+      return isFullAccess() || isSpiritual() || isOffice();
+    }
+    function canManageMembers() {
+      return isStaff();
+    }
+    // Escrita financeira: só grupo A (admin / tesoureiro / super)
     function hasFinancialWriteAccess() {
-       return isAdmin() || isTreasurer() || isPastor();
+       return isFullAccess();
+    }
+    // Leitura financeira: grupo A + liderança espiritual
+    function hasFinancialReadAccess() {
+       return isFullAccess() || isSpiritual();
     }
 
     function isValidId(id) {
@@ -224,7 +245,7 @@ service cloud.firestore {
     function isValidAdmin(data) {
       return data.keys().hasAll(['email', 'role', 'createdAt']) && data.keys().size() <= 12 &&
              data.email is string && data.email.size() <= 200 && data.email.size() > 0 &&
-             data.role is string && data.role in ['admin', 'pastor', 'treasurer'] &&
+             data.role is string && data.role in ['admin', 'pastor', 'treasurer', 'evangelista', 'catequista', 'secretario', 'diacono'] &&
              data.createdAt is number &&
              (!('isSuper' in data.keys()) || data.isSuper is bool) &&
              (!('disabled' in data.keys()) || data.disabled is bool) &&
@@ -305,7 +326,7 @@ service cloud.firestore {
 
     // --- Fila de mensagens externas (SMS/WhatsApp) e campanhas ---
     match /message_outbox/{docId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create: if isValidOutboxDoc(incoming()) &&
                     ((isAdmin() && isValidId(docId))
                     // v1.13: a liderança enfileira o digest «board» (avisos/
@@ -316,7 +337,7 @@ service cloud.firestore {
     }
 
     match /campaigns/{docId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create, update: if isAdmin() && isValidId(docId);
       allow delete: if false;
     }
@@ -453,7 +474,7 @@ service cloud.firestore {
     }
 
     match /offerings/{offeringId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(offeringId) && isValidOfferingCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(offeringId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -481,7 +502,7 @@ service cloud.firestore {
     }
 
     match /expenses/{expenseId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(expenseId) && isValidExpenseCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(expenseId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -505,7 +526,7 @@ service cloud.firestore {
     }
 
     match /buildingFunds/{fundId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(fundId) && isValidBuildingFundCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(fundId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -531,7 +552,7 @@ service cloud.firestore {
     }
 
     match /assets/{assetId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(assetId) && isValidAssetCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(assetId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -557,7 +578,7 @@ service cloud.firestore {
     }
 
     match /financialMonths/{monthId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(monthId) && isValidFinancialMonthCreate(incoming());
       allow update: if hasFinancialWriteAccess() && isValidId(monthId) &&
                     incoming().createdAt == existing().createdAt &&
@@ -570,7 +591,7 @@ service cloud.firestore {
     }
     // --- Financial Year Collection ---
     match /financialYears/{yearId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create, update: if hasFinancialWriteAccess();
       allow delete: if isAdmin();
     }
@@ -593,7 +614,7 @@ service cloud.firestore {
     // Publicação: LIDERANÇA (admin/pastor/tesoureiro) — decisão de 2026-10-25.
     // Membros: só LEITURA (o Portal lê as mesmas colecções — fonte única).
     function canPublishBoard() {
-      return hasFinancialWriteAccess();
+      return isStaff();
     }
     function hasField(d, k) {
       return d.keys().hasAny([k]);
@@ -800,7 +821,7 @@ service cloud.firestore {
     // Lixeira: moveToTrash/restoreFromTrash (lib/trash.ts). Sem este match,
     // TODAS as eliminações falhavam com permission-denied (varrimento 2026-10-24).
     match /trash/{trashId} {
-      allow read, list: if hasFinancialWriteAccess();
+      allow read, list: if hasFinancialReadAccess();
       allow create: if hasFinancialWriteAccess() && isValidId(trashId)
                     && incoming().keys().hasAll(['collectionName', 'originalId', 'data', 'deletedAt', 'deletedBy']);
       allow update: if false;

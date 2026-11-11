@@ -1668,7 +1668,7 @@ export default {
       }
 
       /* --- liderança (admin/pastor/tesoureiro) --- */
-      if (!role || !['admin', 'pastor', 'treasurer'].includes(role)) {
+      if (!role || !['admin', 'pastor', 'treasurer', 'evangelista', 'catequista', 'secretario', 'diacono'].includes(role)) {
         return json({ error: 'Apenas a liderança pode usar a IA.' }, 403);
       }
       if (!rateOk(claims.email || claims.sub)) {

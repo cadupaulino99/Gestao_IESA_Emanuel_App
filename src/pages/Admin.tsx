@@ -22,6 +22,7 @@ import { saveBlob, saveXlsx, saveToDeviceBackup } from '../lib/download';
 import { useConfirm } from '../context/ConfirmContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth } from '../context/AuthContext';
+import { ROLE_SELECT_OPTIONS, getPermissions, roleLabel } from '../lib/roles';
 import { Navigate } from 'react-router-dom';
 import { Badge } from '../components/ui/badge';
 import { restoreFromTrash, moveToTrash } from '../lib/trash';
@@ -37,6 +38,7 @@ import { luandaDayKey } from '../lib/luanda';
 
 export default function Admin() {
   const { user, userRole, isSuperAdmin } = useAuth();
+  const perms = getPermissions(userRole, isSuperAdmin);
   
   const [users, setUsers] = useState<any[]>([]);
   const [nonActiveMembers, setNonActiveMembers] = useState<any[]>([]);
@@ -236,7 +238,7 @@ export default function Admin() {
   }, [userRole]);
 
   // Protect the route
-  if (userRole !== 'admin') {
+  if (!perms.adminPanel) {
     return <Navigate to="/" />;
   }
 
@@ -986,15 +988,15 @@ export default function Admin() {
         <TabsList className="mb-4 flex h-auto w-full flex-wrap gap-1 rounded-xl border bg-white p-1 shadow-sm dark:bg-card">
           {isSuperAdmin && (<TabsTrigger value="users"><Shield className="h-4 w-4 mr-2" /> Administradores</TabsTrigger>)}
           {/* v1.14: auto-cadastro — só perfil admin vê; o servidor (rules) confirma nas escritas */}
-          {userRole === 'admin' && (<TabsTrigger value="signups"><UserPlus className="h-4 w-4 mr-2" /> Cadastros Pendentes</TabsTrigger>)}
+          {perms.adminSignups && (<TabsTrigger value="signups"><UserPlus className="h-4 w-4 mr-2" /> Cadastros Pendentes</TabsTrigger>)}
           <TabsTrigger value="members"><Shield className="h-4 w-4 mr-2" /> Membros Inativos</TabsTrigger>
           <TabsTrigger value="mural"><Bell className="h-4 w-4 mr-2" /> Avisos, Agenda e Eventos</TabsTrigger>
-          <TabsTrigger value="church"><Church className="h-4 w-4 mr-2" /> Dados da Instituição</TabsTrigger>
-          <TabsTrigger value="data"><Database className="h-4 w-4 mr-2" /> Gestão de Dados</TabsTrigger>
-          <TabsTrigger value="trash"><Trash2 className="h-4 w-4 mr-2" /> Lixeira</TabsTrigger>
-          <TabsTrigger value="audit" className="bg-red-50 text-red-600 dark:bg-red-900/10 dark:text-red-400">
+          {perms.adminChurchData && (<TabsTrigger value="church"><Church className="h-4 w-4 mr-2" /> Dados da Instituição</TabsTrigger>)}
+          {perms.adminDataTools && (<TabsTrigger value="data"><Database className="h-4 w-4 mr-2" /> Gestão de Dados</TabsTrigger>)}
+          {perms.adminDataTools && (<TabsTrigger value="trash"><Trash2 className="h-4 w-4 mr-2" /> Lixeira</TabsTrigger>)}
+          {perms.adminAudit && (<TabsTrigger value="audit" className="bg-red-50 text-red-600 dark:bg-red-900/10 dark:text-red-400">
             <Shield className="h-4 w-4 mr-2" /> Auditorias (Logs)
-          </TabsTrigger>
+          </TabsTrigger>)}
         </TabsList>
 
         <TabsContent value="users">
@@ -1086,9 +1088,9 @@ export default function Admin() {
                           <Select value={role} onValueChange={setRole}>
                             <SelectTrigger><SelectValue/></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="admin">Administrador Geral</SelectItem>
-                              <SelectItem value="pastor">Pastor</SelectItem>
-                              <SelectItem value="treasurer">Tesoureiro</SelectItem>
+                              {ROLE_SELECT_OPTIONS.map((r) => (
+                                <SelectItem key={r.code} value={r.code}>{r.label}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>

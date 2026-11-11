@@ -3,6 +3,7 @@ import { prefGet } from '../lib/prefs';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
+import { getPermissions, roleShortLabel } from '../lib/roles';
 import { useTheme } from '../context/ThemeContext';
 import { BarChart, Users, Wallet, Building2, Landmark, ReceiptText, DoorClosed, Menu, PieChart, Settings, Shield, HeartHandshake, MessageSquare, Radio as RadioIcon, Home, MoreHorizontal, Pause, Maximize2, X, HandCoins } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
@@ -20,7 +21,8 @@ import NotificationBell from './NotificationBell';
 import { currentVersion } from '../lib/updateCheck';
 
 export default function Layout() {
-  const { user, signOut, isAdmin, userRole } = useAuth();
+  const { user, signOut, isAdmin, userRole, isSuperAdmin } = useAuth();
+  const perms = getPermissions(userRole, isSuperAdmin);
   const { openPalette } = useCommandPalette();
   const { isDark } = useTheme();
   const location = useLocation();
@@ -60,20 +62,18 @@ export default function Layout() {
   }, []);
 
   const navItems = [
-    { name: 'Início', path: '/', icon: PieChart },
-    { name: 'Membros', path: '/members', icon: Users },
-    { name: 'Finanças', path: '/finances', icon: Wallet },
-    { name: 'Obrigações', path: '/obligations', icon: HeartHandshake },
-    { name: 'Fundo de Construção', path: '/building-fund', icon: Building2 },
-    { name: 'Património', path: '/assets', icon: Landmark },
-    { name: 'Orçamento', path: '/budget', icon: BarChart },
-    { name: 'Relatórios', path: '/reports', icon: ReceiptText },
-    { name: 'Contribuições', path: '/contributions', icon: HandCoins },
-    { name: 'Rádio Maranata', path: '/radio', icon: RadioIcon },
-    ...(userRole === 'admin' ? [{ name: 'Administração', path: '/admin', icon: Shield }] : []),
-    { name: 'Suporte', path: '/support', icon: MessageSquare },
-    { name: 'Definições', path: '/settings', icon: Settings },
-  ];
+    { name: 'Início', path: '/', icon: PieChart, show: true },
+    { name: 'Membros', path: '/members', icon: Users, show: perms.members },
+    { name: 'Finanças', path: '/finances', icon: Wallet, show: perms.financesRead },
+    { name: 'Obrigações', path: '/obligations', icon: HeartHandshake, show: perms.financesRead },
+    { name: 'Fundo de Construção', path: '/building-fund', icon: Building2, show: perms.financesRead },
+    { name: 'Património', path: '/assets', icon: Landmark, show: perms.financesRead },
+    { name: 'Orçamento', path: '/budget', icon: BarChart, show: perms.financesRead },
+    { name: 'Relatórios', path: '/reports', icon: ReceiptText, show: perms.financesRead },
+    { name: 'Contribuições', path: '/contributions', icon: HandCoins, show: perms.financesRead },
+    { name: 'Rádio Maranata', path: '/radio', icon: RadioIcon, show: perms.radio },
+    { name: 'Administração', path: '/admin', icon: Shield, show: perms.adminPanel },
+  ].filter((i) => i.show);
 
   const bottomTabs = [
     { name: 'Início', path: '/', icon: Home },
@@ -152,7 +152,7 @@ export default function Layout() {
             <div className="overflow-hidden flex-1">
               <p className="text-sm font-semibold truncate text-slate-900 dark:text-white">{user?.displayName}</p>
               <p className="text-xs text-slate-500 font-medium truncate capitalize">
-                {userRole === 'admin' ? 'Administrador Geral' : userRole === 'pastor' ? 'Pastor' : userRole === 'treasurer' ? 'Tesoureiro' : 'Acesso Restrito'}
+                {isSuperAdmin ? 'Super administrador' : roleShortLabel(userRole)}
               </p>
             </div>
           </div>
@@ -227,7 +227,7 @@ export default function Layout() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold truncate">{user?.displayName}</p>
                     <p className="text-xs text-slate-500 truncate capitalize">
-                      {userRole === 'admin' ? 'Administrador Geral' : userRole === 'pastor' ? 'Pastor' : userRole === 'treasurer' ? 'Tesoureiro' : 'Acesso Restrito'}
+                      {isSuperAdmin ? 'Super administrador' : roleShortLabel(userRole)}
                     </p>
                   </div>
                 </div>

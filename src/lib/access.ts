@@ -1,23 +1,36 @@
 /**
- * Decisões de acesso do AuthContext, extraídas como funções puras para poderem
- * ser testadas (auditoria 2026-10-24: «alargar testes ao AuthContext»).
- * O AuthContext consulta o Firestore; aqui decide-se o que os resultados mean.
+ * Decisões de acesso do AuthContext (funções puras / testáveis).
+ * Papéis canónicos: ver src/lib/roles.ts
  */
-export const LEADERSHIP_ROLES = ['admin', 'pastor', 'treasurer'] as const;
-export type LeadershipRole = (typeof LEADERSHIP_ROLES)[number];
+import {
+  ALL_ROLE_CODES,
+  isStaffRole,
+  isFullAccessRole,
+  type AppRoleCode,
+} from './roles';
 
-/** Papel a partir do documento admins/<email>: sem documento, sem papel.
- *  Documento sem campo role (legado) conta como 'admin' — comportamento
- *  histórico do AuthContext e do Worker. */
+/** Papéis que acedem à área de liderança (não-membro). */
+export const LEADERSHIP_ROLES = ALL_ROLE_CODES;
+export type LeadershipRole = AppRoleCode;
+
+/** Papel a partir do documento admins/<email>. */
 export function resolveRole(adminDocExists: boolean, roleField: unknown): string | null {
   if (!adminDocExists) return null;
-  return typeof roleField === 'string' && roleField ? roleField : 'admin';
+  if (typeof roleField === 'string' && roleField && isStaffRole(roleField)) {
+    return roleField;
+  }
+  // Legado: documento sem role válido conta como admin
+  return 'admin';
 }
 
-/** Liderança = admin | pastor | tesoureiro (o que o Worker e as regras exigem
- *  para finanças, IA e escritas). */
+/** Qualquer staff (grupos A/B/C). */
 export function isLeadership(role: string | null): role is LeadershipRole {
-  return !!role && (LEADERSHIP_ROLES as readonly string[]).includes(role);
+  return isStaffRole(role);
+}
+
+/** Acesso total operacional (grupo A ou super). */
+export function isFullLeadership(role: string | null, isSuper = false): boolean {
+  return isFullAccessRole(role, isSuper);
 }
 
 /** Primeiro documento de uma lista (portal do membro) ou null. */
