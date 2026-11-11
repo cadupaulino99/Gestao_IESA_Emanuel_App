@@ -44,36 +44,55 @@ function MemberPortalCardTab({ member }: { member: any }) {
     (async () => {
       setLoading(true);
       setErr(null);
+      const mid = member.id;
+      const email = String(member.email || '').trim().toLowerCase();
+
+      /** Uma coleção de cada vez — se uma falhar por regras, as outras ainda entram no cartão. */
+      const safeQuery = async (col: string) => {
+        try {
+          // Preferir memberEmail (regras isOwnMemberDoc); fallback memberId
+          if (email) {
+            try {
+              const byEmail = await getDocs(query(collection(db, col), where('memberEmail', '==', email)));
+              if (!byEmail.empty) return byEmail.docs.map((x) => ({ id: x.id, ...x.data() }) as any);
+            } catch { /* tenta memberId */ }
+          }
+          const byId = await getDocs(query(collection(db, col), where('memberId', '==', mid)));
+          return byId.docs.map((x) => ({ id: x.id, ...x.data() }) as any);
+        } catch (e) {
+          console.warn('cartão: sem acesso a', col, e);
+          return [] as any[];
+        }
+      };
+
       try {
-        const [c, d, t, r, b, co, pa] = await Promise.all([
-          getDocs(query(collection(db, "communions"), where("memberId", "==", member.id))),
-          getDocs(query(collection(db, "donations"), where("memberId", "==", member.id))),
-          getDocs(query(collection(db, "tithes"), where("memberId", "==", member.id))),
-          getDocs(query(collection(db, "renewals"), where("memberId", "==", member.id))),
-          getDocs(query(collection(db, "member_budgets"), where("memberId", "==", member.id))),
-          getDocs(query(collection(db, "contributions"), where("memberId", "==", member.id))),
-          getDocs(query(collection(db, "contribution_payments"), where("memberId", "==", member.id))),
+        const [communions, donations, tithes, renewals, budgetsRaw, contributionsRaw, pays] = await Promise.all([
+          safeQuery('communions'),
+          safeQuery('donations'),
+          safeQuery('tithes'),
+          safeQuery('renewals'),
+          safeQuery('member_budgets'),
+          safeQuery('contributions'),
+          safeQuery('contribution_payments'),
         ]);
         if (cancelled) return;
-        const pays = pa.docs.map((x) => ({ id: x.id, ...x.data() }) as any);
-        const budgets = b.docs.map((x) => x.data() as any).sort((x: any, y: any) => (y.year || 0) - (x.year || 0));
+        const budgets = [...budgetsRaw].sort((x: any, y: any) => (y.year || 0) - (x.year || 0));
         setData({
-          communions: c.docs.map((x) => ({ id: x.id, ...x.data() }) as CommunionMark),
-          donations: d.docs.map((x) => ({ id: x.id, ...x.data() }) as Donation),
-          tithes: t.docs.map((x) => ({ id: x.id, ...x.data() }) as Tithe),
-          renewals: r.docs.map((x) => ({ id: x.id, ...x.data() }) as Renewal),
+          communions: communions as CommunionMark[],
+          donations: donations as Donation[],
+          tithes: tithes as Tithe[],
+          renewals: renewals as Renewal[],
           budget: budgets[0] ? { year: budgets[0].year, amount: budgets[0].amount } : null,
-          contributions: co.docs.map((x) => {
-            const cc = x.data() as any;
-            const paid = pays.filter((pp: any) => pp.contributionId === x.id).reduce((a: number, bb: any) => a + (Number(bb.amount) || 0), 0);
+          contributions: contributionsRaw.map((cc: any) => {
+            const paid = pays.filter((pp: any) => pp.contributionId === cc.id).reduce((a: number, bb: any) => a + (Number(bb.amount) || 0), 0);
             return { ...cc, paid, status: computeStatus(cc, paid, cc.amount) };
           }),
         });
       } catch (e: any) {
         if (!cancelled) {
-          const msg = e?.message || "Erro ao carregar o cartão.";
-          setErr(msg);
-          toast.error("Erro ao carregar o cartão: " + msg);
+          // Último recurso: mostrar cartão só com dados do membro (sem histórico)
+          setData({ communions: [], donations: [], tithes: [], renewals: [] });
+          console.error('cartão carga', e);
         }
       } finally {
         if (!cancelled) setLoading(false);

@@ -92,13 +92,17 @@ service cloud.firestore {
     function isOwnMemberDoc() {
       return isAuthenticated() && (
         (resource.data.keys().hasAll(['memberEmail'])
+          && resource.data.memberEmail is string
           && resource.data.memberEmail == request.auth.token.email)
-        // v1.14.3: o campo `email` também identifica o dono — documentos com
-        // email ligado à conta mas sem memberEmail deixavam de ser legíveis
-        // pelo próprio quando a leitura passou a canReadMemberDoc().
         || (resource.data.keys().hasAll(['email'])
           && resource.data.email is string
           && resource.data.email == request.auth.token.email)
+        // v1.21.26: docs só com memberId — o dono é o email em members/{id}
+        || (resource.data.keys().hasAll(['memberId'])
+          && resource.data.memberId is string
+          && exists(/databases/$(database)/documents/members/$(resource.data.memberId))
+          && get(/databases/$(database)/documents/members/$(resource.data.memberId)).data.email is string
+          && get(/databases/$(database)/documents/members/$(resource.data.memberId)).data.email == request.auth.token.email)
       );
     }
     function isLegacyMemberDoc() {
@@ -116,7 +120,7 @@ service cloud.firestore {
              get(/databases/$(database)/documents/settings/system).data.memberEmailStamped != true;
     }
     function canReadMemberDoc() {
-      return hasFinancialWriteAccess() || isOwnMemberDoc() ||
+      return isStaff() || isOwnMemberDoc() ||
              (legacyReadOpen() && isLegacyMemberDoc());
     }
 
@@ -279,7 +283,8 @@ service cloud.firestore {
     // --- v1.11.0: orçamento único, contribuições, pagamentos ---
     // Escrita: só liderança (servidor). Leitura: o próprio membro ou liderança.
     function isOwnOrLeader() {
-      return hasFinancialWriteAccess() || isOwnMemberDoc();
+      // v1.21.26: liderança completa (isStaff) + dono do registo
+      return isStaff() || isOwnMemberDoc();
     }
 
     match /member_budgets/{docId} {
