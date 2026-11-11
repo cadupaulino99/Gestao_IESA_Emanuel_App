@@ -42,8 +42,8 @@ const PROVIDERS = {
    as rotas novas (ex.: /assistant/extract-member) NAO existem no servidor e a
    app recebe 404 "Rota nao encontrada".
    Consulte GET /__health para confirmar qual versao esta no ar. */
-const WORKER_VERSION = '2.13.0';
-const WORKER_BUILD = '2026-11-11 (R2 cartazes /admin/upload-poster + /media)';
+const WORKER_VERSION = '2.13.1';
+const WORKER_BUILD = '2026-11-11 (R2 binding forçado + health.r2)';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -1375,6 +1375,12 @@ export default {
           GEMINI_API_KEY: !!env.GEMINI_API_KEY,
           FIREBASE_SA_JSON: !!env.FIREBASE_SA_JSON,
           PROJECT_ID: env.PROJECT_ID || null,
+          POSTERS_BUCKET: !!env.POSTERS_BUCKET,
+        },
+        r2: {
+          bound: !!env.POSTERS_BUCKET,
+          binding: 'POSTERS_BUCKET',
+          bucket: 'iesa-event-posters',
         },
         time: new Date().toISOString(),
         auth: 'Bearer Firebase ID token obrigatorio (excepto /__health e /auth/self-register)',

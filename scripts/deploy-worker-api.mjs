@@ -184,6 +184,18 @@ for (const b of bindings.filter((x) => x && x.name)) {
 if (!nextBindings.some((b) => b.name === 'PROJECT_ID')) {
   nextBindings.push({ type: 'plain_text', name: 'PROJECT_ID', text: PROJECT_ID });
 }
+// Garantir R2 — se o GET settings não devolver o binding, o PUT anterior podia tirá-lo
+if (!nextBindings.some((b) => b.name === 'POSTERS_BUCKET')) {
+  nextBindings.push({ type: 'r2_bucket', name: 'POSTERS_BUCKET', bucket_name: 'iesa-event-posters' });
+  console.log('→ Binding R2 forçado: POSTERS_BUCKET → iesa-event-posters');
+} else {
+  // Normalizar tipo/nome do bucket
+  const idx = nextBindings.findIndex((b) => b.name === 'POSTERS_BUCKET');
+  if (idx >= 0) {
+    nextBindings[idx] = { type: 'r2_bucket', name: 'POSTERS_BUCKET', bucket_name: 'iesa-event-posters' };
+  }
+  console.log('→ Binding R2 presente: POSTERS_BUCKET → iesa-event-posters');
+}
 
 const COMPAT = settings?.compatibility_date || '2026-01-01';
 const metadata = {
