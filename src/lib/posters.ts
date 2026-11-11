@@ -55,8 +55,9 @@ export function validatePosterFile(file: File): string | null {
 function friendlyStorageError(err: unknown): string {
   const m = String((err as any)?.code || (err as any)?.message || err || '');
   if (/esgotou o tempo|timeout/i.test(m)) return m;
-  if (/R2_NOT_CONFIGURED|não está ligado|POSTERS_BUCKET/i.test(m)) {
-    return 'Cloudflare R2: binding POSTERS_BUCKET em falta no Worker. Confirme o bucket «iesa-event-posters» e faça deploy.';
+  // Só esta mensagem se o Worker devolver o código explícito
+  if (/R2_NOT_CONFIGURED/i.test(m)) {
+    return 'Worker sem binding R2 (código R2_NOT_CONFIGURED). No painel Cloudflare → Worker iesa-ai → Settings → confirme POSTERS_BUCKET → iesa-event-posters.';
   }
   if (/Só administradores|Não autenticado|401|403/i.test(m)) {
     return 'Sessão sem permissão para enviar cartaz. Saia e entre de novo como administrador.';

@@ -233,15 +233,16 @@ export default function EventsAdmin() {
         await setDoc(doc(db, 'events', id), { ...data, createdAt: now, createdBy: email });
       }
 
-      // 2ª tentativa: se o upload pré-gravação falhou, tenta de novo já com o id do evento
-      if (posterFile && !data.posterUrl && !posterWarning) {
+      // 2ª tentativa SEMPRE se ainda não há posterUrl (a 1ª falha já não bloqueia)
+      if (posterFile && !data.posterUrl) {
         try {
           const up2 = await uploadEventPoster(id, posterFile);
           if (up2.posterUrl) {
             data.posterUrl = up2.posterUrl;
             await updateDoc(doc(db, 'events', id), { posterUrl: up2.posterUrl, posterPath: null, posterThumbPath: null });
+            posterWarning = null;
             setPosterBanner(null);
-        toast.success('Cartaz associado ao evento.', { duration: 6000 });
+            toast.success('Cartaz associado ao evento (2ª tentativa).', { duration: 8000 });
           }
         } catch (pe2: any) {
           posterWarning = String(pe2?.message || pe2 || 'falha no carregamento do cartaz');
