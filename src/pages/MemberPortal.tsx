@@ -9,7 +9,7 @@ import { LogOut, CreditCard, FileText, Pencil, UserRound, Home, CalendarDays, Ra
 import { collection, query, where, getDocs, addDoc, updateDoc, doc } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { Tithe, CommunionMark, Donation, Renewal, CARD_HEADER_DEFAULT } from "../types";
-import { generateMembershipCard, generateMemberCardPdf, savePdf } from "../lib/pdfUtils";
+import { generateMemberCardPdf, savePdf } from "../lib/pdfUtils";
 import { XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from "recharts";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -302,11 +302,31 @@ export default function MemberPortal() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Button variant="outline" className="w-full justify-between rounded-xl border-blue-100 bg-blue-50/80" onClick={async () => {
-                      try { await generateMembershipCard(memberData); toast.success('Cartão descarregado.'); }
-                      catch (e: any) { toast.error(e?.message || 'Erro ao gerar cartão.'); }
+                    <Button variant="outline" className="w-full justify-between rounded-xl border-blue-100 bg-blue-50/80" disabled={cardBusy} onClick={async () => {
+                      setCardBusy(true);
+                      try {
+                        const pdf = await generateMemberCardPdf(
+                          memberData,
+                          {
+                            tithes,
+                            communions: cardData.communions || [],
+                            donations: cardData.donations || [],
+                            renewals: cardData.renewals || [],
+                            budget: (cardData as any).budget || null,
+                            contributions: (cardData as any).contributions || [],
+                          },
+                          CARD_HEADER_DEFAULT,
+                        );
+                        await savePdf(pdf, `Cartao_${String(memberData.name || 'membro').replace(/\s+/g, '_')}.pdf`);
+                        toast.success('Cartão completo descarregado.');
+                      } catch (e: any) {
+                        console.error(e);
+                        toast.error(e?.message || 'Erro ao gerar o cartão completo.');
+                      } finally {
+                        setCardBusy(false);
+                      }
                     }}>
-                      <span className="flex items-center gap-2"><CreditCard className="h-4 w-4" /> Baixar Cartão</span><ChevronRight className="h-4 w-4 opacity-50" />
+                      <span className="flex items-center gap-2"><CreditCard className="h-4 w-4" /> {cardBusy ? 'A gerar…' : 'Baixar Cartão'}</span><ChevronRight className="h-4 w-4 opacity-50" />
                     </Button>
                     <Button variant="outline" className="w-full justify-between rounded-xl border-violet-100 bg-violet-50/80" onClick={handleGenerateExtract} disabled={!tithes.length}>
                       <span className="flex items-center gap-2"><FileText className="h-4 w-4" /> Extrato Anual</span><ChevronRight className="h-4 w-4 opacity-50" />
