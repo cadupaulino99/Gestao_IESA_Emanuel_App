@@ -645,9 +645,11 @@ service cloud.firestore {
         (!hasField(d, 'publishStatus') || d.publishStatus in ['rascunho', 'publicado']) &&
         (!hasField(d, 'reminder1d') || d.reminder1d is bool) &&
         (!hasField(d, 'posterPath') || d.posterPath == null ||
-          (d.posterPath is string && d.posterPath.matches('^posters/[^/]+\\.(jpg|png|webp)$'))) &&
+          (d.posterPath is string && d.posterPath.matches('^posters/[^/]+\.(jpg|png|webp)$'))) &&
         (!hasField(d, 'posterThumbPath') || d.posterThumbPath == null ||
-          (d.posterThumbPath is string && d.posterThumbPath.matches('^posters/thumbs/[^/]+\\.(jpg|png|webp)$')));
+          (d.posterThumbPath is string && d.posterThumbPath.matches('^posters/thumbs/[^/]+\.(jpg|png|webp)$'))) &&
+        (!hasField(d, 'posterUrl') || d.posterUrl == null ||
+          (d.posterUrl is string && d.posterUrl.matches('^https://.+')));
     }
     function isValidAgendaItemDoc(d) {
       return d.keys().hasAll(['title', 'weekday', 'startTime']) &&

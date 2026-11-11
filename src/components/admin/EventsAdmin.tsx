@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { CalendarPlus, Pencil, Trash2, Loader2, ImagePlus, MapPin, Clock, UserRound, HardDrive } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
@@ -181,11 +181,12 @@ export default function EventsAdmin() {
     const now = Date.now();
     setSaving(true);
     try {
-      let id = editing?.id || '';
+      // ID estável: permite subir o cartaz antes e gravar tudo num único write
+      const id = editing?.id || doc(collection(db, 'events')).id;
       const data: any = {
         title: form.title.trim(),
         descriptionHtml: form.html || '',
-        description: plainOf(form.html || '', 200),   // espelho legado (Dashboard)
+        description: plainOf(form.html || '', 200),
         date: form.date, time: form.time || '',
         dateEnd: form.dateEnd || null, timeEnd: form.timeEnd || null,
         location: form.location.trim(), responsible: form.responsible.trim(),
@@ -193,39 +194,47 @@ export default function EventsAdmin() {
         reminder1d: form.reminder1d === true,
         updatedBy: email, updatedAt: now,
       };
-      if (editing) {
-        await updateDoc(doc(db, 'events', editing.id), data);
-      } else {
-        const ref = await addDoc(collection(db, 'events'), { ...data, createdAt: now, createdBy: email });
-        id = ref.id;
+
+      let posterWarning: string | null = null;
+      // Upload do cartaz ANTES de gravar o documento (R2 / Worker)
+      if (posterFile) {
+        try {
+          const up = await uploadEventPoster(id, posterFile);
+          if (up.posterUrl) data.posterUrl = up.posterUrl;
+          if (up.posterPath) data.posterPath = up.posterPath;
+          if (up.posterThumbPath) data.posterThumbPath = up.posterThumbPath;
+          if (up.posterUrl && !up.posterPath) {
+            data.posterPath = null;
+            data.posterThumbPath = null;
+          }
+          if (editing) {
+            await deleteEventPoster([editing.posterPath, editing.posterThumbPath]);
+          }
+        } catch (pe: any) {
+          const m = String(pe?.message || pe || '');
+          posterWarning = m || 'falha no carregamento do cartaz';
+        }
+      } else if (removePoster && (editing?.posterPath || editing?.posterUrl)) {
+        data.posterPath = null;
+        data.posterThumbPath = null;
+        data.posterUrl = null;
+        await deleteEventPoster([editing?.posterPath, editing?.posterThumbPath]);
+      } else if (editing) {
+        if (editing.posterUrl) data.posterUrl = editing.posterUrl;
+        if (editing.posterPath) data.posterPath = editing.posterPath;
+        if (editing.posterThumbPath) data.posterThumbPath = editing.posterThumbPath;
       }
 
-      /* Cartaz (Storage): falha NÃO impede a publicação do evento — antes, um
-         bucket por activar rebentava o save inteiro depois do documento já
-         gravado (evento existia mas o ecrã mostrava erro e não fechava). */
-      let posterWarning: string | null = null;
-      try {
-        if (posterFile) {
-          const up = await uploadEventPoster(id, posterFile);
-          const oldPaths = editing ? [editing.posterPath, editing.posterThumbPath] : [];
-          await updateDoc(doc(db, 'events', id), {
-            posterUrl: up.posterUrl || null,
-            posterPath: up.posterPath || null,
-            posterThumbPath: up.posterThumbPath || null,
-          });
-          await deleteEventPoster(oldPaths);
-        } else if (removePoster && (editing?.posterPath || editing?.posterUrl)) {
-          await updateDoc(doc(db, 'events', id), { posterPath: null, posterThumbPath: null, posterUrl: null });
-          await deleteEventPoster([editing.posterPath, editing.posterThumbPath]);
-        }
-      } catch (pe: any) {
-        const m = String(pe?.message || pe || '');
-        posterWarning = /bucket|not exist|404/i.test(m)
-          ? 'o armazenamento de ficheiros (Firebase Storage) ainda não foi activado no projecto — consola Firebase → Storage → «Começar»'
-          : m || 'falha desconhecida no carregamento';
+      if (editing) {
+        await updateDoc(doc(db, 'events', id), data);
+      } else {
+        await setDoc(doc(db, 'events', id), { ...data, createdAt: now, createdBy: email });
       }
+
       if (posterWarning) {
         toast.warning(`Evento guardado SEM cartaz: ${posterWarning}.`);
+      } else if (posterFile && data.posterUrl) {
+        toast.success('Cartaz associado ao evento.');
       }
 
       // Libertar o botão antes das notificações (podem demorar com muitos membros)
@@ -419,11 +428,12 @@ export default function EventsAdmin() {
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
               onChange={(ev) => pickPoster(ev.target.files?.[0] || null)} />
             <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => fileRef.current?.click()}>
-              <ImagePlus className="h-3.5 w-3.5" /> {posterPreview || editing?.posterPath ? 'Substituir cartaz' : 'Carregar cartaz (opcional)'}
+              <ImagePlus className="h-3.5 w-3.5" /> {posterPreview || editing?.posterPath || editing?.posterUrl ? 'Substituir cartaz' : 'Carregar cartaz (opcional)'}
             </Button>
             {posterPreview && <img src={posterPreview} alt="Pré-visualização do cartaz" className="h-16 w-12 rounded border object-cover" />}
-            {!posterPreview && editing?.posterPath && !removePoster && <PosterThumb path={editing.posterThumbPath || editing.posterPath} className="h-16 w-12" />}
-            {(posterPreview || (editing?.posterPath && !removePoster)) && (
+            {!posterPreview && !removePoster && editing?.posterUrl && <img src={editing.posterUrl} alt="Cartaz" className="h-16 w-12 rounded border object-cover" />}
+            {!posterPreview && !removePoster && !editing?.posterUrl && editing?.posterPath && <PosterThumb path={editing.posterThumbPath || editing.posterPath} className="h-16 w-12" />}
+            {(posterPreview || ((editing?.posterPath || editing?.posterUrl) && !removePoster)) && (
               <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-destructive"
                 onClick={() => { setRemovePoster(true); setPosterFile(null); if (posterPreview) URL.revokeObjectURL(posterPreview); setPosterPreview(null); if (fileRef.current) fileRef.current.value = ''; }}>
                 Remover cartaz
