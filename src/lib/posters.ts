@@ -13,7 +13,7 @@ export const POSTER_TYPES: Record<string, string> = {
   'image/webp': 'webp',
 };
 
-const STORAGE_TIMEOUT_MS = 12_000;
+const STORAGE_TIMEOUT_MS = 45_000;
 
 export interface PosterUploadResult {
   posterUrl?: string | null;
@@ -110,7 +110,7 @@ export async function uploadPosterToR2(
     const m = String(e?.message || e || '');
     if (/Failed to fetch|NetworkError|Load failed|esgotou o tempo/i.test(m)) {
       throw new Error(
-        'Não foi possível contactar o Worker (rede/CORS). Confirme https://iesa-ai.cadupaulino99.workers.dev/__health e o binding R2 POSTERS_BUCKET.',
+        'Falha de rede ao contactar o Worker de cartazes. Verifique a internet e tente novamente. Se persistir, abra /__health do Worker.',
       );
     }
     throw e;
@@ -151,22 +151,24 @@ async function uploadEventPosterFirebase(id: string, file: File): Promise<Poster
   return { posterPath, posterThumbPath };
 }
 
-/** Tenta R2 (Worker); se indisponível, tenta Firebase Storage. */
+/** Tenta R2 (Worker). Só cai para Firebase se o Worker disser que o R2 não está configurado. */
 export async function uploadEventPoster(id: string, file: File): Promise<PosterUploadResult> {
   try {
     return await uploadPosterToR2(file, id);
   } catch (e: any) {
     const msg = String(e?.message || e || '');
-    if (/R2|503|não está configurado|não configurado/i.test(msg)) {
+    const r2Missing = /R2_NOT_CONFIGURED|não está ligado|R2 não configurado|não está configurado/i.test(msg);
+    if (r2Missing) {
       try {
         return await uploadEventPosterFirebase(id, file);
       } catch (e2) {
         throw new Error(
           friendlyStorageError(e2) +
-            ' · Active o Cloudflare R2 (bucket iesa-event-posters) e faça deploy do Worker.',
+            ' · O Worker indica R2 em falta: confirme o binding POSTERS_BUCKET → iesa-event-posters.',
         );
       }
     }
+    // Erros de rede/auth/validação: mostrar a causa real (sem pedir «activar Cloudflare» em vão)
     throw new Error(friendlyStorageError(e));
   }
 }

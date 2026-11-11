@@ -28,6 +28,100 @@ import { computeStatus } from "../lib/contrib";
 import { formatKz } from '../lib/money';
 import { fmtTodayTimePT, lastMonthsLuanda } from '../lib/luanda';
 
+
+/** Cartão do portal — mesma vista que a liderança (MemberCardView), só leitura. */
+function MemberPortalCardTab({ member }: { member: any }) {
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [data, setData] = useState<MemberCardData>({
+    communions: [], donations: [], tithes: [], renewals: [],
+  });
+
+  useEffect(() => {
+    if (!member?.id) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      try {
+        const [c, d, t, r, b, co, pa] = await Promise.all([
+          getDocs(query(collection(db, "communions"), where("memberId", "==", member.id))),
+          getDocs(query(collection(db, "donations"), where("memberId", "==", member.id))),
+          getDocs(query(collection(db, "tithes"), where("memberId", "==", member.id))),
+          getDocs(query(collection(db, "renewals"), where("memberId", "==", member.id))),
+          getDocs(query(collection(db, "member_budgets"), where("memberId", "==", member.id))),
+          getDocs(query(collection(db, "contributions"), where("memberId", "==", member.id))),
+          getDocs(query(collection(db, "contribution_payments"), where("memberId", "==", member.id))),
+        ]);
+        if (cancelled) return;
+        const pays = pa.docs.map((x) => ({ id: x.id, ...x.data() }) as any);
+        const budgets = b.docs.map((x) => x.data() as any).sort((x: any, y: any) => (y.year || 0) - (x.year || 0));
+        setData({
+          communions: c.docs.map((x) => ({ id: x.id, ...x.data() }) as CommunionMark),
+          donations: d.docs.map((x) => ({ id: x.id, ...x.data() }) as Donation),
+          tithes: t.docs.map((x) => ({ id: x.id, ...x.data() }) as Tithe),
+          renewals: r.docs.map((x) => ({ id: x.id, ...x.data() }) as Renewal),
+          budget: budgets[0] ? { year: budgets[0].year, amount: budgets[0].amount } : null,
+          contributions: co.docs.map((x) => {
+            const cc = x.data() as any;
+            const paid = pays.filter((pp: any) => pp.contributionId === x.id).reduce((a: number, bb: any) => a + (Number(bb.amount) || 0), 0);
+            return { ...cc, paid, status: computeStatus(cc, paid, cc.amount) };
+          }),
+        });
+      } catch (e: any) {
+        if (!cancelled) {
+          const msg = e?.message || "Erro ao carregar o cartão.";
+          setErr(msg);
+          toast.error("Erro ao carregar o cartão: " + msg);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [member?.id]);
+
+  const onDownload = async () => {
+    setBusy(true);
+    try {
+      const pdf = await generateMemberCardPdf(member, data, CARD_HEADER_DEFAULT);
+      await savePdf(pdf, `Cartao_${String(member.name || "membro").replace(/\s+/g, "_")}.pdf`);
+      toast.success("Cartão PDF gerado.");
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "Erro ao gerar o PDF do cartão.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return <p className="py-10 text-center text-sm text-muted-foreground">A carregar o cartão…</p>;
+  }
+  if (err) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
+        Não foi possível carregar o cartão. {err}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">O seu cartão de membro (mesmo formato da liderança).</p>
+        <Button onClick={onDownload} disabled={busy} className="gap-2 rounded-xl">
+          <CreditCard className="h-4 w-4" /> {busy ? "A gerar…" : "Descarregar PDF"}
+        </Button>
+      </div>
+      <div className="overflow-x-auto rounded-xl border bg-white p-2 shadow-sm dark:bg-card">
+        <MemberCardView member={member} data={data} header={CARD_HEADER_DEFAULT} />
+      </div>
+    </div>
+  );
+}
+
 export default function MemberPortal() {
   const { memberData, signOut, user } = useAuth();
   const userEmail = user?.email || memberData?.email || "";
@@ -282,22 +376,7 @@ export default function MemberPortal() {
             />
           </TabsContent>
           <TabsContent value="cartao" className="pt-4">
-            <MemberCardView member={memberData} tithes={tithes} {...cardData} busy={cardBusy} onDownload={async () => {
-              setCardBusy(true);
-              try {
-                if (!memberData) { toast.error('Dados do membro em falta.'); return; }
-                const pdf = await generateMemberCardPdf(
-                  memberData,
-                  { tithes, communions: cardData.communions || [], donations: cardData.donations || [], renewals: cardData.renewals || [] },
-                  CARD_HEADER_DEFAULT,
-                );
-                await savePdf(pdf, `Cartao_${String(memberData.name || 'membro').replace(/\s+/g, "_")}.pdf`);
-                toast.success('Cartão gerado.');
-              } catch (err: any) {
-                console.error('cartão PDF', err);
-                toast.error(err?.message || 'Erro ao gerar o cartão.');
-              } finally { setCardBusy(false); }
-            }} />
+            <MemberPortalCardTab member={memberData} />
           </TabsContent>
         </Tabs>
 
