@@ -1,0 +1,17 @@
+name: patch-four-bugs
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/patch_four_bugs.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/richtext/RichTextEditor.tsx src/pages/MemberPortal.tsx src/components/portal/MemberSupport.tsx firestore.rules
+          if git diff --cached --quiet; then echo No changes; else git commit -m "fix: editor, suporte, cartão membro e regras support" && git push; fi
