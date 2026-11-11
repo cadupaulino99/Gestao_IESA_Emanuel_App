@@ -1,0 +1,17 @@
+name: patch-portal-support-card
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/patch_portal_support_card.py
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/MemberPortal.tsx src/components/portal/MemberSupport.tsx firestore.rules
+          if git diff --cached --quiet; then echo No changes; else git commit -m "fix(portal): suporte com email, cartão PDF e regras isStaff" && git push; fi
