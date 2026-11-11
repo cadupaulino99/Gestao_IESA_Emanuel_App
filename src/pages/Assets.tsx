@@ -30,11 +30,13 @@ const assetSchema = z.object({
 type AssetForm = z.infer<typeof assetSchema>;
 
 import { useAuth } from '../context/AuthContext';
+import { getPermissions } from '../lib/roles';
 import { formatKz } from '../lib/money';
 import { luandaDayKey } from '../lib/luanda';
 
 export default function Assets() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, userRole, isSuperAdmin } = useAuth();
+  const canWriteFinances = getPermissions(userRole, isSuperAdmin).financesWrite;
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -115,6 +117,7 @@ export default function Assets() {
   });
 
   const handleSave = async (data: any) => {
+    if (!canWriteFinances) { toast.error('O seu papel tem acesso só de leitura às finanças.'); return; }
     const pv = parseKzInput(String(data.purchaseValue ?? ''));
     if (!pv.ok) return; // zod já barrou; dupla segurança do servidor
     const confirmed = await confirmDialog("Deseja guardar esta informação?");

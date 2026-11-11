@@ -15,6 +15,7 @@ import { Textarea } from '../components/ui/textarea';
 import { toast } from 'sonner';
 import { Search, HandCoins, PiggyBank, Send, Sparkles, Trash2, RefreshCw, MessageCircle, Smartphone, Ban, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getPermissions } from '../lib/roles';
 import { useConfirm } from '../context/ConfirmContext';
 import { Member, BudgetEntry, Contribution, ContributionPayment, OutboxMessage, Campaign } from '../types';
 import { computeStatus, paidSumOf, fillTemplate, smsSegments, placeholdersIn } from '../lib/contrib';
@@ -32,7 +33,8 @@ const fmtKz = formatKz;
 const fmtDate = (iso?: string | null) => (iso ? iso.split('-').reverse().join('/') : '—');
 
 export default function Contributions() {
-  const { user, userRole, isAdmin } = useAuth();
+  const { user, userRole, isAdmin, isSuperAdmin } = useAuth();
+  const canWriteFinances = getPermissions(userRole, isSuperAdmin).financesWrite;
   const confirmDialog = useConfirm();
   const qc = useQueryClient();
   const canWrite = !!isAdmin; // só administradores (super incluído); servidor também impõe

@@ -23,6 +23,7 @@ import { parseKzInput, formatKz } from '../lib/money';
 import MoneyText from '../components/MoneyText';
 import { useConfirm } from '../context/ConfirmContext';
 import { useAuth } from '../context/AuthContext';
+import { getPermissions } from '../lib/roles';
 import { jsPDF } from 'jspdf';
 import { Checkbox } from '../components/ui/checkbox';
 import { Switch } from '../components/ui/switch';
@@ -42,7 +43,8 @@ const mvCents = (t?: string) => { const r = parseKzInput(t || '', { required: fa
 const amtCents = (t?: string) => { const r = parseKzInput(t || '', { required: false }); return r.ok ? r.cents : null; };
 
 export default function Finances() {
-  const { user, isAdmin, userRole } = useAuth();
+  const { user, isAdmin, userRole, isSuperAdmin } = useAuth();
+  const canWriteFinances = getPermissions(userRole, isSuperAdmin).financesWrite;
   const navigate = useNavigate();
   const [financeTab, setFinanceTab] = useState('estatisticas');
   /* P3: mês/ano correntes de LUANDA (era o fuso do aparelho). */
@@ -1094,7 +1096,8 @@ export default function Finances() {
   const isMonthClosed = financialMonth?.status === 'closed';
   const isYearClosed = financialYear?.status === 'closed';
   
-  const isClosed = (isMonthClosed || isYearClosed) && userRole !== 'admin';
+  const periodClosed = (isMonthClosed || isYearClosed) && userRole !== 'admin';
+  const isClosed = periodClosed || !canWriteFinances;
 
   const toggleYearStatus = async () => {
     try {
@@ -1422,14 +1425,18 @@ export default function Finances() {
 
 
   const openNovaReceita = () => {
-    if (isClosed) { toast.error('Mês/ano encerrado. Apenas administradores podem registar.'); return; }
+    if (isClosed) { toast.error(!canWriteFinances
+      ? 'O seu papel tem acesso só de leitura às finanças.'
+      : 'Mês/ano encerrado. Apenas administradores podem registar.'); return; }
     setFinanceTab('dizimos');
     resetTD();
     setEditingTithe(null);
     setIsTOpen(true);
   };
   const openNovaDespesa = () => {
-    if (isClosed) { toast.error('Mês/ano encerrado. Apenas administradores podem registar.'); return; }
+    if (isClosed) { toast.error(!canWriteFinances
+      ? 'O seu papel tem acesso só de leitura às finanças.'
+      : 'Mês/ano encerrado. Apenas administradores podem registar.'); return; }
     setFinanceTab('saidas');
     setEditingExpense(null);
     setIsEOpen(true);
@@ -1507,6 +1514,12 @@ export default function Finances() {
       <div className="grid grid-cols-2 gap-2 sm:gap-3">
         <button type="button" onClick={openNovaReceita} className="group flex items-center gap-2.5 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50 to-white px-3 py-2.5 text-left shadow-sm transition active:scale-[0.98] dark:border-sky-900/40 dark:from-sky-950/30 dark:to-card">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-600 text-white"><Plus className="h-4 w-4" /></span>
+      {!canWriteFinances && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+          <strong>Modo só leitura.</strong> O seu papel permite consultar finanças, mas não criar, editar nem apagar registos.
+        </div>
+      )}
+
           <span className="min-w-0 flex-1 text-sm font-semibold text-sky-900 dark:text-sky-100">Nova Receita</span>
           <ChevronRight className="h-4 w-4 shrink-0 text-sky-400" />
         </button>

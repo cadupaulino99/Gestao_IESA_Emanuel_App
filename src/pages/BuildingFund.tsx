@@ -32,11 +32,13 @@ type FundForm = z.infer<typeof fundSchema>;
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 import { useAuth } from '../context/AuthContext';
+import { getPermissions } from '../lib/roles';
 import { formatKz } from '../lib/money';
 import { luandaDayKey } from '../lib/luanda';
 
 export default function BuildingFund() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, userRole, isSuperAdmin } = useAuth();
+  const canWriteFinances = getPermissions(userRole, isSuperAdmin).financesWrite;
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
@@ -147,6 +149,7 @@ export default function BuildingFund() {
   });
 
   const handleSave = async (data: any) => {
+    if (!canWriteFinances) { toast.error('O seu papel tem acesso só de leitura às finanças.'); return; }
     const av = parseKzInput(String(data.amount ?? ''));
     if (!av.ok || av.cents < 1) return;
     const confirmed = await confirmDialog("Deseja guardar esta informação?");
