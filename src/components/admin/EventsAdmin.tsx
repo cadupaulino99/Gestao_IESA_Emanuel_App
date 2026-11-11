@@ -121,6 +121,7 @@ export default function EventsAdmin() {
   const [editing, setEditing] = useState<NormalizedEvent | null>(null);
   const [form, setForm] = useState<any>({ ...EMPTY });
   const [posterFile, setPosterFile] = useState<File | null>(null);
+  const [posterBanner, setPosterBanner] = useState<string | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [removePoster, setRemovePoster] = useState(false);
   const [storageTesting, setStorageTesting] = useState(false);
@@ -141,7 +142,8 @@ export default function EventsAdmin() {
   const reset = () => {
     setEditing(null); setForm({ ...EMPTY });
     if (posterPreview) URL.revokeObjectURL(posterPreview);
-    setPosterFile(null); setPosterPreview(null); setRemovePoster(false);
+    setPosterFile(null);
+    setPosterBanner(null); setPosterPreview(null); setRemovePoster(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -238,7 +240,8 @@ export default function EventsAdmin() {
           if (up2.posterUrl) {
             data.posterUrl = up2.posterUrl;
             await updateDoc(doc(db, 'events', id), { posterUrl: up2.posterUrl, posterPath: null, posterThumbPath: null });
-            toast.success('Cartaz associado ao evento.');
+            setPosterBanner(null);
+        toast.success('Cartaz associado ao evento.', { duration: 6000 });
           }
         } catch (pe2: any) {
           posterWarning = String(pe2?.message || pe2 || 'falha no carregamento do cartaz');
@@ -257,7 +260,8 @@ export default function EventsAdmin() {
       }
 
       if (posterWarning) {
-        toast.warning(`Evento guardado SEM cartaz: ${posterWarning}.`);
+        setPosterBanner(`Evento guardado SEM cartaz: ${posterWarning}`);
+        toast.warning(`Evento guardado SEM cartaz: ${posterWarning}`, { duration: 20000 });
       } else if (posterFile && data.posterUrl) {
         toast.success('Cartaz associado ao evento.');
       }

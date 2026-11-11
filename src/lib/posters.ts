@@ -55,16 +55,21 @@ export function validatePosterFile(file: File): string | null {
 function friendlyStorageError(err: unknown): string {
   const m = String((err as any)?.code || (err as any)?.message || err || '');
   if (/esgotou o tempo|timeout/i.test(m)) return m;
-  if (/R2_NOT_CONFIGURED|R2 não/i.test(m)) {
-    return 'Cloudflare R2 ainda não está configurado. Crie o bucket «iesa-event-posters» e faça deploy do Worker.';
+  if (/R2_NOT_CONFIGURED|não está ligado|POSTERS_BUCKET/i.test(m)) {
+    return 'Cloudflare R2: binding POSTERS_BUCKET em falta no Worker. Confirme o bucket «iesa-event-posters» e faça deploy.';
+  }
+  if (/Só administradores|Não autenticado|401|403/i.test(m)) {
+    return 'Sessão sem permissão para enviar cartaz. Saia e entre de novo como administrador.';
   }
   if (/storage\/unauthorized|permission-denied|PERMISSION_DENIED/i.test(m)) {
     return 'Sem permissão no armazenamento de ficheiros.';
   }
-  if (/bucket|not exist|404|storage\/bucket-not-found/i.test(m)) {
-    return 'Armazenamento de ficheiros indisponível (Firebase Storage ou R2).';
+  if (/storage\/bucket-not-found/i.test(m)) {
+    return 'Firebase Storage não está activo (não é necessário se o R2 estiver OK).';
   }
-  if (/network|Failed to fetch/i.test(m)) return 'Falha de rede ao enviar o cartaz. Tente novamente.';
+  if (/network|Failed to fetch|Load failed/i.test(m)) {
+    return 'Falha de rede ao contactar o Worker de cartazes. Verifique a internet e tente novamente.';
+  }
   return m || 'Falha desconhecida no carregamento do cartaz.';
 }
 
@@ -92,44 +97,61 @@ export async function uploadPosterToR2(
 
   const blob = await withTimeout(fileToJpegBlob(file, 1600, 0.82), 15_000, 'Processamento da imagem');
   const qs = eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
-  let res: Response;
-  try {
-    res = await withTimeout(
-      fetch(`${WORKER_URL}/admin/upload-poster${qs}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          'Content-Type': 'image/jpeg',
-          ...(eventId ? { 'X-Event-Id': String(eventId).slice(0, 40) } : {}),
-        },
-        body: blob,
-      }),
-      STORAGE_TIMEOUT_MS,
-      'Upload do cartaz (R2)',
-    );
-  } catch (e: any) {
-    const m = String(e?.message || e || '');
-    if (/Failed to fetch|NetworkError|Load failed|esgotou o tempo/i.test(m)) {
-      throw new Error(
-        'Falha de rede ao contactar o Worker de cartazes. Verifique a internet e tente novamente. Se persistir, abra /__health do Worker.',
-      );
-    }
-    throw e;
-  }
-  const data = await res.json().catch(() => ({} as any));
-  if (!res.ok) {
-    const detail = data?.error || data?.code || data?.message || `Erro ${res.status} no upload R2`;
-    throw new Error(String(detail));
-  }
-  if (!data?.posterUrl || typeof data.posterUrl !== 'string' || !data.posterUrl.startsWith('http')) {
-    throw new Error('Worker respondeu sem URL de cartaz válida. Confirme o deploy do Worker e o binding R2.');
-  }
-  return {
-    posterUrl: data.posterUrl as string,
-    key: data.key as string,
-    posterPath: null,
-    posterThumbPath: null,
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${idToken}`,
+    'Content-Type': 'image/jpeg',
   };
+  if (eventId) headers['X-Event-Id'] = String(eventId).slice(0, 40);
+
+  let lastErr: Error | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await withTimeout(
+        fetch(`${WORKER_URL}/admin/upload-poster${qs}`, {
+          method: 'POST',
+          headers,
+          body: blob,
+        }),
+        STORAGE_TIMEOUT_MS,
+        'Upload do cartaz (R2)',
+      );
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        const detail = String(data?.error || data?.code || data?.message || `Erro ${res.status} no upload R2`);
+        // 5xx / 503 R2: tentar de novo
+        if (res.status >= 500 && attempt < 3) {
+          lastErr = new Error(detail);
+          await new Promise((r) => setTimeout(r, 600 * attempt));
+          continue;
+        }
+        throw new Error(detail);
+      }
+      if (!data?.posterUrl || typeof data.posterUrl !== 'string' || !data.posterUrl.startsWith('http')) {
+        throw new Error('Worker respondeu sem URL de cartaz válida. Confirme o deploy do Worker e o binding R2.');
+      }
+      return {
+        posterUrl: data.posterUrl as string,
+        key: data.key as string,
+        posterPath: null,
+        posterThumbPath: null,
+      };
+    } catch (e: any) {
+      const m = String(e?.message || e || '');
+      lastErr = e instanceof Error ? e : new Error(m);
+      const retryable = /Failed to fetch|NetworkError|Load failed|esgotou o tempo|503|502|500/i.test(m);
+      if (retryable && attempt < 3) {
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+        continue;
+      }
+      if (/Failed to fetch|NetworkError|Load failed|esgotou o tempo/i.test(m)) {
+        throw new Error(
+          'Falha de rede ao contactar o Worker de cartazes. Verifique a internet e tente novamente.',
+        );
+      }
+      throw lastErr;
+    }
+  }
+  throw lastErr || new Error('Falha no upload do cartaz após 3 tentativas.');
 }
 
 async function uploadEventPosterFirebase(id: string, file: File): Promise<PosterUploadResult> {
@@ -156,24 +178,11 @@ async function uploadEventPosterFirebase(id: string, file: File): Promise<Poster
   return { posterPath, posterThumbPath };
 }
 
-/** Tenta R2 (Worker). Só cai para Firebase se o Worker disser que o R2 não está configurado. */
+/** Upload só via Cloudflare R2 (Worker). Sem fallback Firebase Storage. */
 export async function uploadEventPoster(id: string, file: File): Promise<PosterUploadResult> {
   try {
     return await uploadPosterToR2(file, id);
   } catch (e: any) {
-    const msg = String(e?.message || e || '');
-    const r2Missing = /R2_NOT_CONFIGURED|não está ligado|R2 não configurado|não está configurado/i.test(msg);
-    if (r2Missing) {
-      try {
-        return await uploadEventPosterFirebase(id, file);
-      } catch (e2) {
-        throw new Error(
-          friendlyStorageError(e2) +
-            ' · O Worker indica R2 em falta: confirme o binding POSTERS_BUCKET → iesa-event-posters.',
-        );
-      }
-    }
-    // Erros de rede/auth/validação: mostrar a causa real (sem pedir «activar Cloudflare» em vão)
     throw new Error(friendlyStorageError(e));
   }
 }
