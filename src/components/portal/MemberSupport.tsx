@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { toast } from 'sonner';
 
 /* ═══════════════════════════════════════════════════════════════════════
    v1.17.0 (P1 «chat») — SUPORTE membro ↔ liderança.
@@ -59,6 +60,7 @@ export default function MemberSupport({ memberEmail, memberName }: { memberEmail
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
     const t = text.trim();
+    if (!memberEmail) { toast.error('Email do membro em falta — não é possível abrir o suporte.'); return; }
     if (!t || sending) return;
     setSending(true);
     try {
@@ -74,7 +76,10 @@ export default function MemberSupport({ memberEmail, memberName }: { memberEmail
       setText('');
       await load();
     } catch (e2: any) {
-      // falha — mantém o texto para o utilizador tentar de novo
+      const msg = String(e2?.message || e2 || '');
+      toast.error(msg.includes('permission') || msg.includes('Permission')
+        ? 'Sem permissão para enviar. Confirme que está autenticado como membro.'
+        : (msg || 'Não foi possível enviar a mensagem.'));
     } finally {
       setSending(false);
     }

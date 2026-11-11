@@ -50,9 +50,9 @@ export default function RichTextEditor({ value, onChange, placeholder = 'Escreva
   const emit = () => {
     const el = ref.current;
     if (!el) return;
+    /* Não reescrever innerHTML aqui — partia o cursor e impedia escrever. */
     let clean = sanitizeHtml(el.innerHTML);
     if (richTextPlainLength(clean) === 0) clean = '';
-    if (el.innerHTML !== clean) el.innerHTML = clean;
     onChange(clean);
   };
 

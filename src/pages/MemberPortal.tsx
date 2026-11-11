@@ -29,7 +29,8 @@ import { formatKz } from '../lib/money';
 import { fmtTodayTimePT, lastMonthsLuanda } from '../lib/luanda';
 
 export default function MemberPortal() {
-  const { memberData, signOut } = useAuth();
+  const { memberData, signOut, user } = useAuth();
+  const userEmail = user?.email || memberData?.email || "";
   const [tithes, setTithes] = useState<Tithe[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
@@ -188,7 +189,10 @@ export default function MemberPortal() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Button variant="outline" className="w-full justify-between rounded-xl border-blue-100 bg-blue-50/80" onClick={() => generateMembershipCard(memberData)}>
+                    <Button variant="outline" className="w-full justify-between rounded-xl border-blue-100 bg-blue-50/80" onClick={async () => {
+                      try { await generateMembershipCard(memberData); toast.success('Cartão descarregado.'); }
+                      catch (e: any) { toast.error(e?.message || 'Erro ao gerar cartão.'); }
+                    }}>
                       <span className="flex items-center gap-2"><CreditCard className="h-4 w-4" /> Baixar Cartão</span><ChevronRight className="h-4 w-4 opacity-50" />
                     </Button>
                     <Button variant="outline" className="w-full justify-between rounded-xl border-violet-100 bg-violet-50/80" onClick={handleGenerateExtract} disabled={!tithes.length}>
@@ -271,12 +275,28 @@ export default function MemberPortal() {
 
           <TabsContent value="mural" className="pt-4"><MemberBoard /></TabsContent>
           <TabsContent value="radio" className="pt-4"><RadioPage /></TabsContent>
-          <TabsContent value="suporte" className="pt-4"><MemberSupport /></TabsContent>
+          <TabsContent value="suporte" className="pt-4">
+            <MemberSupport
+              memberEmail={String(memberData?.email || userEmail || '').trim().toLowerCase()}
+              memberName={String(memberData?.name || 'Membro')}
+            />
+          </TabsContent>
           <TabsContent value="cartao" className="pt-4">
             <MemberCardView member={memberData} tithes={tithes} {...cardData} busy={cardBusy} onDownload={async () => {
               setCardBusy(true);
-              try { const pdf = await generateMemberCardPdf({ member: memberData, tithes, ...cardData, header: CARD_HEADER_DEFAULT }); await savePdf(pdf, `Cartao_${memberData.name.replace(/\s+/g, "_")}.pdf`); }
-              finally { setCardBusy(false); }
+              try {
+                if (!memberData) { toast.error('Dados do membro em falta.'); return; }
+                const pdf = await generateMemberCardPdf(
+                  memberData,
+                  { tithes, communions: cardData.communions || [], donations: cardData.donations || [], renewals: cardData.renewals || [] },
+                  CARD_HEADER_DEFAULT,
+                );
+                await savePdf(pdf, `Cartao_${String(memberData.name || 'membro').replace(/\s+/g, "_")}.pdf`);
+                toast.success('Cartão gerado.');
+              } catch (err: any) {
+                console.error('cartão PDF', err);
+                toast.error(err?.message || 'Erro ao gerar o cartão.');
+              } finally { setCardBusy(false); }
             }} />
           </TabsContent>
         </Tabs>
