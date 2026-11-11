@@ -802,8 +802,7 @@ service cloud.firestore {
 
     // --- Support Messages Collection ---
     match /support_messages/{msgId} {
-      // v1.17 / v1.21.25: conversas por fio (memberEmail).
-      // Liderança (isStaff = A/B/C) lê tudo; membro só o SEU fio.
+      // v1.21.25: liderança (isStaff) lê/responde; membro só o próprio fio.
       allow read, list: if isStaff() ||
         (isAuthenticated() && resource.data.keys().hasAll(['memberEmail']) &&
          resource.data.memberEmail == request.auth.token.email);
