@@ -53,7 +53,7 @@ function PosterImg({
   }
   return (
     <button type="button" onClick={onClick} className="block w-full cursor-pointer border-0 bg-transparent p-0">
-      <img src={url} alt="Cartaz do evento" className={`poster-img ${className || '''}`} loading="lazy" decoding="async" fetchPriority="low" />
+      <img src={url} alt="Cartaz do evento" className={`poster-img ${className || ''}`} loading="lazy" decoding="async" fetchPriority="low" />
     </button>
   );
 }
