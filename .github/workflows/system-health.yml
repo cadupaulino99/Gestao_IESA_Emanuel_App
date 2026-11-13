@@ -7,7 +7,7 @@ name: system-health
 on:
   schedule:
     - cron: '0 */6 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -137,19 +137,10 @@ jobs:
           EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title Saúde do sistema" --json number -q 'length')"
           if [ "$EXISTE" != "0" ]; then echo "Já existe issue aberta de saúde; não duplico."; exit 0; fi
           TITLE="Saúde do sistema: problema detectado"
-          BODY="Monitor automático (\\`system-health\\`) reportou:
-
-${{ steps.summary.outputs.msg }}
-
-**Verificar:**
-- Worker: \\$WORKER_URL/__health
-- Hosting: \\$HOSTING_URL
-- Deploy Worker / Hosting se necessário
-- docs/MONITORIZACAO.md e docs/OPERACOES.md
-
-Correr manualmente: Actions → system-health → Run workflow."
-          BODY="${BODY//\$WORKER_URL/https://iesa-ai.cadupaulino99.workers.dev}"
-          BODY="${BODY//\$HOSTING_URL/https://iesa-emanuel-xangongo.web.app}"
+          BODY=$(printf '%s\n\n%s\n\n%s\n' \
+            "Monitor automático (system-health) reportou:" \
+            "${{ steps.summary.outputs.msg }}" \
+            "Ver: https://iesa-ai.cadupaulino99.workers.dev/__health e https://iesa-emanuel-xangongo.web.app/ — docs/MONITORIZACAO.md")
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
 
       - name: Falhar o job se unhealthy
