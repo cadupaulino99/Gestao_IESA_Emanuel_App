@@ -259,8 +259,10 @@ service cloud.firestore {
     // O próprio só pode tocar nestes dois campos (último login e troca da
     // palavra-passe temporária). Nada mais.
     function isSelfAdminFieldUpdate() {
+      // Comparar emails em minúsculas — o token Auth e o campo email do doc
+      // podem diferir só na capitalização (senão a troca de senha falhava em silêncio).
       return isAuthenticated() &&
-             request.auth.token.email == resource.data.email &&
+             request.auth.token.email.lower() == resource.data.email.lower() &&
              incoming().keys().hasOnly(['lastLoginAt', 'mustChangePassword']) &&
              (incoming().lastLoginAt is number || incoming().mustChangePassword is bool);
     }
