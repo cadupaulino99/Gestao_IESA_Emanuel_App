@@ -4,20 +4,34 @@ from pathlib import Path
 p = Path('src/pages/Dashboard.tsx')
 t = p.read_text()
 
-old = '''    queryFn: async () => {
-      try {
-        const membersSnapshot = await getDocs(collection(db, 'members'));
-        const membersData = membersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        let tithes = 0, offerings = 0, expenses = 0;
-        const monthlyData = Array.from({ length: 12 }, (_, i) => ({
-          name: monthNamePT(i + 1, true), Entradas: 0, Saídas: 0, Dízimos: 0, Ofertas: 0, Despesas: 0,
-        }));
-        let activities: any[] = [];
-        let budgetStats: any[] = [];
-        let eventsData: any[] = [];
-        let tithesSnapshot: any, offeringsSnapshot: any, expensesSnapshot: any, budgetDoc: any;
+# 1) members full collection -> limited query marker
+if "MEMBERS_CAP" not in t:
+    t = t.replace(
+        "const membersSnapshot = await getDocs(collection(db, 'members'));",
+        "const MEMBERS_CAP = 500;\n        const EVENTS_CAP = 30;\n        const membersQ = query(collection(db, 'members'), orderBy('name', 'asc'), limit(MEMBERS_CAP));\n        const eventsQ = query(collection(db, 'events'), orderBy('date', 'desc'), limit(EVENTS_CAP));\n        let membersSnapshot: Awaited<ReturnType<typeof getDocs>>;\n        // preenchido abaixo em paralelo",
+        1,
+    )
+    # Fix - the above leaves membersSnapshot unassigned before use. Do fuller replace.
 
-        if (isFinancialStaff) {
+# Start clean from original patterns on disk
+t = Path('src/pages/Dashboard.tsx').read_text()
+
+if "MEMBERS_CAP" in t:
+    print('already patched')
+    raise SystemExit(0)
+
+a = "        const membersSnapshot = await getDocs(collection(db, 'members'));\n        const membersData = membersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));"
+b = """        const MEMBERS_CAP = 500;
+        const EVENTS_CAP = 30;
+        const membersQ = query(collection(db, 'members'), orderBy('name', 'asc'), limit(MEMBERS_CAP));
+        const eventsQ = query(collection(db, 'events'), orderBy('date', 'desc'), limit(EVENTS_CAP));
+        let membersSnapshot: any;
+        let membersData: any[] = [];"""
+if a not in t:
+    raise SystemExit('members load block missing')
+t = t.replace(a, b, 1)
+
+a2 = """        if (isFinancialStaff) {
           const [eSnap, tSnap, oSnap, expSnap, bDoc] = await Promise.all([
             getDocs(query(collection(db, 'events'))),
             getDocs(query(collection(db, 'tithes'), where('year', '==', year))),
@@ -30,28 +44,9 @@ old = '''    queryFn: async () => {
         } else {
           const eSnap = await getDocs(query(collection(db, 'events')));
           eventsData = eSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
-        }'''
+        }"""
 
-new = '''    queryFn: async () => {
-      try {
-        // Limites: igreja local raramente ultrapassa isto; evita descarregar coleções inteiras.
-        const MEMBERS_CAP = 500;
-        const EVENTS_CAP = 30;
-        const membersQ = query(collection(db, 'members'), orderBy('name', 'asc'), limit(MEMBERS_CAP));
-        const eventsQ = query(collection(db, 'events'), orderBy('date', 'desc'), limit(EVENTS_CAP));
-
-        let membersSnapshot: any;
-        let tithes = 0, offerings = 0, expenses = 0;
-        const monthlyData = Array.from({ length: 12 }, (_, i) => ({
-          name: monthNamePT(i + 1, true), Entradas: 0, Saídas: 0, Dízimos: 0, Ofertas: 0, Despesas: 0,
-        }));
-        let activities: any[] = [];
-        let budgetStats: any[] = [];
-        let eventsData: any[] = [];
-        let tithesSnapshot: any, offeringsSnapshot: any, expensesSnapshot: any, budgetDoc: any;
-
-        if (isFinancialStaff) {
-          // Uma só vaga de rede: membros + eventos + finanças do ano em paralelo
+b2 = """        if (isFinancialStaff) {
           const [mSnap, eSnap, tSnap, oSnap, expSnap, bDoc] = await Promise.all([
             getDocs(membersQ),
             getDocs(eventsQ),
@@ -71,18 +66,14 @@ new = '''    queryFn: async () => {
           membersSnapshot = mSnap;
           eventsData = eSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
         }
-        const membersData = membersSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));'''
+        membersData = membersSnapshot.docs.map((d: any) => ({ id: d.id, ...d.data() }));"""
 
-if old not in t:
-    raise SystemExit('dashboard block not found')
-t = t.replace(old, new)
+if a2 not in t:
+    raise SystemExit('financial parallel block missing')
+t = t.replace(a2, b2, 1)
 
-# Remove extra 90-day tithes query — reuse year snapshot for inactive/retention
-old2 = '''        const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
-        let inactiveTithers: any[] = [];
-        let globalRetentionRate = 0;
-
-        if (isFinancialStaff) {
+# Drop extra 90d tithes query
+a3 = """        if (isFinancialStaff) {
           const recentTithesSnapshot = await getDocs(query(collection(db, 'tithes'), where('createdAt', '>=', threeMonthsAgo)));
           const uniqueTithesMap = new Map();
           tithesSnapshot.docs.forEach((d: any) => uniqueTithesMap.set(d.id, d.data()));
@@ -96,14 +87,9 @@ old2 = '''        const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000)
           const activeMembersCount = membersData.filter((m: any) => m.status === 'Activo' || !m.status).length;
           const tithedMembersSet = new Set(allTithes.filter((t: any) => t.year === year).map((t: any) => t.memberId));
           globalRetentionRate = activeMembersCount > 0 ? Math.round((tithedMembersSet.size / activeMembersCount) * 100) : 0;
-        }'''
+        }"""
 
-new2 = '''        const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
-        let inactiveTithers: any[] = [];
-        let globalRetentionRate = 0;
-
-        // Usa só os dízimos do ano já carregados (evita 2.ª varredura à coleção tithes)
-        if (isFinancialStaff && tithesSnapshot) {
+b3 = """        if (isFinancialStaff && tithesSnapshot) {
           const yearTithes = tithesSnapshot.docs.map((d: any) => d.data());
           inactiveTithers = membersData.filter((m: any) => {
             if (m.status && m.status !== 'Activo') return false;
@@ -113,11 +99,11 @@ new2 = '''        const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000)
           const activeMembersCount = membersData.filter((m: any) => m.status === 'Activo' || !m.status).length;
           const tithedMembersSet = new Set(yearTithes.map((t: any) => t.memberId));
           globalRetentionRate = activeMembersCount > 0 ? Math.round((tithedMembersSet.size / activeMembersCount) * 100) : 0;
-        }'''
+        }"""
 
-if old2 not in t:
-    raise SystemExit('inactive block not found')
-t = t.replace(old2, new2)
+if a3 not in t:
+    raise SystemExit('inactive tithes block missing')
+t = t.replace(a3, b3, 1)
 
 p.write_text(t)
-print('Dashboard optimized')
+print('patched ok')
