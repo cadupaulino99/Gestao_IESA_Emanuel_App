@@ -53,7 +53,7 @@ function PosterImg({
   }
   return (
     <button type="button" onClick={onClick} className="block w-full cursor-pointer border-0 bg-transparent p-0">
-      <img src={url} alt="Cartaz do evento" className={className} loading="lazy"  decoding="async" / decoding="async">
+      <img src={url} alt="Cartaz do evento" className={`poster-img ${className}`} loading="lazy"  decoding="async" / decoding="async" fetchPriority="low">
     </button>
   );
 }
@@ -159,7 +159,7 @@ export default function EventFeedPost({
         <div className="relative bg-slate-100 dark:bg-slate-800/80">
           {e.posterUrl ? (
             <button type="button" className="block w-full border-0 bg-transparent p-0" onClick={() => (onFullPoster ? onFullPoster(e) : onOpen?.(e))}>
-              <img src={e.posterUrl} alt="Cartaz do evento" className="max-h-[480px] w-full object-cover" loading="lazy"  decoding="async" / decoding="async">
+              <img src={e.posterUrl} alt="Cartaz do evento" className="poster-img max-h-[480px] w-full object-cover" loading="lazy"  decoding="async" / decoding="async" fetchPriority="low">
             </button>
           ) : (
           <PosterImg

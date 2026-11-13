@@ -147,3 +147,11 @@
   .skeleton::after { animation: none; }
   .skeleton { opacity: 0.7; }
 }
+
+
+/* Cartazes: decodificação assínncrona + menos trabalho de layout fora do ecrã */
+.poster-img {
+  content-visibility: auto;
+  contain-intrinsic-size: 400px 225px;
+  background-color: var(--color-muted, var(--muted));
+}

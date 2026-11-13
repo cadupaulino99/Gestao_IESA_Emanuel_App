@@ -46,7 +46,7 @@ function PosterImg({ path, altPath, className }: { path?: string | null; altPath
     if (!path && !altPath) return null;
     return <div className={`flex items-center justify-center bg-slate-100 text-[11px] text-slate-400 dark:bg-slate-800 ${className || ''}`}>A carregar cartaz…</div>;
   }
-  return <img src={url} alt="Cartaz do evento" className={className} loading="lazy"  decoding="async" / decoding="async">;
+  return <img src={url} alt="Cartaz do evento" className={`poster-img ${className}`} loading="lazy"  decoding="async" / decoding="async" fetchPriority="low">;
 }
 
 function addToCalendar(e: NormalizedEvent) {
