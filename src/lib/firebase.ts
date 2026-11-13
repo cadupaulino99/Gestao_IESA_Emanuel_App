@@ -2,14 +2,46 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import firebaseConfig from '../../firebase-applet-config.json'; // Adjust path if needed
 import { toast } from 'sonner';
 
 export const app = initializeApp(firebaseConfig);
+
+/**
+ * App Check (reCAPTCHA v3) — só activa se VITE_FIREBASE_APPCHECK_SITE_KEY estiver definida.
+ * Sem a chave: comportamento actual (sem App Check), para não partir builds/APK
+ * enquanto o Firebase Console ainda não está configurado.
+ *
+ * Produção:
+ *  1. Firebase Console → App Check → registar app Web (reCAPTCHA v3)
+ *  2. Definir VITE_FIREBASE_APPCHECK_SITE_KEY no build (Hosting / CI)
+ *  3. Começar em modo Monitor; só depois Enforce em Auth/Firestore/Storage
+ *
+ * Debug local: VITE_FIREBASE_APPCHECK_DEBUG_TOKEN=true (ou um token UUID
+ * registado em App Check → Apps → Manage debug tokens).
+ */
+const appCheckSiteKey = String(import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY || '').trim();
+if (appCheckSiteKey) {
+  const debugToken = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN;
+  if (debugToken) {
+    // @ts-expect-error self FIREBASE_APPCHECK_DEBUG_TOKEN (SDK lê no boot)
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken === 'true' ? true : String(debugToken);
+  }
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(appCheckSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (e) {
+    console.warn('App Check não iniciou:', e);
+  }
+}
+
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 }, firebaseConfig.firestoreDatabaseId);
 
 export enum OperationType {
