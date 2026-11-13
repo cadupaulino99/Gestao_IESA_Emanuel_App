@@ -96,10 +96,11 @@ export default function PendingSignups() {
     try {
       const now = Date.now();
       const internalCode = await nextInternalCode();
+      const emailNorm = String(s.email || '').trim().toLowerCase();
       const member: Record<string, unknown> = {
         name: s.name,
-        email: s.email,
-        memberEmail: s.email,          // regras isOwnMemberDoc (leitura do próprio)
+        email: emailNorm,
+        memberEmail: emailNorm,          // regras isOwnMemberDoc (leitura do próprio)
         status: 'Activo',
         internalCode,
         mustChangePassword: true,      // 1.º login → troca obrigatória

@@ -107,10 +107,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUserRole(role);
 
           // Check if user is a registered member
+          // Email no Auth pode ter capitalização diferente da ficha (Firestore é case-sensitive).
           if (currentUser.email) {
-            const memQuery = query(collection(db, 'members'), where('email', '==', currentUser.email));
-            const memSnap = await getDocs(memQuery);
-            const first = firstMemberOrNone(memSnap.docs);
+            const emailRaw = String(currentUser.email).trim();
+            const emailNorm = emailRaw.toLowerCase();
+            const emailVariants = Array.from(new Set([emailRaw, emailNorm].filter(Boolean)));
+            let first: any = null;
+            for (const em of emailVariants) {
+              if (first) break;
+              const byEmail = await getDocs(query(collection(db, 'members'), where('email', '==', em)));
+              first = firstMemberOrNone(byEmail.docs);
+              if (first) break;
+              const byMemberEmail = await getDocs(query(collection(db, 'members'), where('memberEmail', '==', em)));
+              first = firstMemberOrNone(byMemberEmail.docs);
+            }
             if (first) {
               setMemberData({ id: first.id, ...first.data() });
               setSignupMeta(null);
@@ -121,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                  liderança — regras). Sem query: o ID É o email. */
               if (!hasAdminAccess) {
                 try {
-                  const sSnap = await getDoc(doc(db, 'member_signups', currentUser.email.toLowerCase()));
+                  const sSnap = await getDoc(doc(db, 'member_signups', emailNorm));
                   if (sSnap.exists()) {
                     const sd = sSnap.data() as any;
                     setSignupMeta({ statusSignup: sd.statusSignup, reason: sd.reason || null });

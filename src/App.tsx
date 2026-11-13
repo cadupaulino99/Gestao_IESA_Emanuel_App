@@ -60,29 +60,38 @@ const queryClient = new QueryClient({
    vê a mensagem correspondente ao estado e NÃO entra (requisito 5). */
 const SignupStatusScreen = ({ meta, onSignOut }: { meta: { statusSignup: string; reason?: string | null }; onSignOut: () => Promise<void> }) => {
   const pending = meta.statusSignup === 'pendente';
+  const approved = meta.statusSignup === 'aprovado';
   return (
     <div className="h-screen w-screen flex flex-col items-center justify-center p-4 bg-muted/30">
       <Card className="max-w-md w-full text-center">
         <CardHeader>
-          <div className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-2xl ${pending ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/40' : 'bg-red-100 text-red-600 dark:bg-red-900/40'}`}>
-            {pending ? <Hourglass className="h-7 w-7" /> : <XCircle className="h-7 w-7" />}
+          <div className={`mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-2xl ${
+            pending ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/40'
+              : approved ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40'
+              : 'bg-red-100 text-red-600 dark:bg-red-900/40'
+          }`}>
+            {pending ? <Hourglass className="h-7 w-7" /> : approved ? <Hourglass className="h-7 w-7" /> : <XCircle className="h-7 w-7" />}
           </div>
-          <CardTitle>{pending ? 'Cadastro aguarda aprovação' : 'Cadastro rejeitado'}</CardTitle>
+          <CardTitle>
+            {pending ? 'Cadastro aguarda aprovação' : approved ? 'Cadastro aprovado' : 'Cadastro rejeitado'}
+          </CardTitle>
           <CardDescription className="leading-relaxed">
             {pending
               ? 'Recebemos o seu cadastro — foi registado como PENDENTE e aguarda autorização do administrador da igreja. Assim que for aprovado, entre com o seu email e palavra-passe; ser-lhe-á pedido que defina a palavra-passe definitiva.'
-              : 'O administrador rejeitou o seu cadastro. Para mais informações, contacte a secretaria da igreja.'}
+              : approved
+                ? 'O administrador já aprovou o seu cadastro. Toque em «Entrar no portal» para carregar a sua ficha de membro. Se continuar sem acesso, contacte a secretaria da igreja.'
+                : 'O administrador rejeitou o seu cadastro. Para mais informações, contacte a secretaria da igreja.'}
           </CardDescription>
-          {!pending && meta.reason && (
+          {!pending && !approved && meta.reason && (
             <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
               <b>Motivo indicado:</b> {meta.reason}
             </p>
           )}
         </CardHeader>
         <CardContent className="space-y-2">
-          {pending && (
+          {(pending || approved) && (
             <Button variant="outline" className="w-full" onClick={() => window.location.reload()}>
-              Já fui aprovado — verificar novamente
+              {approved ? 'Entrar no portal — verificar novamente' : 'Já fui aprovado — verificar novamente'}
             </Button>
           )}
           <Button className="w-full" onClick={() => { void (async () => { await onSignOut(); window.location.href = '/login'; })(); }}>
