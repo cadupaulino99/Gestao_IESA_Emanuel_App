@@ -46,7 +46,7 @@ function PosterThumb({ path, className = 'h-14 w-10' }: { path?: string | null; 
     return () => { alive = false; };
   }, [path]);
   if (!path || !url) return null;
-  return <img src={url} alt="Cartaz do evento" className={`poster-img ${className} rounded border object-cover`}  loading="lazy" decoding="async"  fetchPriority="low" />;
+  return <img src={url} alt="Cartaz do evento" className={`poster-img ${className} rounded border object-cover`} loading="lazy" decoding="async" fetchPriority="low" />;
 }
 
 /* v1.14.8: Field/Item viviam DENTRO do componente — cada tecla criava um tipo
@@ -460,8 +460,8 @@ export default function EventsAdmin() {
             <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => fileRef.current?.click()}>
               <ImagePlus className="h-3.5 w-3.5" /> {posterPreview || editing?.posterPath || editing?.posterUrl ? 'Substituir cartaz' : 'Carregar cartaz (opcional)'}
             </Button>
-            {posterPreview && <img src={posterPreview} alt="Pré-visualização do cartaz" className="poster-img h-16 w-12 rounded border object-cover"  loading="lazy" decoding="async"  fetchPriority="low" />}
-            {!posterPreview && !removePoster && editing?.posterUrl && <img src={editing.posterUrl} alt="Cartaz" className="poster-img h-16 w-12 rounded border object-cover"  loading="lazy" decoding="async"  fetchPriority="low" />}
+            {posterPreview && <img src={posterPreview} alt="Pré-visualização do cartaz" className="poster-img h-16 w-12 rounded border object-cover" loading="lazy" decoding="async" fetchPriority="low" />}
+            {!posterPreview && !removePoster && editing?.posterUrl && <img src={editing.posterUrl} alt="Cartaz" className="poster-img h-16 w-12 rounded border object-cover" loading="lazy" decoding="async" fetchPriority="low" />}
             {!posterPreview && !removePoster && !editing?.posterUrl && editing?.posterPath && <PosterThumb path={editing.posterThumbPath || editing.posterPath} className="h-16 w-12" />}
             {(posterPreview || ((editing?.posterPath || editing?.posterUrl) && !removePoster)) && (
               <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-destructive"
