@@ -1,0 +1,16 @@
+name: patch-list-skeletons
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/patch_list_skeletons.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Members.tsx src/pages/Finances.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "ui: skeletons na lista móvel de membros e tabelas de finanças" && git push; fi
