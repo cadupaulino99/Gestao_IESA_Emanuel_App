@@ -306,12 +306,12 @@ const Login = () => {
 
 const PageFallback = () => (
   <div className="mx-auto w-full max-w-3xl space-y-4 p-4 py-10" aria-busy="true" aria-label="A carregar">
-    <div className="h-8 w-48 animate-pulse rounded-md bg-muted" />
+    <div className="h-8 w-48 skeleton rounded-md" />
     <div className="grid gap-3 sm:grid-cols-2">
-      <div className="h-24 animate-pulse rounded-xl bg-muted" />
-      <div className="h-24 animate-pulse rounded-xl bg-muted" />
+      <div className="h-24 skeleton rounded-xl" />
+      <div className="h-24 skeleton rounded-xl" />
     </div>
-    <div className="h-40 animate-pulse rounded-xl bg-muted" />
+    <div className="h-40 skeleton rounded-xl" />
     <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
       <Loader2 className="h-4 w-4 animate-spin" /> A carregar…
     </div>

@@ -1893,12 +1893,12 @@ export default function Finances() {
                       {loading ? (
                         Array.from({ length: 6 }).map((_, i) => (
                           <TableRow key={i}>
-                            <TableCell><div className="h-4 w-16 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                            <TableCell><div className="h-4 w-12 bg-muted animate-pulse rounded"></div></TableCell>
+                            <TableCell><div className="h-4 w-16 skeleton rounded"></div></TableCell>
+                            <TableCell><div className="h-4 w-32 skeleton rounded"></div></TableCell>
+                            <TableCell><div className="h-4 w-24 skeleton rounded"></div></TableCell>
+                            <TableCell><div className="h-4 w-20 skeleton rounded"></div></TableCell>
+                            <TableCell><div className="h-4 w-24 skeleton rounded"></div></TableCell>
+                            <TableCell><div className="h-4 w-12 skeleton rounded"></div></TableCell>
                           </TableRow>
                         ))
                       ) : filteredTithes.map(t => (
@@ -1948,9 +1948,9 @@ export default function Finances() {
                    {loading ? (
                       Array.from({ length: 3 }).map((_, i) => (
                         <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2">
-                           <div className="h-5 w-40 bg-muted animate-pulse rounded"></div>
-                           <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
-                           <div className="h-4 w-32 bg-muted animate-pulse rounded"></div>
+                           <div className="h-5 w-40 skeleton rounded"></div>
+                           <div className="h-4 w-24 skeleton rounded"></div>
+                           <div className="h-4 w-32 skeleton rounded"></div>
                         </div>
                       ))
                    ) : filteredTithes.length === 0 ? (
@@ -2081,11 +2081,11 @@ export default function Finances() {
                     {loading ? (
                       Array.from({ length: 6 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-12 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-32 skeleton rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-20 skeleton rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-24 skeleton rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-24 skeleton rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-12 skeleton rounded"></div></TableCell>
                         </TableRow>
                       ))
                     ) : filteredOfferings.map(t => (
@@ -2121,11 +2121,11 @@ export default function Finances() {
                     Array.from({ length: 5 }).map((_, i) => (
                       <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2">
                          <div className="flex justify-between gap-2">
-                           <div className="h-5 w-36 bg-muted animate-pulse rounded" />
-                           <div className="h-5 w-16 bg-muted animate-pulse rounded-full" />
+                           <div className="h-5 w-36 skeleton rounded" />
+                           <div className="h-5 w-16 skeleton rounded-full" />
                          </div>
-                         <div className="h-3.5 w-28 bg-muted animate-pulse rounded" />
-                         <div className="h-6 w-24 bg-muted animate-pulse rounded" />
+                         <div className="h-3.5 w-28 skeleton rounded" />
+                         <div className="h-6 w-24 skeleton rounded" />
                       </div>
                     ))
                  ) : filteredOfferings.length === 0 ? (
@@ -2239,11 +2239,11 @@ export default function Finances() {
                     {loading ? (
                       Array.from({ length: 6 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
-                          <TableCell><div className="h-4 w-12 bg-muted animate-pulse rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-32 skeleton rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-24 skeleton rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-20 skeleton rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-24 skeleton rounded"></div></TableCell>
+                          <TableCell><div className="h-4 w-12 skeleton rounded"></div></TableCell>
                         </TableRow>
                       ))
                     ) : filteredExpenses.map(t => (
@@ -2275,11 +2275,11 @@ export default function Finances() {
                     Array.from({ length: 5 }).map((_, i) => (
                       <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2">
                          <div className="flex justify-between gap-2">
-                           <div className="h-5 w-36 bg-muted animate-pulse rounded" />
-                           <div className="h-5 w-16 bg-muted animate-pulse rounded-full" />
+                           <div className="h-5 w-36 skeleton rounded" />
+                           <div className="h-5 w-16 skeleton rounded-full" />
                          </div>
-                         <div className="h-3.5 w-28 bg-muted animate-pulse rounded" />
-                         <div className="h-6 w-24 bg-muted animate-pulse rounded" />
+                         <div className="h-3.5 w-28 skeleton rounded" />
+                         <div className="h-6 w-24 skeleton rounded" />
                       </div>
                     ))
                  ) : filteredExpenses.length === 0 ? (

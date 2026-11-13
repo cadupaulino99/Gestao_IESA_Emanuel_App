@@ -404,15 +404,15 @@ export default function Members() {
                     {isLoading ? (
                       Array.from({ length: 8 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell><div className="h-4 w-6 animate-pulse rounded bg-muted" /></TableCell>
-                          <TableCell><div className="h-4 w-32 animate-pulse rounded bg-muted" /></TableCell>
-                          <TableCell><div className="h-5 w-12 animate-pulse rounded-full bg-muted" /></TableCell>
-                          <TableCell><div className="h-5 w-16 animate-pulse rounded-full bg-muted" /></TableCell>
-                          <TableCell><div className="h-5 w-14 animate-pulse rounded-full bg-muted" /></TableCell>
-                          <TableCell><div className="h-5 w-16 animate-pulse rounded-full bg-muted" /></TableCell>
-                          <TableCell><div className="h-4 w-20 animate-pulse rounded bg-muted" /></TableCell>
-                          <TableCell><div className="h-5 w-14 animate-pulse rounded-full bg-muted" /></TableCell>
-                          <TableCell><div className="ml-auto h-8 w-20 animate-pulse rounded-md bg-muted" /></TableCell>
+                          <TableCell><div className="h-4 w-6 skeleton rounded" /></TableCell>
+                          <TableCell><div className="h-4 w-32 skeleton rounded" /></TableCell>
+                          <TableCell><div className="h-5 w-12 skeleton rounded-full" /></TableCell>
+                          <TableCell><div className="h-5 w-16 skeleton rounded-full" /></TableCell>
+                          <TableCell><div className="h-5 w-14 skeleton rounded-full" /></TableCell>
+                          <TableCell><div className="h-5 w-16 skeleton rounded-full" /></TableCell>
+                          <TableCell><div className="h-4 w-20 skeleton rounded" /></TableCell>
+                          <TableCell><div className="h-5 w-14 skeleton rounded-full" /></TableCell>
+                          <TableCell><div className="ml-auto h-8 w-20 skeleton rounded-md" /></TableCell>
                         </TableRow>
                       ))
                     ) : filteredMembers.length === 0 ? (
@@ -448,14 +448,14 @@ export default function Members() {
                       <CardContent className="space-y-3 p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 space-y-2">
-                            <div className="h-4 w-2/3 max-w-[12rem] animate-pulse rounded bg-muted" />
-                            <div className="h-3 w-1/2 max-w-[9rem] animate-pulse rounded bg-muted" />
+                            <div className="h-4 w-2/3 max-w-[12rem] skeleton rounded" />
+                            <div className="h-3 w-1/2 max-w-[9rem] skeleton rounded" />
                           </div>
-                          <div className="h-5 w-14 animate-pulse rounded-full bg-muted" />
+                          <div className="h-5 w-14 skeleton rounded-full" />
                         </div>
                         <div className="flex gap-2">
-                          <div className="h-8 w-16 animate-pulse rounded-md bg-muted" />
-                          <div className="h-8 w-16 animate-pulse rounded-md bg-muted" />
+                          <div className="h-8 w-16 skeleton rounded-md" />
+                          <div className="h-8 w-16 skeleton rounded-md" />
                         </div>
                       </CardContent>
                     </Card>
