@@ -8,9 +8,62 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: python3 scripts/patch_skeleton_shimmer.py
+        with:
+          fetch-depth: 30
+      - name: Restaurar index.css completo e shimmer
+        run: |
+          set -e
+          git show 38a57c3e3501a3998c868cb442e20817bffcec41:src/index.css > src/index.css
+          python3 - <<'PY'
+          from pathlib import Path
+          ct = Path('src/index.css').read_text()
+          assert 'tailwindcss' in ct and '--brand' in ct
+          block = '''
+
+/* Skeletons — brilho lateral (shimmer) */
+@keyframes iesa-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-muted, var(--muted));
+  isolation: isolate;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-background, var(--background)) 65%, transparent) 50%,
+    transparent 100%
+  );
+  animation: iesa-shimmer 1.35s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+  .skeleton { opacity: 0.7; }
+}
+'''
+          if 'iesa-shimmer' not in ct:
+              Path('src/index.css').write_text(ct + block)
+          print('ok', len(Path('src/index.css').read_text()))
+          PY
+          cat > src/components/ui/skeleton.tsx <<'EOF'
+          import * as React from 'react';
+          import { cn } from '@/src/lib/utils';
+
+          function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+            return <div className={cn('skeleton rounded-md', className)} {...props} />;
+          }
+
+          export { Skeleton };
+          EOF
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/index.css src/components/ui/skeleton.tsx src/App.tsx src/pages/Members.tsx src/pages/Finances.tsx
-          if git diff --cached --quiet; then echo No changes; else git commit -m "ui: shimmer animado nos skeletons de carregamento" && git push; fi
+          git add src/index.css src/components/ui/skeleton.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "ui: CSS completo + shimmer nos skeletons" && git push; fi
