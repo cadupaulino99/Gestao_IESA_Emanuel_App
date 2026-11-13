@@ -1,0 +1,74 @@
+name: restore-index-css-shimmer
+on:
+  workflow_dispatch: {}
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+      - name: Restore index.css from before PLACEHOLDER and add shimmer
+        run: |
+          set -e
+          # last good version before accidental wipe
+          git show 38a57c3e3501a3998c868cb442e20817bffcec41:src/index.css > src/index.css
+          python3 - <<'PY'
+          from pathlib import Path
+          ct = Path('src/index.css').read_text()
+          assert '@import' in ct or 'tailwindcss' in ct, 'restore failed'
+          block = '''
+
+/* Skeletons — brilho lateral (shimmer); desligado se o SO pede menos movimento */
+@keyframes iesa-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--color-muted, var(--muted));
+  isolation: isolate;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-background, var(--background)) 65%, transparent) 50%,
+    transparent 100%
+  );
+  animation: iesa-shimmer 1.35s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+  .skeleton { opacity: 0.7; }
+}
+'''
+          if 'iesa-shimmer' not in ct:
+              Path('src/index.css').write_text(ct + block)
+          print('lines', len(Path('src/index.css').read_text().splitlines()))
+          PY
+      - name: Skeleton component
+        run: |
+          cat > src/components/ui/skeleton.tsx <<'EOF'
+          import * as React from 'react';
+          import { cn } from '@/src/lib/utils';
+
+          /** Placeholder de carregamento com shimmer (respeita prefers-reduced-motion). */
+          function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+            return <div className={cn('skeleton rounded-md', className)} {...props} />;
+          }
+
+          export { Skeleton };
+          EOF
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/index.css src/components/ui/skeleton.tsx
+          git commit -m "fix: restaurar index.css e animação shimmer dos skeletons" || echo nothing
+          git push
