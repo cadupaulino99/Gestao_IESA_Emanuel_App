@@ -31,17 +31,16 @@ Guia: **[RELEASE.md](./RELEASE.md)**
 
 ---
 
-## 3. Monitorização de saúde
+## 3. Monitorização e alertas
 
-Guia: **[MONITORIZACAO.md](./MONITORIZACAO.md)**
+| Tema | Doc |
+|------|-----|
+| Saúde Worker + Hosting | [MONITORIZACAO.md](./MONITORIZACAO.md) |
+| Alertas de falha (issues + e-mail + webhook) | [ALERTAS.md](./ALERTAS.md) |
 
-| Verificação | Onde |
-|-------------|------|
-| Automática (6/6 h) | Actions → **system-health** |
-| Worker agora | https://iesa-ai.cadupaulino99.workers.dev/__health |
-| Web agora | https://iesa-emanuel-xangongo.web.app/ |
-
-Se o Action falhar, abre-se uma issue *«Saúde do sistema»* (sem duplicar).
+- Actions → **system-health** (cada 6 h)
+- Falhas críticas → issue automática (`notify-on-failure`)
+- Opcional: secret **`ALERT_WEBHOOK_URL`** (Discord/Slack)
 
 ---
 
@@ -60,8 +59,9 @@ Se o Action falhar, abre-se uma issue *«Saúde do sistema»* (sem duplicar).
 
 - [ ] Cadastros Pendentes — aprovar ou rejeitar o que estiver à espera
 - [ ] Actions → **system-health** verde (ou abrir `/__health` manualmente)
+- [ ] Issues abertas de «Falha no workflow» / «Saúde do sistema» — tratar ou fechar
 - [ ] Se houve release: equipa de teste com a **mesma** versão APK
-- [ ] Backup mental: dados no Firebase — não apagar o projecto `iesa-emanuel-xangongo`
+- [ ] Dados no Firebase — não apagar o projecto `iesa-emanuel-xangongo`
 
 ---
 
@@ -71,6 +71,7 @@ Se o Action falhar, abre-se uma issue *«Saúde do sistema»* (sem duplicar).
 |-----|------|
 | [CHECKLIST-ACESSO-MEMBRO-ADMIN.md](./CHECKLIST-ACESSO-MEMBRO-ADMIN.md) | Login / cadastro / admin |
 | [MONITORIZACAO.md](./MONITORIZACAO.md) | Saúde Worker + Hosting |
+| [ALERTAS.md](./ALERTAS.md) | Notificações de falha |
 | [RELEASE.md](./RELEASE.md) | Versões e workflows |
 | [GUIA-APP-CHECK-API-KEY.md](./GUIA-APP-CHECK-API-KEY.md) | App Check e API key |
 | [GUIA-CLOUDFLARE-WORKER.md](./GUIA-CLOUDFLARE-WORKER.md) | Worker IA |
