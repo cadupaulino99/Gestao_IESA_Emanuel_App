@@ -1,0 +1,16 @@
+name: patch-poster-decode
+on:
+  workflow_dispatch: {}
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/patch_poster_decode.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/index.css src/components/ui/PosterImage.tsx src/components/board/EventFeedPost.tsx src/components/portal/MemberBoard.tsx src/components/admin/EventsAdmin.tsx
+          if git diff --cached --quiet; then echo No changes; else git commit -m "perf: decoding async + poster-img nos cartazes" && git push; fi
