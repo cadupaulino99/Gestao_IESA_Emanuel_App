@@ -25,5 +25,21 @@ export default defineConfig(() => {
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
     },
+    build: {
+      // Code-splitting: vendors pesados em ficheiros separados (cache HTTP longo no Hosting)
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return;
+            if (id.includes('firebase')) return 'vendor-firebase';
+            if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
+            if (id.includes('jspdf') || id.includes('xlsx') || id.includes('sheetjs')) return 'vendor-export';
+            if (id.includes('@radix-ui') || id.includes('lucide-react')) return 'vendor-ui';
+            if (id.includes('react-dom') || id.includes('/react/') || id.includes('react-router')) return 'vendor-react';
+          },
+        },
+      },
+      chunkSizeWarningLimit: 900,
+    },
   };
 });

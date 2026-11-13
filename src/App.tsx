@@ -21,7 +21,7 @@ import { Loader2, Hourglass, XCircle, LogOut } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 
 // Lazy load for simplicity in this file, we will create these components next.
-import Dashboard from './pages/Dashboard';
+const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Members = lazy(() => import('./pages/Members'));
 const Finances = lazy(() => import('./pages/Finances'));
 const Communion = lazy(() => import('./pages/Communion'));
@@ -44,7 +44,17 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { currentVersion } from './lib/updateCheck';
 import { friendlyAuthError, isUnknownAccountError, RESET_MESSAGE } from './lib/authMessages';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Igreja local: dados mudam pouco; evita refetch ao mudar de separador
+      staleTime: 60_000,
+      gcTime: 10 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 /* v1.14.0 — Ecrã de estado do auto-cadastro (pendente/rejeitado): o membro
    vê a mensagem correspondente ao estado e NÃO entra (requisito 5). */
@@ -295,8 +305,16 @@ const Login = () => {
 };
 
 const PageFallback = () => (
-  <div className="flex items-center justify-center gap-2 py-24 text-sm text-muted-foreground">
-    <Loader2 className="h-5 w-5 animate-spin" /> A carregar…
+  <div className="mx-auto w-full max-w-3xl space-y-4 p-4 py-10" aria-busy="true" aria-label="A carregar">
+    <div className="h-8 w-48 animate-pulse rounded-md bg-muted" />
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div className="h-24 animate-pulse rounded-xl bg-muted" />
+      <div className="h-24 animate-pulse rounded-xl bg-muted" />
+    </div>
+    <div className="h-40 animate-pulse rounded-xl bg-muted" />
+    <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" /> A carregar…
+    </div>
   </div>
 );
 
