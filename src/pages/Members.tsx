@@ -402,10 +402,18 @@ export default function Members() {
                   </TableHeader>
                   <TableBody>
                     {isLoading ? (
-                      Array.from({ length: 5 }).map((_, i) => (
-                        <TableRow key={i}>{Array.from({ length: 9 }).map((__, j) => (
-                          <TableCell key={j}><div className="h-4 w-14 animate-pulse rounded bg-muted" /></TableCell>
-                        ))}</TableRow>
+                      Array.from({ length: 8 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell><div className="h-4 w-6 animate-pulse rounded bg-muted" /></TableCell>
+                          <TableCell><div className="h-4 w-32 animate-pulse rounded bg-muted" /></TableCell>
+                          <TableCell><div className="h-5 w-12 animate-pulse rounded-full bg-muted" /></TableCell>
+                          <TableCell><div className="h-5 w-16 animate-pulse rounded-full bg-muted" /></TableCell>
+                          <TableCell><div className="h-5 w-14 animate-pulse rounded-full bg-muted" /></TableCell>
+                          <TableCell><div className="h-5 w-16 animate-pulse rounded-full bg-muted" /></TableCell>
+                          <TableCell><div className="h-4 w-20 animate-pulse rounded bg-muted" /></TableCell>
+                          <TableCell><div className="h-5 w-14 animate-pulse rounded-full bg-muted" /></TableCell>
+                          <TableCell><div className="ml-auto h-8 w-20 animate-pulse rounded-md bg-muted" /></TableCell>
+                        </TableRow>
                       ))
                     ) : filteredMembers.length === 0 ? (
                       <TableRow><TableCell colSpan={9} className="py-10 text-center text-muted-foreground">Nenhum membro encontrado.</TableCell></TableRow>
@@ -434,7 +442,28 @@ export default function Members() {
                 </Table>
               </div>
               <div className="space-y-2 p-3 md:hidden">
-                {filteredMembers.map((m) => (
+                {isLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <Card key={i}>
+                      <CardContent className="space-y-3 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 space-y-2">
+                            <div className="h-4 w-2/3 max-w-[12rem] animate-pulse rounded bg-muted" />
+                            <div className="h-3 w-1/2 max-w-[9rem] animate-pulse rounded bg-muted" />
+                          </div>
+                          <div className="h-5 w-14 animate-pulse rounded-full bg-muted" />
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="h-8 w-16 animate-pulse rounded-md bg-muted" />
+                          <div className="h-8 w-16 animate-pulse rounded-md bg-muted" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : filteredMembers.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">Nenhum membro encontrado.</p>
+                ) : (
+                  filteredMembers.map((m) => (
                   <Card key={m.id}>
                     <CardContent className="space-y-2 p-3">
                       <div className="flex items-start justify-between gap-2">
@@ -447,7 +476,8 @@ export default function Members() {
                       <ActionBtns m={m} />
                     </CardContent>
                   </Card>
-                ))}
+                  ))
+                )}
               </div>
               <div className="flex flex-col items-center justify-between gap-2 border-t px-4 py-3 text-xs text-muted-foreground sm:flex-row">
                 <span>Mostrando {filteredMembers.length} membro{filteredMembers.length === 1 ? '' : 's'}</span>

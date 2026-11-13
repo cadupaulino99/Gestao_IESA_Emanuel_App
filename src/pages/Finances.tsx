@@ -1891,7 +1891,7 @@ export default function Finances() {
                     </TableHeader>
                     <TableBody>
                       {loading ? (
-                        Array.from({ length: 3 }).map((_, i) => (
+                        Array.from({ length: 6 }).map((_, i) => (
                           <TableRow key={i}>
                             <TableCell><div className="h-4 w-16 bg-muted animate-pulse rounded"></div></TableCell>
                             <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
@@ -2079,7 +2079,7 @@ export default function Finances() {
                   </TableHeader>
                   <TableBody>
                     {loading ? (
-                      Array.from({ length: 3 }).map((_, i) => (
+                      Array.from({ length: 6 }).map((_, i) => (
                         <TableRow key={i}>
                           <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
                           <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded"></div></TableCell>
@@ -2118,11 +2118,14 @@ export default function Finances() {
               </div>
               <div className="md:hidden flex flex-col gap-4">
                  {loading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
+                    Array.from({ length: 5 }).map((_, i) => (
                       <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2">
-                         <div className="h-5 w-40 bg-muted animate-pulse rounded"></div>
-                         <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
-                         <div className="h-6 w-24 bg-muted animate-pulse rounded"></div>
+                         <div className="flex justify-between gap-2">
+                           <div className="h-5 w-36 bg-muted animate-pulse rounded" />
+                           <div className="h-5 w-16 bg-muted animate-pulse rounded-full" />
+                         </div>
+                         <div className="h-3.5 w-28 bg-muted animate-pulse rounded" />
+                         <div className="h-6 w-24 bg-muted animate-pulse rounded" />
                       </div>
                     ))
                  ) : filteredOfferings.length === 0 ? (
@@ -2234,7 +2237,7 @@ export default function Finances() {
                   </TableHeader>
                   <TableBody>
                     {loading ? (
-                      Array.from({ length: 3 }).map((_, i) => (
+                      Array.from({ length: 6 }).map((_, i) => (
                         <TableRow key={i}>
                           <TableCell><div className="h-4 w-32 bg-muted animate-pulse rounded"></div></TableCell>
                           <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded"></div></TableCell>
@@ -2269,11 +2272,14 @@ export default function Finances() {
               </div>
               <div className="md:hidden flex flex-col gap-4">
                  {loading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2 border-destructive/20">
-                         <div className="h-5 w-40 bg-muted animate-pulse rounded"></div>
-                         <div className="h-4 w-32 bg-muted animate-pulse rounded"></div>
-                         <div className="h-6 w-24 bg-muted animate-pulse rounded"></div>
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} className="border p-4 rounded-lg shadow-sm flex flex-col gap-2">
+                         <div className="flex justify-between gap-2">
+                           <div className="h-5 w-36 bg-muted animate-pulse rounded" />
+                           <div className="h-5 w-16 bg-muted animate-pulse rounded-full" />
+                         </div>
+                         <div className="h-3.5 w-28 bg-muted animate-pulse rounded" />
+                         <div className="h-6 w-24 bg-muted animate-pulse rounded" />
                       </div>
                     ))
                  ) : filteredExpenses.length === 0 ? (
