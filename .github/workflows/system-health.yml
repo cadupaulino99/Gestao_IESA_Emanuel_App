@@ -1,0 +1,157 @@
+name: system-health
+
+# Monitorização automática da saúde do sistema em produção.
+# Verifica: Worker (/__health), secrets configurados, R2, cron, Firebase Hosting.
+# Agenda: a cada 6 horas + manual. Falhas abrem issue (sem duplicar).
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  health:
+    name: Verificar produção
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WORKER_URL: https://iesa-ai.cadupaulino99.workers.dev
+      HOSTING_URL: https://iesa-emanuel-xangongo.web.app
+      HOSTING_URL_ALT: https://iesa-emanuel-xangongo.firebaseapp.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Worker /__health
+        id: worker
+        run: |
+          set +e
+          HTTP=$(curl -sS -o /tmp/health.json -w "%{http_code}" --max-time 20 "$WORKER_URL/__health")
+          echo "http=$HTTP" >> "$GITHUB_OUTPUT"
+          echo "Worker HTTP $HTTP"
+          cat /tmp/health.json || true
+          if [ "$HTTP" != "200" ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "detail=Worker /__health HTTP $HTTP" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node <<'NODE'
+          const fs = require('fs');
+          const out = process.env.GITHUB_OUTPUT;
+          let detail = [];
+          let ok = true;
+          try {
+            const j = JSON.parse(fs.readFileSync('/tmp/health.json', 'utf8'));
+            if (j.ok !== true) { ok = false; detail.push('ok!=true'); }
+            if (!j.version) { ok = false; detail.push('sem version'); }
+            if (j.vision !== true) { ok = false; detail.push('vision!=true'); }
+            const cfg = j.config || {};
+            if (!cfg.GEMINI_API_KEY) { ok = false; detail.push('GEMINI_API_KEY em falta'); }
+            if (!cfg.FIREBASE_SA_JSON) { ok = false; detail.push('FIREBASE_SA_JSON em falta'); }
+            if (!cfg.PROJECT_ID) { ok = false; detail.push('PROJECT_ID em falta'); }
+            const r2 = j.r2 || {};
+            if (r2.bound !== true) { ok = false; detail.push('R2 não bound'); }
+            const cron = j.cron || {};
+            if (cron.ok === false) { ok = false; detail.push('cron.ok=false'); }
+            if (typeof cron.ageMinutes === 'number' && cron.ageMinutes > 180) {
+              ok = false; detail.push('cron parado ageMinutes=' + cron.ageMinutes);
+            }
+            fs.appendFileSync(out, `version=${j.version || ''}\n`);
+            fs.appendFileSync(out, `r2=${r2.bound === true}\n`);
+            fs.appendFileSync(out, `cronAge=${cron.ageMinutes ?? ''}\n`);
+          } catch (e) {
+            ok = false;
+            detail.push('JSON inválido: ' + e.message);
+          }
+          fs.appendFileSync(out, `ok=${ok}\n`);
+          fs.appendFileSync(out, `detail=${detail.join('; ') || 'ok'}\n`);
+          console.log(ok ? 'Worker saudável' : 'Worker com problemas: ' + detail.join('; '));
+          NODE
+
+      - name: Drift versão repo vs ar
+        id: drift
+        run: |
+          EXP="$(grep -o "WORKER_VERSION = '[^']*'" worker/ai-worker.js | head -1 | cut -d"'" -f2 || true)"
+          LIVE="${{ steps.worker.outputs.version }}"
+          echo "repo=$EXP ar=$LIVE"
+          if [ -n "$EXP" ] && [ -n "$LIVE" ] && [ "$EXP" != "$LIVE" ]; then
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            echo "detail=Worker no ar ($LIVE) != repo ($EXP)" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+            echo "detail=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Firebase Hosting
+        id: hosting
+        run: |
+          set +e
+          H1=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$HOSTING_URL/")
+          H2=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$HOSTING_URL_ALT/")
+          echo "webapp=$H1 firebaseapp=$H2"
+          echo "code=$H1" >> "$GITHUB_OUTPUT"
+          if [ "$H1" = "200" ] || [ "$H2" = "200" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "detail=Hosting OK ($H1/$H2)" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "detail=Hosting HTTP $H1 / $H2" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resumo
+        id: summary
+        run: |
+          WOK="${{ steps.worker.outputs.ok }}"
+          HOK="${{ steps.hosting.outputs.ok }}"
+          DRIFT="${{ steps.drift.outputs.drift }}"
+          FAIL=0
+          MSG=""
+          if [ "$WOK" != "true" ]; then FAIL=1; MSG="${MSG}Worker: ${{ steps.worker.outputs.detail }}. "; fi
+          if [ "$HOK" != "true" ]; then FAIL=1; MSG="${MSG}Hosting: ${{ steps.hosting.outputs.detail }}. "; fi
+          if [ "$DRIFT" = "true" ]; then FAIL=1; MSG="${MSG}Drift: ${{ steps.drift.outputs.detail }}. "; fi
+          echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
+          echo "msg=$MSG" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Saúde do sistema"
+            echo ""
+            echo "| Componente | Estado | Detalhe |"
+            echo "|------------|--------|---------|"
+            echo "| Worker | $WOK | v=${{ steps.worker.outputs.version }} r2=${{ steps.worker.outputs.r2 }} cronAge=${{ steps.worker.outputs.cronAge }} ${{ steps.worker.outputs.detail }} |"
+            echo "| Hosting | $HOK | ${{ steps.hosting.outputs.detail }} |"
+            echo "| Drift Worker | $DRIFT | ${{ steps.drift.outputs.detail }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::$MSG"
+          else
+            echo "Sistema saudável."
+          fi
+
+      - name: Abrir issue se unhealthy
+        if: steps.summary.outputs.fail == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXISTE="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title Saúde do sistema" --json number -q 'length')"
+          if [ "$EXISTE" != "0" ]; then echo "Já existe issue aberta de saúde; não duplico."; exit 0; fi
+          TITLE="Saúde do sistema: problema detectado"
+          BODY="Monitor automático (\\`system-health\\`) reportou:
+
+${{ steps.summary.outputs.msg }}
+
+**Verificar:**
+- Worker: \\$WORKER_URL/__health
+- Hosting: \\$HOSTING_URL
+- Deploy Worker / Hosting se necessário
+- docs/MONITORIZACAO.md e docs/OPERACOES.md
+
+Correr manualmente: Actions → system-health → Run workflow."
+          BODY="${BODY//\$WORKER_URL/https://iesa-ai.cadupaulino99.workers.dev}"
+          BODY="${BODY//\$HOSTING_URL/https://iesa-emanuel-xangongo.web.app}"
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+
+      - name: Falhar o job se unhealthy
+        if: steps.summary.outputs.fail == '1'
+        run: exit 1
