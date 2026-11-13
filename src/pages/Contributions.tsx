@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, writeBatch } from 'firebase/firestore';
@@ -40,6 +41,7 @@ export default function Contributions() {
   const canWrite = !!isAdmin; // só administradores (super incluído); servidor também impõe
 
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [filter, setFilter] = useState<'todos' | 'sem_valor' | 'com_valor'>('todos');
   const [year, setYear] = useState<number>(THIS_YEAR);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -108,7 +110,7 @@ export default function Contributions() {
       .map((c) => ({ ...c, paid: paidSumOf(payments, c.id), status: computeStatus(c, paidSumOf(payments, c.id), c.amount) }));
 
   const filteredMembers = useMemo(() => {
-    const t = search.trim().toLowerCase();
+    const t = debouncedSearch.trim().toLowerCase();
     return members.filter((m) => {
       if (t && !m.name.toLowerCase().includes(t) && !(m.phone || '').includes(t)) return false;
       const b = budgetOf(m.id);
@@ -117,7 +119,7 @@ export default function Contributions() {
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members, budgets, search, filter]);
+  }, [members, budgets, debouncedSearch, filter]);
 
   const allSelected = filteredMembers.length > 0 && filteredMembers.every((m) => selected[m.id]);
   const selectedMembers = filteredMembers.filter((m) => selected[m.id]);

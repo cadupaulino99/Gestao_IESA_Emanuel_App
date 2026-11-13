@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, getDocs, addDoc, doc, updateDoc, limit, orderBy, startAfter, DocumentData, QueryDocumentSnapshot, getDoc } from 'firebase/firestore';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -45,6 +46,7 @@ export default function Members() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [cardMember, setCardMember] = useState<Member | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebouncedValue(searchTerm, 300);
   const [statusFilter, setStatusFilter] = useState('all');
   const [areaFilter, setAreaFilter] = useState('all');
 
@@ -77,20 +79,20 @@ export default function Members() {
   const members = React.useMemo(() => data?.pages.flatMap((p) => p.docs) || [], [data]);
 
   const filteredMembers = React.useMemo(() => {
-    const q = searchTerm.toLowerCase();
-    const tBi = searchTerm.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const q = debouncedSearch.toLowerCase();
+    const tBi = debouncedSearch.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
     return members.filter((m) => {
       if (statusFilter !== 'all' && (m.status || 'Activo') !== statusFilter) return false;
       if (areaFilter !== 'all' && (m.groupCell || '') !== areaFilter) return false;
       if (!q) return true;
       return (
         m.name.toLowerCase().includes(q) ||
-        (m.phone || '').includes(searchTerm) ||
+        (m.phone || '').includes(debouncedSearch) ||
         !!(m.documentNumber && m.documentNumber.toUpperCase().includes(tBi)) ||
         !!(m.internalCode && m.internalCode.toLowerCase().includes(q))
       );
     });
-  }, [members, searchTerm, statusFilter, areaFilter]);
+  }, [members, debouncedSearch, statusFilter, areaFilter]);
 
   const areaOptions = React.useMemo(() => {
     const s = new Set<string>();

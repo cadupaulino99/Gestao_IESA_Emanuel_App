@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useNavigate } from 'react-router-dom';
 import DocumentReaderModal, { type DocKind } from '../components/documents/DocumentReaderModal';
 import { prefGet } from '../lib/prefs';
@@ -66,6 +67,9 @@ export default function Finances() {
   const [searchTithes, setSearchTithes] = useState('');
   const [searchOfferings, setSearchOfferings] = useState('');
   const [searchExpenses, setSearchExpenses] = useState('');
+  const debouncedSearchTithes = useDebouncedValue(searchTithes, 300);
+  const debouncedSearchOfferings = useDebouncedValue(searchOfferings, 300);
+  const debouncedSearchExpenses = useDebouncedValue(searchExpenses, 300);
 
   const [loading, setLoading] = useState(true);
 
@@ -1411,16 +1415,16 @@ export default function Finances() {
 
   const filteredTithes = tithes.filter(t => {
     const memberName = members.find(m => m.id === t.memberId)?.name || '';
-    const search = searchTithes.toLowerCase();
+    const search = debouncedSearchTithes.toLowerCase();
     return memberName.toLowerCase().includes(search) || t.contributionType?.toLowerCase().includes(search) || t.receiptNumber?.toLowerCase().includes(search);
   });
 
   const filteredOfferings = offerings.filter(o => 
-    o.description?.toLowerCase().includes(searchOfferings.toLowerCase()) || o.type?.toLowerCase().includes(searchOfferings.toLowerCase())
+    o.description?.toLowerCase().includes(debouncedSearchOfferings.toLowerCase()) || o.type?.toLowerCase().includes(debouncedSearchOfferings.toLowerCase())
   );
 
   const filteredExpenses = expenses.filter(e => 
-    e.description?.toLowerCase().includes(searchExpenses.toLowerCase()) || e.responsible?.toLowerCase().includes(searchExpenses.toLowerCase()) || e.category?.toLowerCase().includes(searchExpenses.toLowerCase())
+    e.description?.toLowerCase().includes(debouncedSearchExpenses.toLowerCase()) || e.responsible?.toLowerCase().includes(debouncedSearchExpenses.toLowerCase()) || e.category?.toLowerCase().includes(debouncedSearchExpenses.toLowerCase())
   );
 
 
