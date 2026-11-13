@@ -1,0 +1,104 @@
+name: notify-on-failure
+
+# Quando um workflow crítico falha, cria/atualiza uma issue e (opcional)
+# envia POST para o secret ALERT_WEBHOOK_URL (Discord/Slack/outro).
+
+on:
+  workflow_run:
+    workflows:
+      - system-health
+      - worker-health
+      - Build Android (APK + AAB)
+      - Deploy Firebase Hosting (web)
+      - Deploy Firebase (regras, índices e funções)
+      - deploy-ai-worker
+      - ci
+    types:
+      - completed
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  alert:
+    name: Alertar se falhou
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dados da falha
+        id: info
+        run: |
+          NAME="${{ github.event.workflow_run.name }}"
+          URL="${{ github.event.workflow_run.html_url }}"
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Falhou: $NAME ($URL)"
+
+      - name: Issue no GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NAME="${{ steps.info.outputs.name }}"
+          URL="${{ steps.info.outputs.url }}"
+          BRANCH="${{ steps.info.outputs.branch }}"
+          SHA="${{ steps.info.outputs.sha }}"
+          TITLE="Falha no workflow: ${NAME}"
+          # Evitar flood: se já há issue aberta com o mesmo título, comentar
+          NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title ${NAME}" --json number,title -q ".[] | select(.title == \"${TITLE}\") | .number" | head -1)
+          BODY=$(cat <<EOF
+          **Workflow:** ${NAME}
+          **Branch:** ${BRANCH}
+          **Commit:** ${SHA}
+          **Run:** ${URL}
+
+          Detectado automaticamente por \\`notify-on-failure\\`.
+          Ver também docs/ALERTAS.md e docs/MONITORIZACAO.md.
+          EOF
+          )
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "$BODY"
+            echo "Comentário na issue #$NUM"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$BODY"
+            echo "Issue criada"
+          fi
+
+      - name: Webhook opcional (Discord / Slack / custom)
+        if: ${{ secrets.ALERT_WEBHOOK_URL != '' }}
+        env:
+          HOOK: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          NAME="${{ steps.info.outputs.name }}"
+          URL="${{ steps.info.outputs.url }}"
+          BRANCH="${{ steps.info.outputs.branch }}"
+          # Payload genérico + campos Discord (content) e Slack (text)
+          BODY=$(node -e "
+            const payload = {
+              text: 'Falha: ' + process.env.NAME + ' — ' + process.env.URL,
+              content: '**Falha no workflow** ' + process.env.NAME + '\n' + process.env.URL + '\nbranch: ' + process.env.BRANCH,
+              username: 'IESA Monitor',
+              embeds: [{ title: 'Falha: ' + process.env.NAME, url: process.env.URL, description: 'branch ' + process.env.BRANCH, color: 15158332 }]
+            };
+            process.stdout.write(JSON.stringify(payload));
+          ")
+          NAME="$NAME" URL="$URL" BRANCH="$BRANCH" \
+          NAME="$NAME" URL="$URL" BRANCH="$BRANCH" node -e '
+            const payload = {
+              text: `Falha: ${process.env.NAME} — ${process.env.URL}`,
+              content: `**Falha no workflow** ${process.env.NAME}\n${process.env.URL}\nbranch: ${process.env.BRANCH}`,
+              username: "IESA Monitor",
+              embeds: [{ title: "Falha: " + process.env.NAME, url: process.env.URL, description: "branch " + process.env.BRANCH, color: 15158332 }]
+            };
+            require("fs").writeFileSync("/tmp/hook.json", JSON.stringify(payload));
+          '
+          curl -fsS -X POST -H 'Content-Type: application/json' -d @/tmp/hook.json "$HOOK" \
+            && echo "Webhook enviado" || echo "::warning::Webhook falhou (verifique ALERT_WEBHOOK_URL)"
