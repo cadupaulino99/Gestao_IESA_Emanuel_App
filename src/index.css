@@ -52,6 +52,9 @@
   --brand: #B4232A;
   --gold: #C99A2E;
   --radius: 0.75rem;
+  /* Fallback quando o WebView reporta 0 (Android gestual) */
+  --safe-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  --safe-top: max(8px, env(safe-area-inset-top, 0px));
 }
 
 .dark {
@@ -80,6 +83,9 @@
 
 @layer base {
   * { border-color: var(--border); }
+  html, body {
+    height: 100%;
+  }
   body {
     background-color: var(--background);
     color: var(--foreground);
@@ -94,6 +100,8 @@
     left: 12px !important;
     right: 12px !important;
     width: auto !important;
+    /* Toasts acima da barra de gestos */
+    bottom: calc(12px + var(--safe-bottom)) !important;
   }
   [data-sonner-toast] { max-width: 100% !important; }
   table { max-width: 100%; }
@@ -101,6 +109,17 @@
   .recharts-responsive-container, .recharts-wrapper { max-width: 100% !important; }
   .acc-brand { border-left-color: var(--brand); }
   .acc-gold  { border-left-color: var(--gold); }
+
+  /* Área segura — notch / status bar / barra de gestos Android */
+  .pt-safe {
+    padding-top: var(--safe-top);
+  }
+  .pb-safe {
+    padding-bottom: var(--safe-bottom);
+  }
+  .mb-safe {
+    margin-bottom: var(--safe-bottom);
+  }
 }
 
 .overflow-auto table thead:not([class*="sticky"]) th,
@@ -148,8 +167,7 @@
   .skeleton { opacity: 0.7; }
 }
 
-
-/* Cartazes: decodificação assínncrona + menos trabalho de layout fora do ecrã */
+/* Cartazes */
 .poster-img {
   content-visibility: auto;
   contain-intrinsic-size: 400px 225px;
