@@ -81,7 +81,7 @@ jobs:
             echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
             echo "google-services.json aplicado."
           else
-            echo "Sem secret GOOGLE_SERVICES_JSON — o APK compila, mas o login Google nativo ficara inativo."
+            echo "Sem secret GOOGLE_SERVICES_JSON — o APK compila, mas o login Google nativo ficara inactivo."
           fi
 
       - name: Keystore de release (se existir nos secrets)
@@ -105,7 +105,14 @@ jobs:
           fi
 
       - name: Build web + sincronizar Capacitor
+        env:
+          VITE_FIREBASE_APPCHECK_SITE_KEY: ${{ secrets.VITE_FIREBASE_APPCHECK_SITE_KEY }}
         run: |
+          if [ -n "$VITE_FIREBASE_APPCHECK_SITE_KEY" ]; then
+            echo "App Check site key presente no build (Android)."
+          else
+            echo "Sem VITE_FIREBASE_APPCHECK_SITE_KEY — App Check inactivo neste APK."
+          fi
           npm run build
           npx cap sync android
 
