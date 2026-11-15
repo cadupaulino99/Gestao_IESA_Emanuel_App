@@ -8,63 +8,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Patch build-android.yml
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p = Path('.github/workflows/build-android.yml')
-          t = p.read_text()
-          if 'VITE_FIREBASE_APPCHECK_SITE_KEY: ${{ secrets.VITE_FIREBASE_APPCHECK_SITE_KEY }}' in t:
-              print('already patched')
-          else:
-              old = """      - name: Build web + sincronizar Capacitor
-          run: |
-            npm run build
-            npx cap sync android
-          """
-              # normalize: exact from file
-              m = re.search(
-                  r'      - name: Build web \+ sincronizar Capacitor\n        run: \|\n          npm run build\n          npx cap sync android\n',
-                  t,
-              )
-              if not m:
-                  # debug
-                  i = t.find('Build web')
-                  print(repr(t[i:i+180]))
-                  raise SystemExit('pattern not found')
-              new = """      - name: Build web + sincronizar Capacitor
-          env:
-            VITE_FIREBASE_APPCHECK_SITE_KEY: ${{ secrets.VITE_FIREBASE_APPCHECK_SITE_KEY }}
-          run: |
-            if [ -n "$VITE_FIREBASE_APPCHECK_SITE_KEY" ]; then
-              echo "App Check site key presente no build (Android)."
-              else
-              echo "Sem VITE_FIREBASE_APPCHECK_SITE_KEY — App Check inactivo neste APK."
-              fi
-              npm run build
-              npx cap sync android
-          """
-              # Fix indentation of new block to match YAML (6 spaces for run lines under env)
-              new = (
-                  '      - name: Build web + sincronizar Capacitor\n'
-                  '        env:\n'
-                  '          VITE_FIREBASE_APPCHECK_SITE_KEY: ${{ secrets.VITE_FIREBASE_APPCHECK_SITE_KEY }}\n'
-                  '        run: |\n'
-                  '          if [ -n "$VITE_FIREBASE_APPCHECK_SITE_KEY" ]; then\n'
-                  '            echo "App Check site key presente no build (Android)."\n'
-                  '          else\n'
-                  '            echo "Sem VITE_FIREBASE_APPCHECK_SITE_KEY — App Check inactivo neste APK."\n'
-                  '          fi\n'
-                  '          npm run build\n'
-                  '          npx cap sync android\n'
-              )
-              t = t[:m.start()] + new + t[m.end():]
-              p.write_text(t)
-              print('patched')
-          PY
-      - name: Commit
-        run: |
+      - run: python3 scripts/patch_android_appcheck_env.py
+      - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/workflows/build-android.yml
